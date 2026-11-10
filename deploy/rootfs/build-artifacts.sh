@@ -16,8 +16,9 @@
 #   --arch ARCH         guest architecture (default: the Docker host architecture)
 #   --docker-image TAG  also load the desktop image for the docker VM driver
 #                       (LYDIABOX_DOCKER_IMAGE, default lydiabox/guest:latest)
-#   --slim              build the desktop-slim stage for --docker-image (Xvfb,
-#                       Xfce, terminal; no Chrome, Blender, ffmpeg, harnesses)
+#   --slim              build the desktop-slim stage for --docker-image and
+#                       rootfs.squashfs (Xvfb, Xfce, terminal, ffmpeg; no
+#                       Chrome, Blender, Node.js, harnesses)
 #   --no-vm-images      skip vmlinux, initramfs.cpio.gz, and rootfs.squashfs
 #                       (enough for the docker driver)
 #   --virtiofsd         also build virtiofsd from source into
@@ -95,7 +96,7 @@ while [ $# -gt 0 ]; do
 		shift
 		;;
 	-h | --help)
-		sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*)
@@ -159,6 +160,7 @@ docker buildx build \
 	--platform "linux/$arch" \
 	--file "$dockerfile" \
 	--target artifacts \
+	--build-arg "ROOTFS_STAGE=$desktop_target" \
 	--output "type=local,dest=$stage" \
 	"$repo_root"
 

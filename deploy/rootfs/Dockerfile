@@ -17,6 +17,9 @@
 
 ARG UBUNTU_IMAGE=ubuntu:24.04
 ARG GO_IMAGE=golang:1.24-bookworm
+# Stage copied into rootfs.squashfs: "desktop" or "desktop-slim"
+# (build-artifacts.sh --slim).
+ARG ROOTFS_STAGE=desktop
 
 # --- Guest daemon (also bind-mounted at run time by the VMM drivers) ---------
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS guestbin
@@ -144,10 +147,12 @@ WORKDIR /home/agent
 CMD ["/usr/local/sbin/lydiabox-init"]
 
 # --- rootfs.squashfs ----------------------------------------------------------
+FROM ${ROOTFS_STAGE} AS rootfs-src
+
 FROM ${UBUNTU_IMAGE} AS squash
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends squashfs-tools \
 	&& rm -rf /var/lib/apt/lists/*
-COPY --from=desktop / /rootfs/
+COPY --from=rootfs-src / /rootfs/
 RUN set -eux; \
 	rm -rf /rootfs/proc/* /rootfs/sys/* /rootfs/dev/* /rootfs/tmp/* /rootfs/run/*; \
 	mkdir -p /out; \
