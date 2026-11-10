@@ -125,7 +125,9 @@ boots `rootfs.squashfs` read-only with a persistent overlay
 (`system/root-upper.img` on JuiceFS), so `apt install`, `/etc` changes,
 and browser profiles survive a restart. `/home/agent` and `/workspace` are
 shared through virtio-fs. The guest has the address `172.30.0.2/24`
-behind NAT and cannot reach private networks of the host.
+behind NAT and cannot reach private networks of the host. Other tenants
+get their own subnet, `172.30.<n>.0/24` (n = 1 to 254, kept in the state
+database).
 
 ### Docker fallback (`docker`)
 

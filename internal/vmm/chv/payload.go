@@ -130,10 +130,25 @@ type Network struct {
 	Prefix   int    // 24
 }
 
-// DefaultNetwork returns the network of docs/design.md section 4.3 with a
-// TAP name derived from the tenant.
-func DefaultNetwork(tenantID string) Network {
-	return Network{Tap: TapName(tenantID), HostIP: "172.30.0.1", GuestIP: "172.30.0.2", Prefix: 24}
+// DefaultNetwork returns the network of docs/design.md section 4.3
+// (172.30.0.0/24) with a TAP name derived from the tenant.
+func DefaultNetwork(tenantID string) Network { return TenantNetwork(tenantID, 0) }
+
+// TenantNetwork returns the guest network 172.30.<index>.0/24 of a tenant:
+// the host is .1 and the guest is .2. The "default" tenant has index 0;
+// the store assigns other tenants a stable index from 1 to 254.
+func TenantNetwork(tenantID string, index int) Network {
+	return Network{Tap: TapName(tenantID), HostIP: fmt.Sprintf("172.30.%d.1", index),
+		GuestIP: fmt.Sprintf("172.30.%d.2", index), Prefix: 24}
+}
+
+// cmdline returns the kernel command line. A guest network other than the
+// default one is passed to the initramfs as lydiabox.ip and lydiabox.gw.
+func (n Network) cmdline() string {
+	if n.Disabled || (n.GuestIP == "172.30.0.2" && n.HostIP == "172.30.0.1" && n.Prefix == 24) {
+		return Cmdline
+	}
+	return fmt.Sprintf("%s lydiabox.ip=%s/%d lydiabox.gw=%s", Cmdline, n.GuestIP, n.Prefix, n.HostIP)
 }
 
 // TapName returns a stable interface name of at most 15 characters.
@@ -175,7 +190,7 @@ func BuildConfig(spec vmm.Spec, p Paths, nw Network, tenantID string) (*VMConfig
 	cfg := &VMConfig{
 		CPUs:    CPUsConfig{BootVCPUs: spec.CPUs, MaxVCPUs: spec.CPUs},
 		Memory:  MemoryConfig{Size: int64(spec.MemMB) << 20, Shared: true},
-		Payload: PayloadConfig{Kernel: spec.Kernel, Initramfs: spec.Initramfs, Cmdline: Cmdline},
+		Payload: PayloadConfig{Kernel: spec.Kernel, Initramfs: spec.Initramfs, Cmdline: nw.cmdline()},
 		Disks: []DiskConfig{
 			{Path: spec.Rootfs, Readonly: true},
 			{Path: p.GuestImage, Readonly: true},

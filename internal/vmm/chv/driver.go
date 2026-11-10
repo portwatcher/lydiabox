@@ -29,8 +29,9 @@ type Options struct {
 	Runner   storage.Runner
 	LookPath func(string) (string, error)
 	// Network returns the guest network of a tenant (default
-	// DefaultNetwork). Return Network{Disabled: true} to run without a NIC.
-	Network func(tenantID string) Network
+	// DefaultNetwork; lydiabox up uses TenantNetwork with the subnet index
+	// from the store). Return Network{Disabled: true} to run without a NIC.
+	Network func(ctx context.Context, tenantID string) (Network, error)
 	// StartTimeout bounds waiting for the daemons' sockets (default 15 s).
 	StartTimeout time.Duration
 	Logger       *slog.Logger
@@ -104,7 +105,7 @@ func New(opts Options) (*Driver, error) {
 		opts.LookPath = exec.LookPath
 	}
 	if opts.Network == nil {
-		opts.Network = DefaultNetwork
+		opts.Network = func(_ context.Context, tid string) (Network, error) { return DefaultNetwork(tid), nil }
 	}
 	if opts.StartTimeout <= 0 {
 		opts.StartTimeout = 15 * time.Second
@@ -143,7 +144,11 @@ func (d *Driver) instance(ctx context.Context, tid string) (*instance, error) {
 	if _, err := os.Stat(p.APISocket); err != nil || api.Ping(pctx) != nil {
 		return nil, nil
 	}
-	in := &instance{paths: p, api: api, network: d.opts.Network(tid)}
+	nw, err := d.opts.Network(ctx, tid)
+	if err != nil {
+		return nil, fmt.Errorf("chv: guest network: %w", err)
+	}
+	in := &instance{paths: p, api: api, network: nw}
 	d.vms[tid] = in
 	return in, nil
 }
@@ -168,7 +173,10 @@ func (d *Driver) Create(ctx context.Context, tid string, spec vmm.Spec) (err err
 	if err := EnsureGuestImage(ctx, d.opts.Runner, d.opts.MkfsExt4, spec.GuestBinary, p.GuestImage); err != nil {
 		return err
 	}
-	nw := d.opts.Network(tid)
+	nw, err := d.opts.Network(ctx, tid)
+	if err != nil {
+		return fmt.Errorf("chv: guest network: %w", err)
+	}
 	cfg, err := BuildConfig(spec, p, nw, tid)
 	if err != nil {
 		return err

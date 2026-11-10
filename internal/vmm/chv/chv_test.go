@@ -105,6 +105,35 @@ func TestNetworkRules(t *testing.T) {
 	}
 }
 
+func TestTenantNetwork(t *testing.T) {
+	def := DefaultNetwork("default")
+	if def != TenantNetwork("default", 0) || def.Subnet() != "172.30.0.0/24" || def.cmdline() != Cmdline {
+		t.Fatalf("default network %+v %q", def, def.cmdline())
+	}
+	alice := TenantNetwork("alice", 7)
+	if alice.Subnet() != "172.30.7.0/24" || alice.HostIP != "172.30.7.1" || alice.GuestIP != "172.30.7.2" || alice.Tap == def.Tap {
+		t.Fatalf("alice network %+v", alice)
+	}
+	p := PathsFor("/run", "alice")
+	spec := testSpec("/bin")
+	cfg, err := BuildConfig(spec, p, alice, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := Cmdline + " lydiabox.ip=172.30.7.2/24 lydiabox.gw=172.30.7.1"; cfg.Payload.Cmdline != want {
+		t.Fatalf("cmdline %q, want %q", cfg.Payload.Cmdline, want)
+	}
+	if cfg.Net[0].IP != "172.30.7.1" || cfg.Net[0].Mask != "255.255.255.0" {
+		t.Fatalf("net %+v", cfg.Net)
+	}
+	script := NftScript(alice, 50001)
+	for _, w := range []string{"ip saddr 172.30.7.0/24 oifname != \"" + alice.Tap + "\" masquerade", "dnat to 172.30.7.2"} {
+		if !strings.Contains(script, w) {
+			t.Fatalf("missing %q in\n%s", w, script)
+		}
+	}
+}
+
 func TestLifecycleAgainstMockCloudHypervisor(t *testing.T) {
 	dir := shortDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "lydiabox-guest"), []byte("\x7fELF guest"), 0o755); err != nil {

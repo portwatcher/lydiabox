@@ -150,6 +150,14 @@ func newDriver(d *deps, log interface{ Warn(string, ...any) }) (vmm.Driver, erro
 		return chv.New(chv.Options{
 			RunDir: cfg.RunDir(), CloudHypervisor: resolve("cloud-hypervisor"), Virtiofsd: resolve("virtiofsd"),
 			Runner: runner, Logger: d.Logger.With("component", "chv"),
+			// "default" keeps 172.30.0.0/24; other tenants get a stable 172.30.<n>.0/24.
+			Network: func(ctx context.Context, tid string) (chv.Network, error) {
+				n, err := d.Store.TenantSubnet(ctx, tid)
+				if err != nil {
+					return chv.Network{}, err
+				}
+				return chv.TenantNetwork(tid, n), nil
+			},
 		})
 	}
 	return docker.New(docker.Options{RunDir: cfg.RunDir(), Image: os.Getenv(envDockerImage), Runner: runner,
