@@ -52,13 +52,16 @@ when you open a terminal session or the desktop, and pauses after
 ```
 
 Back up `$LYDIABOX_DATA_DIR/state/master.key`. It decrypts the stored
-connector tokens. The filesystem itself is restored from the bucket on a
-new host: start `lydiabox up` with the same S3 settings and an empty data
-directory. The host state database (connectors, session metadata, model
-bindings) is also uploaded, to
-`.lydiabox-system/tenants/default/lydiabox.db.gz`, but it is not restored
-automatically. To move it, copy the master key, then unpack that object to
-`$LYDIABOX_DATA_DIR/state/lydiabox.db` before the first start.
+connector tokens. To recover on a new host, copy the master key to
+`$LYDIABOX_DATA_DIR/state/master.key` and start `lydiabox up` with the
+same S3 settings and an otherwise empty data directory. LydiaBox restores
+the filesystem metadata (`jfs-meta.json.gz`) and the host state database
+(connectors, session metadata, model bindings, from
+`.lydiabox-system/tenants/default/lydiabox.db.gz`) before it opens them,
+and logs each restore. The master key must be the same: with a new key the
+state database is restored, but the stored connector tokens cannot be
+decrypted (the log tells you), and you must reconnect the connectors. An
+existing `lydiabox.db` is never replaced.
 
 ## Configuration
 

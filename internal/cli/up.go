@@ -94,6 +94,19 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	if err != nil {
 		return err
 	}
+	objects, err := storage.NewS3Store(cfg.S3, nil)
+	if err != nil {
+		return err
+	}
+	restored, err := storage.RestoreState(ctx, objects, cfg.TenantID, cfg.DBPath(), log)
+	if err != nil {
+		return err
+	}
+	if restored && cfg.MasterKeyGenerated {
+		log.Warn("the state database was restored but the master key is new; stored connector tokens cannot be decrypted. "+
+			"Stop LydiaBox, copy the old master key to this path, and start again, or reconnect the connectors",
+			"path", cfg.MasterKeyPath())
+	}
 	st, err := store.Open(ctx, cfg.DBPath(), key)
 	if err != nil {
 		return err
@@ -110,10 +123,6 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 		}
 	}
 	juicefs, err := boot.Resolve("juicefs")
-	if err != nil {
-		return err
-	}
-	objects, err := storage.NewS3Store(cfg.S3, nil)
 	if err != nil {
 		return err
 	}
