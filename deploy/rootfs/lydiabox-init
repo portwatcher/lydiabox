@@ -5,6 +5,12 @@
 # Xfce, and `lydiabox-guest serve` (deploy/rootfs/supervisord.conf).
 set -eu
 
+# In the VM the environment comes from the initramfs (PATH without
+# /usr/local/bin) instead of the image ENV; supervisord and every session
+# inherit it.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}" TZ="${TZ:-Etc/UTC}"
+
 mounted() { grep -qs " $1 " /proc/mounts; }
 
 [ -e /proc/self ] || mount -t proc proc /proc
