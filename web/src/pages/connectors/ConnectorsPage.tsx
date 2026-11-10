@@ -20,8 +20,12 @@ const fallbackNames: Record<ConnectorProvider, string> = {
 
 const oauthErrors: Record<string, string> = {
   access_denied: "access was denied on the provider's page",
-  invalid_state: "the sign-in link expired",
-  state_expired: "the sign-in link expired",
+  invalid_state: "the sign-in link expired or was opened in another browser",
+  invalid_request: "the provider sent an incomplete answer",
+  not_configured: "no OAuth client is configured",
+  exchange_failed: "the provider did not issue a token",
+  identity_failed: "the provider did not confirm the account",
+  server_error: "LydiaBox could not store the account",
 };
 
 export default function ConnectorsPage() {

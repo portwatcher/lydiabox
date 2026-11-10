@@ -32,6 +32,21 @@ export function ClientDrawer({ connector, onClose, onSaved }: DrawerProps) {
     return null;
   }
   const fromEnv = connector.oauthSource === "env";
+  const stored = connector.oauthSource === "stored";
+
+  // An empty client ID and secret remove the stored client (api.md section 11).
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onSaved(await connectors.setClient(connector.provider, "", ""));
+      onClose();
+    } catch (err) {
+      setError(describeError(err, "Client not removed"));
+    } finally {
+      setBusy(false);
+    }
+  };
   const callback = `${window.location.origin}/api/v1/connectors/${connector.provider}/callback`;
 
   const submit = async (event: FormEvent) => {
@@ -61,6 +76,11 @@ export function ClientDrawer({ connector, onClose, onSaved }: DrawerProps) {
       title={`${connector.displayName} OAuth client`}
       footer={
         <>
+          {stored ? (
+            <Button variant="ghost" className="mr-auto text-danger-fg" disabled={busy} onClick={() => void remove()}>
+              Remove stored client
+            </Button>
+          ) : null}
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" form="client-form" variant="primary" busy={busy} disabled={fromEnv}>
             Save client
