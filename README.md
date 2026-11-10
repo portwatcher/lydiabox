@@ -15,7 +15,7 @@ workstation. See [docs/design.md](docs/design.md) for the architecture and
 | 2 | Guest daemon, VMM drivers (`chv`, `docker`) | Planned |
 | 3 | magpie gateway, harness session bridge | Planned |
 | 4 | Connectors and credential broker | Done |
-| 5 | Web UI | Planned (a placeholder page is embedded) |
+| 5 | Web UI (Studio, Desktop, Files, Models, Connectors) | Done |
 
 ## Quick start
 
@@ -73,8 +73,18 @@ make build        # dist/lydiabox (host) + dist/lydiabox-guest (linux)
 make build GOOS=linux GOARCH=arm64
 make test         # CGO_ENABLED=0 tests, then the race detector
 make lint         # go vet, gofmt, staticcheck, shellcheck
-make web-build    # build web/ and embed it (Phase 5)
+make web-build    # build web/ and embed it into the next `make build`
 ```
+
+Web UI development (Node.js 22 or later) runs Vite with a proxy to a local
+`lydiabox up` on port 8080:
+
+```sh
+cd web && npm ci && npm run dev    # http://localhost:5173
+npm run typecheck && npm run lint && npm run test
+```
+
+See [web/README.md](web/README.md) for the layout and scripts.
 
 All binaries build with `CGO_ENABLED=0`. Runtime binary versions and
 checksums are pinned in
@@ -94,7 +104,8 @@ internal/connector      OAuth2 PKCE and token binding, refresh, revoke, audit
 internal/connector/broker  guest broker: git credentials and connector MCP server
 internal/guest/gitcred  guest git credential helper (vsock or UNIX socket)
 internal/api            HTTP server, auth, route registration contract
-internal/webui          embedded web UI (placeholder until Phase 5)
+internal/webui          embedded web UI (built from web/, placeholder when not built)
+web                     React + TypeScript web workstation (Vite)
 internal/httpx          JSON response and error conventions
 internal/tenant         request tenant context
 deploy/rootfs           guest image build script (Dockerfile in Phase 2)
