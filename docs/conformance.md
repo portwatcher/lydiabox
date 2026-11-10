@@ -19,11 +19,11 @@ the integration run at the end of this document (**E2E**), or `unverified`.
 
 | Section | done | partial | deviates | missing |
 | :--- | ---: | ---: | ---: | ---: |
-| 1. Vision and pillars | 12 | 1 | 1 | 1 |
+| 1. Vision and pillars | 13 | 1 | 1 | 0 |
 | 2. Non-negotiable rules | 9 | 0 | 0 | 0 |
 | 3. Repository structure | 14 | 0 | 2 | 0 |
 | 4.1 Configuration and bootstrap | 7 | 1 | 0 | 0 |
-| 4.2 Storage | 10 | 0 | 0 | 1 |
+| 4.2 Storage | 11 | 0 | 0 | 0 |
 | 4.3 VM engine | 10 | 0 | 2 | 0 |
 | 4.4 Magpie and session bridge | 10 | 2 | 2 | 0 |
 | 4.5 Desktop and computer use | 9 | 1 | 1 | 0 |
@@ -35,7 +35,6 @@ Open items (not `done`):
 
 | Item | Status | Reason |
 | :--- | :--- | :--- |
-| Virtual S3 gateway (`/s3`) | missing | An S3 client signs the request path (SigV4). A reverse proxy under `/s3/` changes the path, so `juicefs gateway` rejects every signature. A working gateway needs either SigV4 verification and re-signing in LydiaBox or a separate listener. Both change the design; left for a later decision. WebDAV and the File API cover offline access. |
 | Root persistence with the `docker` driver | deviates | The container is removed on stop, so changes outside `/home/agent` and `/workspace` are lost. The `chv` driver has the persistent OverlayFS root as designed. |
 | `virtiofsd` checksums | partial | `linux/amd64` is computed from a download (no upstream digest); `linux/arm64` has no pinned checksum, so bootstrap refuses it until `LYDIABOX_MIRROR_VIRTIOFSD_SHA256` is set. |
 | Antigravity formats | partial | Conversations are protobuf in SQLite without a public schema; decoding is schema-free and no native seed session is written (continuation prompt only). See [harness-formats.md](harness-formats.md). |
@@ -47,6 +46,7 @@ Open items (not `done`):
 | WebRTC media port | deviates | All media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT` (default 50000), forwarded by the driver, because the guest is behind NAT. |
 | Web page file layout | deviates | Pages are in `web/src/pages/<area>/<Area>Page.tsx` with their components, not flat files in `pages/`. |
 | Extra packages | deviates | `internal/httpx`, `internal/tenant`, `internal/version`, `internal/webui`, `internal/vmm/guestclient`, `internal/magpie/wire`, `internal/harness/safefile`, `internal/connector/broker`, `internal/guest/cli`, `internal/guest/gitcred`. They keep files under 600 lines. |
+| S3 gateway address | deviates | The design lists `/s3` on `LYDIABOX_LISTEN_ADDR`. S3 clients sign the request path (SigV4), so a reverse proxy under `/s3/` breaks every signature. The gateway has its own listener, `LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). Counted as `done`: the function is complete. |
 | Real KVM boot | unverified | `chv` is tested against a mock Cloud Hypervisor API. The kernel build in `deploy/rootfs/Dockerfile` and the initramfs were not run on KVM. |
 
 ## 1. Vision and architectural pillars
@@ -57,7 +57,7 @@ Open items (not `done`):
 | Runtime binaries bootstrapped into `$DATA_DIR/runtime/` and supervised | done | `internal/bootstrap`, `internal/storage`, `internal/magpie` | `TestEnsureInstallsRequiredBinaries`; E2E (juicefs and magpie downloaded for darwin/arm64 and linux/arm64) |
 | JuiceFS with `sqlite3://` metadata and background snapshot sync | done | `internal/storage` | `TestSyncUploadsOnlyChanges`; E2E |
 | File access while the VM is `STOPPED`: Web UI, WebDAV | done | `internal/storage/files`, `internal/storage/webdav.go` | `TestFileAPICRUD`; E2E |
-| Virtual S3 gateway | missing | — | see open items |
+| Virtual S3 gateway | done (own listener) | `internal/storage/s3gateway.go` | `TestS3GatewaySupervisor`; E2E (`aws s3`) |
 | Persistent root (squashfs + `root-upper.img` overlay) | done (`chv`) | `deploy/initramfs/init`, `internal/vmm/chv` | `TestBuildConfigPayload`; boot unverified |
 | Persistent root with the `docker` driver | deviates | `internal/vmm/docker` | see open items |
 | Five harnesses | done | `internal/harness/adapters` | `TestDiscoverAndParse`, `TestHotSwitchPairs` |
@@ -131,7 +131,7 @@ Open items (not `done`):
 | REST File API: list, text read/save, download, upload, rename, delete | done | `internal/storage/files` | `TestFileAPICRUD`, `TestMutations`; E2E |
 | Works identically with the VM `STOPPED` or `RUNNING` | done | | E2E (files written by the guest seen by the API, and the reverse) |
 | `juicefs webdav` on a loopback port, `/webdav/` with Basic Auth | done | `internal/storage/webdav.go` | `TestWebDAVProxyRewrites`, `TestWebDAVSupervisor`; E2E |
-| Virtual S3 gateway | missing | — | see open items |
+| Virtual S3 gateway: supervised `juicefs gateway` on `LYDIABOX_S3_GATEWAY_ADDR`, bucket `lydiabox`, access key `lydiabox`, secret key = admin token | done | `internal/storage/s3gateway.go`, `internal/storage/child.go` | `TestGatewayCommand`, `TestS3GatewaySupervisor`, `TestS3GatewayDisabled`, `TestS3GatewayAddr`, `TestHealthAndStatus`; E2E (`aws s3`) |
 
 ## 4.3 Serverless agent VM engine
 
@@ -287,6 +287,19 @@ app.
 | 21 | `POST /sessions` while `PAUSED` resumes the VM; the Studio terminal in the browser runs `uname -m` (`aarch64`) | pass (after fix 4) |
 | 22 | Shutdown: `vm/stop`, `SIGTERM` (final snapshot, unmount), containers and network removed | pass |
 
+Virtual S3 gateway (added after the first run; same dind host with
+`LYDIABOX_S3_GATEWAY_ADDR=0.0.0.0:8090`, published as `127.0.0.1:18090`,
+AWS CLI 2 on macOS):
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| 23 | Startup logs `juicefs gateway ready` on `0.0.0.0:8090`; `GET /api/v1/status` gives `"s3Gateway":{"enabled":true,"addr":"0.0.0.0:8090","bucket":"lydiabox","running":true}` | pass |
+| 24 | `aws --endpoint-url http://127.0.0.1:18090 s3 ls` lists the bucket `lydiabox`; `s3 ls s3://lydiabox/workspace/s3check/` lists a file written through the File API; `s3 cp` downloads its content | pass |
+| 25 | `s3 cp` upload; the File API reads the uploaded object; `s3 rm` deletes it and the File API gives 404 | pass |
+| 26 | A wrong secret key gives `SignatureDoesNotMatch` | pass |
+| 27 | Files page, "Mount locally": WebDAV and S3 sections (endpoint, bucket, access key, secret key note, AWS CLI command) | pass |
+| 28 | `SIGTERM`: the gateway stops with the other processes | pass |
+
 Not run on this host: the `chv` driver (no KVM), the full `desktop` image
 (Chrome, Blender, and harness CLIs; too large for this Docker VM), a hot
 switch between real harness CLIs, and OAuth against real providers.
@@ -334,7 +347,7 @@ Run from a clean state (`make clean`, `go clean -testcache`, fresh
 | `make build` | pass; `dist/lydiabox-guest` is a static, stripped ELF |
 | `make release` | pass; four static, stripped ELF binaries |
 | `make test` | pass |
-| `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 45 tests, no lint warnings |
+| `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 47 tests, no lint warnings |
 
 No Go, TypeScript, script, HTML, or CSS source file has more than 600
 lines (largest: `internal/vmm/controller.go`, 477 lines).

@@ -120,7 +120,8 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
     "mounted": true,
     "lastSyncAt": "2026-11-10T06:29:41Z",
     "lastUploadAt": "2026-11-10T06:20:41Z",
-    "lastSyncError": ""
+    "lastSyncError": "",
+    "s3Gateway": { "enabled": true, "addr": "127.0.0.1:8090", "bucket": "lydiabox", "running": true }
   },
   "time": "2026-11-10T06:30:00Z"
 }
@@ -132,6 +133,15 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
   shows "Synced Xs ago" from `time - lastSyncAt`). `lastUploadAt` is the
   last time a changed snapshot was uploaded. `lastSyncError` is omitted when
   empty.
+- `storage.s3Gateway` describes the virtual S3 gateway (`juicefs gateway`).
+  It listens on its own address, `LYDIABOX_S3_GATEWAY_ADDR` (default
+  `127.0.0.1:8090`), not under this server, because S3 clients sign the
+  request path. `enabled` is false (and the other fields empty) when the
+  address is empty or `off`. `running` is false while the process restarts.
+  Clients use path-style requests, access key `lydiabox`, and
+  `LYDIABOX_AUTH_TOKEN` as the secret key. The volume is one bucket,
+  `bucket`; object keys are paths from the volume root (`workspace/...`,
+  `home/agent/...`), as in WebDAV.
 
 ## 4. File Manager — implemented (Phase 1)
 

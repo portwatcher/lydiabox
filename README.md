@@ -74,6 +74,7 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_S3_REGION` | `auto` | Region (AWS needs the bucket region) |
 | `LYDIABOX_S3_BUCKET_URL` | derived | JuiceFS `--bucket` URL override |
 | `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` | Web UI, API, WebSocket, and `/webdav` |
+| `LYDIABOX_S3_GATEWAY_ADDR` | `127.0.0.1:8090` | Virtual S3 gateway (empty or `off` disables it) |
 | `LYDIABOX_AUTH_TOKEN` | generated | Admin password (16 characters or more) |
 | `LYDIABOX_MASTER_KEY` | generated | 64 hex characters; encrypts connector tokens |
 | `LYDIABOX_DATA_DIR` | `~/.lydiabox` | Runtime, caches, metadata, and the mount |
@@ -175,10 +176,10 @@ setup.
    Cloud Hypervisor attaches the device; install the guest GPU driver in
    the VM (it persists in the overlay).
 
-## Files and WebDAV
+## Files, WebDAV, and S3
 
 Files are available while the VM is off: in the Files page, through the
-REST API (`/api/v1/fs`), and over WebDAV at `http://<host>:8080/webdav/`
+REST API (`/api/v1/fs`), over S3 (below), and over WebDAV at `http://<host>:8080/webdav/`
 (user `lydiabox`, password = admin token). `/webdav/workspace/` and
 `/webdav/home/agent/` are the two user trees.
 
@@ -188,8 +189,22 @@ rclone mount :webdav: ~/lydiabox --webdav-url=http://<host>:8080/webdav/ \
   --webdav-user=lydiabox --webdav-pass="$(rclone obscure "$LYDIABOX_AUTH_TOKEN")"
 ```
 
-Put LydiaBox behind a TLS reverse proxy before you expose it to a network
-you do not trust.
+The virtual S3 gateway serves the same files as the bucket `lydiabox` on
+`LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`; set `0.0.0.0:8090`
+to reach it from other hosts). The access key is `lydiabox` and the secret
+key is the admin token. Object keys are `workspace/...` and
+`home/agent/...`. Use path-style requests:
+
+```sh
+export AWS_ACCESS_KEY_ID=lydiabox AWS_SECRET_ACCESS_KEY="$LYDIABOX_AUTH_TOKEN"
+aws --endpoint-url http://<host>:8090 s3 ls s3://lydiabox/workspace/
+aws --endpoint-url http://<host>:8090 s3 cp report.pdf s3://lydiabox/workspace/
+rclone lsd :s3:lydiabox/workspace --s3-provider=Minio --s3-endpoint=http://<host>:8090 \
+  --s3-access-key-id=lydiabox --s3-secret-access-key="$LYDIABOX_AUTH_TOKEN"
+```
+
+Put LydiaBox (and the S3 gateway) behind TLS before you expose them to a
+network you do not trust.
 
 ## Models and sessions
 
@@ -260,7 +275,7 @@ npm run typecheck && npm run lint && npm run test
 | Cloud Hypervisor driver | Done; tested against a mock API, not on real KVM |
 | magpie gateway, harness bridge | Done; harness formats partly inferred |
 | Connectors | Done; tested against fake provider APIs |
-| Virtual S3 gateway (`/s3`) | Not implemented |
+| Virtual S3 gateway | Done, on its own port; tested end to end |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).
 
