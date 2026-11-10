@@ -134,6 +134,7 @@ get their own subnet, `172.30.<n>.0/24` (n = 1 to 254, kept in the state
 database).
 
 To boot and check the `chv` driver on a KVM host (also nested in Lima on a Mac), see [docs/kvm-test.md](docs/kvm-test.md).
+To check GPU passthrough and an amd64 host, use the checklists in [docs/kvm-test.md](docs/kvm-test.md#10-gpu-passthrough-vfio).
 
 ### Docker fallback (`docker`)
 
@@ -257,6 +258,8 @@ curl -H "Authorization: Bearer $TOKEN" -d '{"token":"ghp_..."}' \
   http://localhost:8080/api/v1/connectors/github/token
 ```
 
+To test the connectors against the real providers, use [docs/connectors-manual-test.md](docs/connectors-manual-test.md).
+
 Tokens are AES-256-GCM encrypted in the host database and refresh
 automatically. In the VM, `git` gets a fresh GitHub token from
 `lydiabox-guest git-cred` for each push or pull, and the harnesses use the
@@ -297,7 +300,7 @@ npm run typecheck && npm run lint && npm run test
 | Docker VM driver, guest daemon, sessions | Done; tested end to end |
 | Cloud Hypervisor driver | Done; verified on real KVM (arm64, nested KVM in Lima; see [docs/kvm-test.md](docs/kvm-test.md)); GPU passthrough untested |
 | magpie gateway, harness bridge | Done; harness formats partly inferred |
-| Connectors | Done; tested against fake provider APIs |
+| Connectors | Done; tested against fake provider APIs; real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).

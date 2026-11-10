@@ -142,7 +142,132 @@ exit
 limactl stop lydiabox-kvm            # limactl delete lydiabox-kvm removes it
 ```
 
-## Not covered
+## 7. Full desktop image
 
-- GPU passthrough (VFIO): the Lima VM has no PCI GPU to pass through.
-- WebRTC video in a browser through the forwarded UDP port.
+Steps 3 to 5 use the `desktop-slim` image. To check Chrome, Blender, and
+the harness CLIs, build the full `desktop` image: run `build-artifacts.sh`
+without `--slim`. The image has a different root, so remove the root
+overlay of the slim image first: with `lydiabox up` running and the VM
+stopped, delete `$LYDIABOX_DATA_DIR/mnt/jfs/system/root-upper.img`, then
+restart `lydiabox up` (it makes a new, empty overlay). Use
+`LYDIABOX_VM_MEM_MB=4096` for Chrome and Blender.
+
+The guest MCP server is at `http://127.0.0.1:8910/mcp` in the guest. In a
+shell session:
+
+```sh
+mcp() { curl -s -m 600 -X POST http://127.0.0.1:8910/mcp -H 'Content-Type: application/json' \
+  -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}"; echo; }
+```
+
+| # | Check | Command | Expected |
+| :--- | :--- | :--- | :--- |
+| F1 | Wake | `api POST /api/v1/vm/wake` | `RUNNING`, `"driver":"chv"` |
+| F2 | Desktop processes | `pgrep -af 'Xvfb\|startxfce4\|xfwm4\|xfce4-panel\|lydiabox-guest serve'`; `DISPLAY=:0 xdpyinfo \| grep dimensions` | `Xvfb :0 -screen 0 1920x1080x24`, `dbus-run-session -- /usr/bin/startxfce4`, `xfwm4`, `xfce4-panel`, `lydiabox-guest serve`; `1920x1080` |
+| F3 | Tool list | `curl -s -X POST http://127.0.0.1:8910/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` | 9 tools |
+| F4 | Screenshot | `mcp computer_screenshot '{}'`; decode the base64 PNG | 1920x1080, the Xfce desktop with the panel, no error dialog |
+| F5 | Chrome | `mcp desktop_launch_app '{"app":"chrome"}'` | `Launched chrome`; a `chromium` (arm64) or `chrome` (amd64) process with `--remote-debugging-port=9222` |
+| F6 | CDP | `mcp browser_cdp_endpoint '{}'`; `curl http://127.0.0.1:9222/json/version` | `ws://127.0.0.1:9222/devtools/browser/...`; JSON with `webSocketDebuggerUrl`. The tool waits 30 s for a Chrome that it starts; call it again if Chrome starts more slowly |
+| F7 | Blender | `mcp blender_run_script '{"code":"import bpy; print(bpy.app.version_string)"}'` | the version string in the output |
+| F8 | Agent input | `mcp desktop_launch_app '{"app":"terminal"}'`; screenshot to find the window; `mcp computer_mouse_click '{"x":400,"y":300}'`; `mcp computer_keyboard '{"text":"echo LYDIA$((6*7))KVM","key_combo":"Return"}'`; screenshot | `LYDIA42KVM` in the terminal |
+| F9 | Harness CLIs | `claude --version; codex --version; dsh --version; agy --version; opencode --version` | five version lines |
+
+## 8. WebRTC from a browser
+
+The browser must reach TCP 8080 and UDP `LYDIABOX_WEBRTC_UDP_PORT` (default
+50000) of the KVM host. The guest advertises the address that the browser
+used in the page URL as its ICE host candidate, and the driver forwards
+the UDP port to the guest with an nftables DNAT rule. Lima port
+forwarding does not reach the DNAT rule, so give the Lima VM an address
+on the Mac: add `networks: [{vzNAT: true}]` to the Lima configuration
+(the VM gets an address on `lima0`, for example `192.168.64.2`), and open
+`http://192.168.64.2:8080` on the Mac.
+
+| # | Check | How | Expected |
+| :--- | :--- | :--- | :--- |
+| W1 | DNAT rule | `sudo nft list table ip lydiabox_<tap>` while the VM runs | `iifname != "<tap>" udp dport 50000 dnat to 172.30.0.2` |
+| W2 | Video | sign in, open the Desktop page; in the browser console: `v = document.querySelector('video'); [v.videoWidth, v.currentTime, v.getVideoPlaybackQuality().totalVideoFrames]` | `1920`, a time that increases, a frame count that increases |
+| W3 | Media path | `sudo conntrack -L -p udp --dport 50000` on the KVM host | `src=<browser IP> dst=<host IP> ... dport=50000 src=172.30.0.2`, `[ASSURED]` |
+| W4 | Takeover | click Takeover, click in a terminal window in the video, type `uname -n` and Enter; then `mcp computer_screenshot` | `lydiabox` in the terminal, each typed character once |
+| W5 | Cleanup | `api POST /api/v1/vm/stop`; `nft list tables` | no `lydiabox_*` table, so no DNAT rule |
+
+## 9. amd64 KVM host
+
+The runs on 2026-11-10 used an arm64 host. To check an amd64 (x86_64)
+host, do these steps on a Linux amd64 host with `/dev/kvm` (bare metal,
+or a cloud VM with nested virtualization):
+
+1. Skip step 1. Do step 2.
+2. Step 3: run `build-artifacts.sh` without `--virtiofsd` (on amd64,
+   `lydiabox up` downloads the upstream virtiofsd), and use
+   `dist/linux-amd64/`. Leave out the `runtime install-local virtiofsd`
+   line. The kernel stage builds `bzImage` and installs
+   `arch/x86/boot/compressed/vmlinux.bin` as `vmlinux`. The `desktop` stage
+   installs Google Chrome (`google-chrome-stable`), not Chromium.
+3. Do steps 4 and 5 (all 16 checks). Expected differences: check 2 shows
+   `x86_64`; `serial.log` has the console output on `ttyS0`
+   (`console=ttyS0`, the design text); `vm.info` shows the same
+   `vm.create` payload as on arm64 except `cmdline`.
+4. Do steps 7 and 8 (full image and WebRTC). In check F5, the browser is
+   `google-chrome-stable`; `browser_cdp_endpoint` must give a
+   `ws://127.0.0.1:9222/devtools/browser/...` URL.
+5. With 4 or more vCPUs on bare metal, `POST /vm/wake` must finish well
+   inside the 120 s boot limit. Record the time.
+
+## 10. GPU passthrough (VFIO)
+
+This needs an amd64 (or arm64 server) host with a PCI GPU that the host
+does not use for its own display, and an IOMMU. The Lima VM has no PCI
+device to pass through. The `vm.create` `devices` payload is covered by
+`TestBuildConfigPayload` (`internal/vmm/chv/chv_test.go`); the address
+format is checked by `TestValidate` (`internal/config/config_test.go`).
+
+Host:
+
+1. Enable VT-d or AMD-Vi in the firmware. Add `intel_iommu=on iommu=pt`
+   (or `amd_iommu=on iommu=pt`) to the host kernel command line and
+   reboot. Check: `dmesg | grep -i -e DMAR -e IOMMU` shows that the IOMMU
+   is enabled, and `/sys/kernel/iommu_groups/` is not empty.
+2. Find the GPU address and its IOMMU group:
+
+   ```sh
+   lspci -nnk | grep -A3 -i -e vga -e 3d
+   GPU=0000:01:00.0
+   ls /sys/bus/pci/devices/$GPU/iommu_group/devices/
+   ```
+
+   Every device in the group (usually the GPU and its HDMI audio function,
+   for example `0000:01:00.1`) must be bound to `vfio-pci`. A group that
+   also holds a PCI bridge with other devices cannot be passed through.
+3. Bind each device of the group to `vfio-pci`:
+
+   ```sh
+   sudo modprobe vfio-pci
+   for d in /sys/bus/pci/devices/$GPU/iommu_group/devices/*; do
+     a=$(basename "$d")
+     echo vfio-pci | sudo tee "$d/driver_override"
+     [ -e "$d/driver" ] && echo "$a" | sudo tee "$d/driver/unbind"
+     echo "$a" | sudo tee /sys/bus/pci/drivers_probe
+   done
+   lspci -nnk -s "$GPU"           # "Kernel driver in use: vfio-pci"
+   ls -l /dev/vfio/               # a node for the group number
+   ```
+
+4. Start `lydiabox up` (step 4) with `LYDIABOX_GPU_PCI_ADDR=$GPU` added.
+   A value that is not of the form `0000:01:00.0` stops the start with a
+   configuration error.
+
+Checks:
+
+| # | Check | Command | Expected |
+| :--- | :--- | :--- | :--- |
+| G1 | Wake | `api POST /api/v1/vm/wake` | `RUNNING`. If it fails, `cloud-hypervisor.log` has the VFIO error (group not viable, device busy) |
+| G2 | `vm.create` payload | `curl --unix-socket $DATA/run/vm/default/chv.sock http://localhost/api/v1/vm.info \| jq .config.devices` | `[{"path": "/sys/bus/pci/devices/0000:01:00.0", ...}]` |
+| G3 | Device in the guest | in a shell session: `sudo apt-get install -y pciutils; lspci -nn` | the GPU with the same vendor and device IDs as on the host |
+| G4 | Guest driver | install the vendor driver in the guest (it persists in the root overlay). The guest kernel is the Cloud Hypervisor kernel (`ch-6.12.8`), not an Ubuntu kernel, so a DKMS driver must be built against that kernel source (`make modules_prepare` in the kernel build tree), or `CONFIG_DRM_*` for the GPU must be added to `deploy/rootfs/kernel.config`. Then `nvidia-smi` (NVIDIA) or `ls /dev/dri` (AMD, Intel) | the GPU is listed |
+| G5 | Cycles devices | `blender_run_script` with `import bpy; p = bpy.context.preferences.addons["cycles"].preferences; p.refresh_devices(); print([(d.name, d.type) for d in p.devices])` | a `CUDA`, `OPTIX`, `HIP`, or `ONEAPI` device besides `CPU`. The Ubuntu `blender` package can be built without CUDA and OptiX; if only `CPU` shows, install the official build from blender.org in the guest and run it again |
+| G6 | Render | `blender_run_script` that sets `scene.cycles.device = "GPU"` and renders the default scene to `/workspace/gpu.png` | the render finishes faster than with `CPU` |
+| G7 | Stop | `api POST /api/v1/vm/stop`; `lspci -nnk -s $GPU` on the host | `STOPPED`; the device is still bound to `vfio-pci` and can be used at the next wake |
+
+Record the results in [conformance.md](conformance.md) (row "Optional
+VFIO GPU device").
