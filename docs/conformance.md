@@ -36,9 +36,16 @@ on KVM ([Integration run (chv on KVM)](#integration-run-chv-on-kvm),
 
 Open items (not `done`): none. The last one, the real KVM boot, passed:
 see [Integration run (chv on KVM)](#integration-run-chv-on-kvm) and
-[kvm-test.md](kvm-test.md). Not tested in that run: GPU passthrough (no
-PCI GPU in the Lima VM), WebRTC video from a browser, and an amd64 KVM
-host.
+[kvm-test.md](kvm-test.md). The full `desktop` image (Chrome, Blender, the
+harness CLIs) and WebRTC video and Takeover from a browser over the
+forwarded UDP port were then checked on chv (the Chrome CDP answer was
+too slow on that loaded host to confirm through the tool): see
+[Integration run (chv on KVM), full desktop image](#integration-run-chv-on-kvm-full-desktop-image).
+Not tested on real hardware, because this host does not have it: GPU
+passthrough and an amd64 KVM host (checklists in
+[kvm-test.md](kvm-test.md#9-amd64-kvm-host)), and the OAuth connectors
+against the real providers (checklist in
+[connectors-manual-test.md](connectors-manual-test.md)).
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
 host state database restore, `virtiofsd` on `linux/arm64`, the Antigravity
@@ -148,7 +155,7 @@ single WebRTC UDP port, and the extra packages.
 | Auto-built read-only `lydiabox-guest.ext4` | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor`; KVM run |
 | TAP `172.30.0.2/24`, NAT, no access to host private networks | done | `internal/vmm/chv/network.go` | `TestNetworkRules`, `TestFirewallForwardPolicyDrop`; KVM run (steps K7, K8) |
 | Per-tenant subnet: `default` keeps `172.30.0.0/24`; other tenants get `172.30.<n>.0/24` from a stable index in the store (`vm_networks`), passed to the initramfs as `lydiabox.ip` / `lydiabox.gw` | done | `internal/vmm/chv/payload.go`, `internal/store/vmnet.go`, `internal/cli/wire_vm.go` | `TestTenantNetwork`, `TestTenantSubnet` |
-| Optional VFIO GPU device | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload` |
+| Optional VFIO GPU device | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload` (the `devices` payload); real GPU: not available here, checklist in [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio) |
 | `vm.boot`, `vm.pause`, `vm.resume`, `vm.shutdown` | done | `internal/vmm/chv/client.go` | `TestLifecycleAgainstMockCloudHypervisor`; KVM run |
 | vsock `CONNECT <port>` / `OK`, and `vsock.sock_<port>` listeners | done | `internal/vmm/chv/vsock.go` | `TestVsockHandshake`; KVM run (steps K3, K9, K10) |
 | Initramfs: squashfs, ext4 upper, overlay, virtiofs, guest bind mount, `switch_root` | done | `deploy/initramfs/init` | shellcheck; KVM run |
@@ -191,25 +198,25 @@ makes these changes; the row above is `done` with them.
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
-| Ubuntu 24.04 desktop image with the listed packages | done | `deploy/rootfs/Dockerfile` (`desktop`) | not built here (size); `desktop-slim` built and run |
-| Five harness CLIs in the image | done (dsh: npm `@deepseek-ai/dsh`, the package of `github.com/deepseek-ai/deepseek-harness`, Node.js 24; agy: Google's installer `https://antigravity.google/cli/install.sh`, SHA512-checked native binary) | `deploy/rootfs/install-harnesses.sh`, `deploy/rootfs/Dockerfile` | installers run in an `ubuntu:24.04` container with Node.js 24.22: `claude`, `codex`, `opencode`, `dsh` 0.2.2-rc.1, `agy` 1.5.4 on PATH; the full `desktop` image was not built here |
+| Ubuntu 24.04 desktop image with the listed packages | done | `deploy/rootfs/Dockerfile` (`desktop`) | KVM full-image run (F1 to F4: built for arm64 and booted on chv) |
+| Five harness CLIs in the image | done (dsh: npm `@deepseek-ai/dsh`, the package of `github.com/deepseek-ai/deepseek-harness`, Node.js 24; agy: Google's installer `https://antigravity.google/cli/install.sh`, SHA512-checked native binary) | `deploy/rootfs/install-harnesses.sh`, `deploy/rootfs/Dockerfile` | installers run in an `ubuntu:24.04` container with Node.js 24.22: `claude`, `codex`, `opencode`, `dsh` 0.2.2-rc.1, `agy` 1.5.4 on PATH; KVM full-image run (F9: the five `--version` commands in the chv guest) |
 | `Xvfb :0 1920x1080x24` + Xfce as `agent` (uid 1000) | done | `deploy/rootfs/supervisord.conf` | E2E (`xdpyinfo`: 1920x1080) |
 | `xgb` + `xtest`: capture, mouse, keys, text | done | `internal/guest/x11` | `TestAgentActionsInjectAndEmitEvents`; E2E (`computer_screenshot`) |
 | Observer / Takeover, `agent_action` events, 30 s wait or takeover message | done | `internal/guest/x11`, `internal/desktop` | `TestTakeoverBlocksAgentAndInjectsUserInput`; E2E (mode `PUT`) |
 | `ffmpeg x11grab` with the given flags on first viewer, stopped at 0 viewers | done | `internal/guest/webrtc` | `TestFFmpegArgsMatchDesign` |
 | RTP to `TrackLocalStaticRTP` (H.264), signaling over `/api/v1/desktop/ws` | done | `internal/guest/webrtc`, `internal/desktop` | `TestViewerReceivesVideoAndSendsInput`, `TestSignalingRelayAndBroadcast`; E2E (live video and takeover keyboard input in a browser) |
-| WebRTC media transport | done (the design sets no port scheme; all media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT`, default 50000, forwarded by the driver because the guest is behind NAT) | `internal/guest/webrtc`, drivers | `TestViewerReceivesVideoAndSendsInput`; E2E (step 19) |
+| WebRTC media transport | done (the design sets no port scheme; all media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT`, default 50000, forwarded by the driver because the guest is behind NAT) | `internal/guest/webrtc`, drivers | `TestViewerReceivesVideoAndSendsInput`; E2E (step 19); KVM full-image run (W1 to W5: video and Takeover from a browser through the DNAT rule on chv) |
 | MCP on `127.0.0.1:8910/mcp` with the 9 tools | done | `internal/guest/mcp` | `TestProtocolHandshakeAndToolList`; E2E (tool list) |
-| `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP` |
-| `blender_run_script` | done | `internal/guest/mcp` | `TestToolsDriveTheDesktop` (fake Blender); real Blender unverified |
+| `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP`, `TestCDPEndpointWaitsForStartingChrome`; KVM full-image run (F5: Chromium on arm64 starts with the CDP flags; F6 partial: the CDP answer was too slow on this loaded host) |
+| `blender_run_script` | done | `internal/guest/mcp` | `TestToolsDriveTheDesktop` (fake Blender); KVM full-image run (F7: Blender 4.0.2) |
 
 ## 4.6 Zero-trust connectors
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
-| OAuth2 Authorization Code + PKCE (`authorize`, `callback`) | done | `internal/connector/oauth.go` | `TestPKCEAuthorizeCallback` |
+| OAuth2 Authorization Code + PKCE (`authorize`, `callback`) | done | `internal/connector/oauth.go` | `TestPKCEAuthorizeCallback` (fake provider); real providers: not available here, checklist in [connectors-manual-test.md](connectors-manual-test.md) |
 | Token / PAT binding (`POST .../token`) | done | `internal/connector/token.go` | `TestBindToken` |
-| GitHub (`repo`, `read:org`, `workflow`), Drive (`drive.file`, `drive.readonly`), Notion, Slack | done | `internal/connector/providers_builtin.go` | `TestAuthorizeValidation` |
+| GitHub (`repo`, `read:org`, `workflow`), Drive (`drive.file`, `drive.readonly`), Notion, Slack | done | `internal/connector/providers_builtin.go` | `TestAuthorizeValidation`; tools against fake provider APIs: `TestGitHubTools`, `TestGDriveTools`, `TestNotionTools`, `TestSlackTools`; real providers: [connectors-manual-test.md](connectors-manual-test.md) |
 | Encrypted `connector_accounts` | done | `internal/store/connectors.go` | `TestConnectorAccounts` |
 | Automatic refresh | done | `internal/connector/token.go` | `TestRefreshOnExpirySingleFlight` |
 | Upstream revoke on disconnect (Notion added in Phase 6) | done | `internal/connector/providers_builtin.go` | `TestDisconnectRevokes` |
@@ -473,9 +480,10 @@ Final run (all fixes below applied), `LYDIABOX_IDLE_TIMEOUT=60s`:
 | K15 | `DELETE /sessions/{id}` for every session (5 s for a live shell), then the VM pauses about 60 s after the last lease ends | pass (after fix 4) |
 | K16 | `SIGTERM` to `lydiabox up`: the VM stops, virtiofsd logs "Client disconnected, shutting down", JuiceFS unmounts, "shutdown complete" | pass |
 
-Not tested: GPU passthrough (the Lima VM has no PCI GPU to pass through),
-WebRTC video in a browser over the forwarded UDP port, and an amd64 KVM
-host.
+Not tested in this run: GPU passthrough (the Lima VM has no PCI GPU to
+pass through), WebRTC video in a browser over the forwarded UDP port, and
+an amd64 KVM host. WebRTC on chv was tested later with the full image:
+see [Integration run (chv on KVM), full desktop image](#integration-run-chv-on-kvm-full-desktop-image).
 
 ### Bugs found and fixed (chv on KVM)
 
@@ -525,6 +533,98 @@ Open items:
 - On nested virtualization with a loaded host, a boot can take more than
   the fixed 120 s boot limit.
 
+## Integration run (chv on KVM), full desktop image
+
+Date: 2026-11-10. The same Lima VM as above, with `networks: [{vzNAT:
+true}]` added (the VM address on the Mac is `192.168.64.2`), the full
+`desktop` image, `LYDIABOX_VM_CPUS=2`, `LYDIABOX_VM_MEM_MB=4096`. The
+procedure is in [kvm-test.md](kvm-test.md#7-full-desktop-image) (steps 7
+and 8). The root overlay of the slim run was removed before the first
+boot.
+
+Build (`build-artifacts.sh --no-virtiofsd`, without `--slim`; the kernel
+and initramfs stages came from the build cache of the slim run): 1121 s in
+total. `desktop` packages (Xfce, Blender 4.0.2, ffmpeg, and the others)
+307 s, Node.js 52 s, Chromium 156 (`ppa:xtradeb/apps`, arm64) 109 s, the
+five harness installers 162 s, copy of the root 98 s, `mksquashfs` 280 s.
+No package failed on arm64; the Dockerfile needed no change. A rebuild
+after a change to `supervisord.conf` took 1058 s (the package layers came
+from the cache; most of the time was the copy, `mksquashfs`, and the
+export under host load). `rootfs.squashfs`: 1,285,120,000 bytes
+(1226 MiB), compared with 219 MiB for `desktop-slim`.
+
+Host load: other processes on the Mac kept its load average between 180
+and 290 during the run. The guest was very slow (a 2-vCPU guest under
+nested virtualization on a loaded host). One time all wakes failed at the
+120 s boot limit (the kernel took more than 100 s to reach user space);
+after a restart of the Lima VM, the wake took 34 s.
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| F1 | `POST /vm/wake` from `STOPPED` with an empty root overlay: `RUNNING` in 53 s, `"driver":"chv"`, 2 CPUs, 4096 MiB | pass |
+| F2 | `Xvfb :0 -screen 0 1920x1080x24`, `dbus-run-session -- /usr/bin/startxfce4`, `xfce4-session`, `xfwm4`, `xfce4-panel`, `xfdesktop`, and `lydiabox-guest serve` run; `xdpyinfo`: `1920x1080` | pass (after fix 1; the panel and desktop were complete about 4 min after the wake) |
+| F3 | `initialize` and `tools/list` on `http://127.0.0.1:8910/mcp` in the guest: 9 tools (`computer_screenshot`, `computer_mouse_click`, `computer_mouse_move`, `computer_mouse_drag`, `computer_scroll`, `computer_keyboard`, `desktop_launch_app`, `browser_cdp_endpoint`, `blender_run_script`) | pass |
+| F4 | `computer_screenshot`: `image/png`, 1920x1080, all 256 byte values in the decoded pixels; the image shows the Xfce desktop with the panel | pass (after fix 1; before it, the image showed only "Unable to contact settings server") |
+| F5 | `desktop_launch_app` `chrome`: `Launched chrome`; `/usr/lib/chromium/chromium ... --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --user-data-dir=/home/agent/.config/google-chrome` runs; its window shows in the panel | pass |
+| F6 | `browser_cdp_endpoint`, then `curl http://127.0.0.1:9222/json/version` | partial: not confirmed through the tool on this host. Chromium binds `127.0.0.1:9222`, but on this starved guest its DevTools server did not answer in the 30 s of a tool call, nor in 25 minutes of repeated calls (one browser process, after fix 3). A separate Chromium from the same image (`--disable-gpu`, new profile, port 9301) answered `/json/version` 834 s after its start, so CDP works in the image; the tool path is covered by `TestLocalAppsStartsChromeForCDP` and `TestCDPEndpointWaitsForStartingChrome`. Repeat F6 on a host with free CPU ([kvm-test.md](kvm-test.md#7-full-desktop-image)) |
+| F7 | `blender_run_script` with `import bpy; print("BLENDER", bpy.app.version_string)`: output `BLENDER 4.0.2` ... `Blender quit` | pass |
+| F8 | `desktop_launch_app` `terminal`, `computer_mouse_click` (400, 300) in the `xfce4-terminal` window, `computer_keyboard` `echo LYDIA$((6*7))KVM` + `Return`: the next screenshot shows `LYDIA42KVM` | pass |
+| F9 | `claude --version` 2.1.322 (Claude Code), `codex --version` codex-cli 0.167.0, `dsh --version` 0.2.2-rc.1, `agy --version` 1.5.4, `opencode --version` 1.19.5; all on `PATH` (`/usr/bin`, `agy` in `/usr/local/bin`). On this slow guest they took 16 s to 426 s | pass |
+
+WebRTC from a browser on the Mac (headless Chrome 157 on macOS, driven
+over CDP: it signs in with `POST /api/v1/auth/login`, opens `/desktop`,
+reads the `<video>` element, and sends mouse and key events). The page
+URL is `http://192.168.64.2:8080`, so the guest advertises
+`192.168.64.2:50000` as its ICE candidate.
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| W1 | While the VM runs: table `lydiabox_lbx37a8eec1` has `iifname != "lbx37a8eec1" udp dport 50000 dnat to 172.30.0.2`; iptables `FORWARD` has `-o lbx37a8eec1 -p udp --dport 50000 -j ACCEPT` (Docker sets the `FORWARD` policy to `DROP`) | pass |
+| W2 | Desktop page: `videoWidth` 1920, `videoHeight` 1080; `currentTime` 2.97 s, then 73.0 s 70 s later; `totalVideoFrames` 1, then 115. The first frame came 160 s after the page opened (55 s after the Lima VM restart); the guest encodes about 2 to 5 frames per second under this load | pass |
+| W3 | `conntrack -L -p udp --dport 50000` on the Lima VM: `src=192.168.64.1 dst=192.168.64.2 sport=56844 dport=50000 src=172.30.0.2 dst=192.168.64.1 sport=50000 [ASSURED]`; the guest socket on UDP 50000 receives the browser packets | pass |
+| W4 | Takeover button: mode `TAKEOVER`; a click at guest (400, 300) in the `xfce4-terminal` window and the keys `uname -n` + Enter; the guest screenshot shows `uname -n` and `lydiabox` | pass (after fix 2; before it, the line was `uuuuuuuuuuuuuuname -n`) |
+| W5 | `POST /vm/stop`: no `lydiabox_*` nftables table (so no DNAT rule), no `lbx*` iptables rule, no TAP device, no `cloud-hypervisor` or `virtiofsd` process | pass |
+
+### Bugs found and fixed (full desktop image)
+
+1. The Xfce session had no session bus. `supervisord.conf` started it with
+   `dbus-launch --exit-with-session`, which stops the bus when its stdin
+   closes; supervisord gives programs no stdin. `xfce4-session` showed
+   "Unable to contact settings server", and `xfwm4`, `xfce4-panel`, and
+   `xfdesktop` did not start, so the desktop was black. The `desktop-slim`
+   image and the docker driver use the same file. The session now starts
+   with `dbus-run-session -- /usr/bin/startxfce4`.
+2. Takeover typing added characters: a browser `keyup` that arrived late
+   let the X server autorepeat the key. The browser repeats a held key
+   itself, so the guest turns off X server autorepeat before each injected
+   key press (`internal/guest/x11/xgb.go`).
+3. `browser_cdp_endpoint` started Chrome again on each call that found no
+   CDP answer. On this slow guest, Chrome needs much more than the 30 s
+   wait of one call, so each retry added Chrome processes (guest load
+   average 12.9 with 2 vCPUs), and the first Chrome did not open its CDP
+   server in 21 minutes. The tool now starts Chrome only when no live
+   process holds the profile lock (`SingletonLock`), and otherwise waits
+   for the running Chrome (`TestCDPEndpointWaitsForStartingChrome`).
+
+Open items:
+
+- On this host, Chromium took minutes to start (14 minutes to the first CDP answer in the best case; the guest CPU was fully used by Chromium, Xvfb, and the Xfce processes). On a
+  usual host it starts in seconds. `browser_cdp_endpoint` waits 30 s for a
+  Chrome; when Chrome is slower, the call returns an error, and a later
+  call returns the endpoint of the same Chrome.
+- The fixed 120 s boot limit (see the open items above) also stopped
+  wakes on this loaded host.
+- Not tested here: GPU passthrough and an amd64 KVM host (checklists in
+  [kvm-test.md](kvm-test.md#9-amd64-kvm-host)), and the connectors
+  against the real OAuth providers
+  ([connectors-manual-test.md](connectors-manual-test.md)). The VFIO
+  `devices` payload is covered by `TestBuildConfigPayload`, and the OAuth
+  code paths by the fake-provider tests `TestPKCEAuthorizeCallback`,
+  `TestAuthorizeValidation`, `TestClientSources`, `TestBindToken`,
+  `TestRefreshOnExpirySingleFlight`, `TestDisconnectRevokes`,
+  `TestGitAccount`, `TestGitCred`, `TestMCPProtocol`, `TestGitHubTools`,
+  `TestGDriveTools`, `TestNotionTools`, and `TestSlackTools`.
+
 ## Final validation
 
 Run again after the literal-conformance work, from a clean state (`make clean`,
@@ -541,6 +641,10 @@ Node.js 24:
 | `make build` | pass; `dist/lydiabox-guest` is a static, stripped ELF |
 | `make release` | pass; four static, stripped ELF binaries |
 | `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 45 tests, no lint warnings |
+
+The Go gates (build, vet, `go test -race` with 30 packages, both Linux
+cross builds, `make lint`, `make build`) were run again after the fixes of
+the full-image run: all pass.
 
 No Go, TypeScript, script, HTML, or CSS source file has more than 600
 lines (largest: `internal/vmm/controller.go`, 477 lines).
