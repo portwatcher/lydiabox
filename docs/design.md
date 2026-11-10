@@ -175,9 +175,9 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
    - Issue HTTP `PUT http://localhost/api/v1/vm.create` over `$RUN_DIR/chv.sock` with payload:
      - `cpus`: `{"boot_vcpus": N, "max_vcpus": N}`
      - `memory`: `{"size": Bytes, "shared": true}` (`shared: true` is REQUIRED for `virtio-fs` vhost-user memory mapping!)
-     - `payload`: `{"kernel": ".../vmlinux", "initramfs": ".../initramfs.cpio.gz", "cmdline": "console=ttyS0 root=/dev/vda ro quiet"}` (on arm64 the serial console is `ttyAMA0`)
-     - `disks`: `[{"path": ".../rootfs.squashfs", "readonly": true, "image_type": "Raw"}, {"path": ".../lydiabox-guest.ext4", "readonly": true, "image_type": "Raw"}, {"path": "$JFS/system/root-upper.img", "readonly": false, "image_type": "Raw"}]` (Cloud Hypervisor 54 requires `image_type`) (injecting the compiled `lydiabox-guest` binary via a tiny auto-built read-only image or virtio-fs mount so upgrading `lydiabox` automatically upgrades `lydiabox-guest` without rebuilding `rootfs.squashfs`!)
-     - `fs`: `[{"tag": "lydia_home", "socket": "$RUN_DIR/vfs-home.sock", "num_queues": 1, "queue_size": 1024}, {"tag": "lydia_workspace", "socket": "$RUN_DIR/vfs-workspace.sock", "num_queues": 1, "queue_size": 1024}]` (`virtiofsd` serves one request queue)
+     - `payload`: `{"kernel": ".../vmlinux", "initramfs": ".../initramfs.cpio.gz", "cmdline": "console=ttyS0 root=/dev/vda ro quiet"}`
+     - `disks`: `[{"path": ".../rootfs.squashfs", "readonly": true}, {"path": ".../lydiabox-guest.ext4", "readonly": true}, {"path": "$JFS/system/root-upper.img", "readonly": false}]` (injecting the compiled `lydiabox-guest` binary via a tiny auto-built read-only image or virtio-fs mount so upgrading `lydiabox` automatically upgrades `lydiabox-guest` without rebuilding `rootfs.squashfs`!)
+     - `fs`: `[{"tag": "lydia_home", "socket": "$RUN_DIR/vfs-home.sock", "num_queues": 2, "queue_size": 1024}, {"tag": "lydia_workspace", "socket": "$RUN_DIR/vfs-workspace.sock", "num_queues": 2, "queue_size": 1024}]`
      - `vsock`: `{"cid": 3, "socket": "$RUN_DIR/vsock.sock"}`
      - `net`: Configure TAP interface (`172.30.0.2/24`, gateway `172.30.0.1`) with host NAT masquerading for outbound internet access, blocking guest access to host private networks.
      - `devices`: Include `[{"path": "/sys/bus/pci/devices/" + gpuAddr}]` if `LYDIABOX_GPU_PCI_ADDR` is configured.

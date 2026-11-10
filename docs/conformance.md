@@ -144,7 +144,7 @@ single WebRTC UDP port, and the extra packages.
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
 | Two `virtiofsd` daemons with the given flags | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor`; KVM run |
-| `cloud-hypervisor --api-socket`, `PUT vm.create` payload (CPUs, shared memory, payload, 3 disks with `image_type` `Raw`, 2 fs with one request queue, vsock, net, devices; `console=ttyAMA0` on arm64) | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload`; KVM run |
+| `cloud-hypervisor --api-socket`, `PUT vm.create` payload (CPUs, shared memory, payload, 3 disks, 2 fs, vsock, net, devices; see [Implementation notes](#implementation-notes-against-the-design-text)) | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload`; KVM run |
 | Auto-built read-only `lydiabox-guest.ext4` | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor`; KVM run |
 | TAP `172.30.0.2/24`, NAT, no access to host private networks | done | `internal/vmm/chv/network.go` | `TestNetworkRules`, `TestFirewallForwardPolicyDrop`; KVM run (steps K7, K8) |
 | Per-tenant subnet: `default` keeps `172.30.0.0/24`; other tenants get `172.30.<n>.0/24` from a stable index in the store (`vm_networks`), passed to the initramfs as `lydiabox.ip` / `lydiabox.gw` | done | `internal/vmm/chv/payload.go`, `internal/store/vmnet.go`, `internal/cli/wire_vm.go` | `TestTenantNetwork`, `TestTenantSubnet` |
@@ -155,6 +155,18 @@ single WebRTC UDP port, and the extra packages.
 | `EnsureRunning` singleflight wake from terminal, session, desktop, MCP | done | `internal/vmm/controller.go` | `TestEnsureRunningIsSingleflight`; E2E (`wake`, session start) |
 | Leases (PTY, desktop), idle timeout, `sync`, pause | done | `internal/vmm/controller.go` | `TestIdleTimerHibernatesWithoutLeases`; E2E (idle pause) |
 | `docker` driver: same image and protocol over a bind-mounted UNIX socket, persistent root | done | `internal/vmm/docker` | `TestDockerLifecycleAndSockets`, `TestStopKeepsContainer`; E2E (steps 35 to 38) |
+
+### Implementation notes against the design text
+
+The design text of section 4.3 is kept as written. Cloud Hypervisor 54 and
+virtiofsd 1.14 need three changes to the `vm.create` payload. The code
+makes these changes; the row above is `done` with them.
+
+| Design text | What Cloud Hypervisor 54 and virtiofsd 1.14 require | What the code does | Test |
+| :--- | :--- | :--- | :--- |
+| `cmdline`: `console=ttyS0 root=/dev/vda ro quiet` | On arm64, the Cloud Hypervisor serial port is a PL011 UART, `ttyAMA0`. With `ttyS0`, the guest has no console output. | `console=ttyS0` on amd64, as written; `console=ttyAMA0` on arm64 (`BaseCmdline` in `internal/vmm/chv/payload.go`) | `TestBuildConfigPayload`, `TestTenantNetwork`; KVM run (arm64) |
+| `disks`: `{"path": ..., "readonly": ...}` | Cloud Hypervisor 54 refuses `vm.boot` with "Image type required for disk" when `image_type` is not set. | Adds `"image_type": "Raw"` to the three disks | `TestBuildConfigPayload`; KVM run |
+| `fs`: `"num_queues": 2` | virtiofsd serves one request queue. With 2, Cloud Hypervisor refuses the device with "Queue number is not correct". | `"num_queues": 1` for `lydia_home` and `lydia_workspace` (`FSQueues`) | `TestBuildConfigPayload`; KVM run |
 
 ## 4.4 Magpie integration and session bridge
 
