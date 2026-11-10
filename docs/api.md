@@ -1,0 +1,634 @@
+# LydiaBox HTTP and WebSocket API
+
+This document is the contract between the host control plane (`lydiabox up`)
+and its clients (the web UI in `web/`, the CLI, and scripts). Every phase
+implements its routes against this document. Change this file in the same
+commit as any change to a route or a message shape.
+
+Status legend:
+
+- **Implemented (Phase 1)**: served by the current code, covered by tests.
+- **Contract (Phase N)**: the shape is fixed here; the phase that owns the
+  subsystem implements it.
+
+| Area | Routes | Status |
+| :--- | :--- | :--- |
+| Health and status | `/api/v1/health`, `/api/v1/status` | Implemented (Phase 1) |
+| Session auth | `/api/v1/auth/*` | Implemented (Phase 1) |
+| File Manager | `/api/v1/fs/*` | Implemented (Phase 1) |
+| WebDAV gateway | `/webdav/` | Implemented (Phase 1) |
+| Web UI | `/` | Implemented (Phase 1 placeholder, Phase 5 app) |
+| VM power | `/api/v1/vm/*` | Contract (Phase 2) |
+| Sessions and PTY | `/api/v1/sessions*` | Contract (Phase 2 PTY, Phase 3 bridge) |
+| Desktop | `/api/v1/desktop/*` | Contract (Phase 2 guest, Phase 5 UI) |
+| Models | `/api/v1/models/*` | Contract (Phase 3) |
+| Connectors | `/api/v1/connectors/*` | Contract (Phase 4) |
+
+## 1. Conventions
+
+- Base URL: `http://<LYDIABOX_LISTEN_ADDR>`. All API routes are under `/api/v1`.
+- Request and response bodies are JSON (`application/json; charset=utf-8`)
+  unless a route says otherwise. Field names are `camelCase`.
+- Times are RFC 3339 strings in UTC (`"2026-11-10T06:30:00.123Z"`). A zero
+  time is `"0001-01-01T00:00:00Z"` and means "never".
+- JSON request bodies are limited to 1 MiB unless a route says otherwise.
+  Unknown fields and trailing data are rejected with `400`.
+- The tenant is implicit. In self-hosted mode it is always `"default"`; a
+  future multi-tenant deployment derives it from the credential. No route
+  takes a tenant parameter.
+- Errors use one envelope and a stable `code`:
+
+```json
+{ "error": { "code": "not_found", "message": "open workspace/missing.txt: no such file or directory" } }
+```
+
+| HTTP | `code` | Meaning |
+| :--- | :--- | :--- |
+| 400 | `bad_request` | Invalid input, invalid path, wrong file type |
+| 401 | `unauthorized` | Missing or invalid credential |
+| 403 | `forbidden` | Path escapes its root, cross-origin cookie request, permission denied |
+| 404 | `not_found` | Unknown route, root, file, session, or provider |
+| 409 | `conflict` | Target exists, or the file changed since it was read |
+| 413 | `too_large` | Body or file over the limit |
+| 415 | `unsupported_media_type` | File is not UTF-8 text |
+| 429 | `rate_limited` | Too many failed authentication attempts (see `Retry-After`) |
+| 500 | `internal` | Unexpected server error |
+| 501 | `not_implemented` | Route exists but the subsystem is not in this build |
+| 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running |
+
+## 2. Authentication
+
+There is one admin secret, `LYDIABOX_AUTH_TOKEN` (auto-generated on first
+boot into `$LYDIABOX_DATA_DIR/state/auth.token`). A request is authenticated
+by any one of:
+
+| Credential | Use |
+| :--- | :--- |
+| `Authorization: Bearer <token>` | CLI, scripts, non-browser WebSocket clients |
+| Cookie `lydiabox_session` | Browser UI, set by `POST /api/v1/auth/login` |
+| `Authorization: Basic base64("lydiabox:<token>")` | WebDAV clients |
+
+Rules:
+
+- Every route requires a credential unless marked **public**.
+- The session cookie value is `HMAC-SHA256(token, "lydiabox-session-v1")`
+  in hex. It is `HttpOnly`, `SameSite=Lax`, `Path=/`, 30 days, and `Secure`
+  when the request arrived over TLS or with `X-Forwarded-Proto: https`.
+  Rotating the token invalidates every session.
+- Cookie-authenticated requests that change state (any method other than
+  `GET`, `HEAD`, `OPTIONS`) and cookie-authenticated WebSocket upgrades must
+  carry an `Origin` (or `Referer`) whose host equals the request `Host`, or
+  no such header. Otherwise the server answers `403 forbidden`.
+- Browsers open WebSockets with the cookie. Tokens never go in query strings.
+- After 10 failed attempts within one minute, a client IP gets `429` for the
+  rest of that minute.
+- Unauthenticated responses carry `WWW-Authenticate: Bearer realm="LydiaBox"`,
+  or `Basic realm="LydiaBox"` under `/webdav/`.
+
+### `POST /api/v1/auth/login` — public, implemented
+
+Request: `{ "token": "<LYDIABOX_AUTH_TOKEN>" }`
+Response `200`: `{ "authenticated": true }` and `Set-Cookie: lydiabox_session=...`
+Errors: `401 unauthorized`, `429 rate_limited`.
+
+### `POST /api/v1/auth/logout` — public, implemented
+
+Clears the cookie. Response `204`.
+
+### `GET /api/v1/auth/session` — public, implemented
+
+Response `200`: `{ "authenticated": false }`. The UI calls this on load to
+decide between the login screen and the app.
+
+## 3. Health and status
+
+### `GET /api/v1/health` — public, implemented
+
+Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
+
+### `GET /api/v1/status` — implemented
+
+```json
+{
+  "version": { "version": "v0.1.0", "commit": "6123f30", "buildDate": "2026-11-10T06:30:00Z",
+               "goVersion": "go1.24.1", "platform": "linux/amd64" },
+  "tenantId": "default",
+  "vm": { "state": "STOPPED", "driver": "chv" },
+  "storage": {
+    "tenantId": "default",
+    "mounted": true,
+    "lastSyncAt": "2026-11-10T06:29:41Z",
+    "lastUploadAt": "2026-11-10T06:20:41Z",
+    "lastSyncError": ""
+  },
+  "time": "2026-11-10T06:30:00Z"
+}
+```
+
+- `vm.state` is one of `STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`. Phase 1
+  always reports `STOPPED`; Phase 2 provides the live value.
+- `vm.driver` is the resolved backend: `chv` or `docker`.
+- `storage.lastSyncAt` is the last successful metadata backup check (the UI
+  shows "Synced Xs ago" from `time - lastSyncAt`). `lastUploadAt` is the
+  last time a changed snapshot was uploaded. `lastSyncError` is omitted when
+  empty.
+
+## 4. File Manager — implemented (Phase 1)
+
+The File API works on the host JuiceFS mount and does not need the VM. Two
+roots exist:
+
+| `{root}` | Host directory | Guest path |
+| :--- | :--- | :--- |
+| `workspace` | `$DATA_DIR/mnt/jfs/workspace` | `/workspace` |
+| `home` | `$DATA_DIR/mnt/jfs/home/agent` | `/home/agent` |
+
+Path rules (`path`, `dir`, `from`, `to`, and upload file names):
+
+- Relative to the root, `/`-separated, no leading `/`. `""` or `"."` is the
+  root itself.
+- Rejected with `400 bad_request`: absolute paths, any `..` segment, `\`,
+  NUL bytes, and percent-encoded traversal in upload file names.
+- Symlinks are followed only while they stay inside the root. A symlink that
+  resolves outside the root gives `403 forbidden`. Every lookup goes through
+  Go `os.Root`, so the check is enforced by the kernel at each path step.
+- The root itself cannot be renamed, deleted, or written as a file
+  (`400 bad_request`).
+
+`Entry` object:
+
+```json
+{ "name": "main.go", "path": "src/main.go", "type": "file", "size": 1832,
+  "mode": "0644", "modTime": "2026-11-10T06:12:33.120457Z" }
+```
+
+`type` is `file`, `dir`, `symlink`, or `other`. For the root, `name` and
+`path` are `""`. Files created through the API are owned by uid/gid 1000
+when the host runs as root.
+
+### `GET /api/v1/fs/roots`
+
+```json
+{ "roots": [ { "name": "workspace", "guestPath": "/workspace" },
+             { "name": "home", "guestPath": "/home/agent" } ] }
+```
+
+### `GET /api/v1/fs/{root}/list?path=<dir>`
+
+Response `200`: directories first, then case-insensitive name order.
+
+```json
+{ "root": "workspace", "dir": { "name": "", "path": "", "type": "dir", "size": 4096, "mode": "0755", "modTime": "..." },
+  "entries": [ { "name": "src", "path": "src", "type": "dir", "size": 4096, "mode": "0755", "modTime": "..." } ] }
+```
+
+Errors: `404` missing, `400` not a directory.
+
+### `GET /api/v1/fs/{root}/stat?path=<path>`
+
+Response `200`: one `Entry` (a final symlink is described, not followed).
+
+### `GET /api/v1/fs/{root}/text?path=<file>`
+
+Reads a UTF-8 text file of at most 8 MiB.
+
+```json
+{ "name": "main.go", "path": "src/main.go", "type": "file", "size": 12, "mode": "0644",
+  "modTime": "2026-11-10T06:12:33.120457Z", "content": "package main" }
+```
+
+Errors: `400` directory or special file, `413 too_large`,
+`415 unsupported_media_type` (invalid UTF-8 or NUL bytes).
+
+### `PUT /api/v1/fs/{root}/text?path=<file>`
+
+Creates or atomically replaces a text file (temporary file, then
+`renameat`). The parent directory must exist. An existing file keeps its mode.
+
+Request:
+
+```json
+{ "content": "package main\n", "baseModTime": "2026-11-10T06:12:33.120457Z" }
+```
+
+`baseModTime` is optional. When present and the file exists with a different
+`modTime`, the save fails with `409 conflict` so the editor can reload.
+Response `200`: the new `Entry`.
+
+### `GET /api/v1/fs/{root}/download?path=<file>[&inline=true]`
+
+Streams the raw bytes. Supports `Range`, `If-Modified-Since`, and `HEAD`.
+Headers: `Content-Disposition: attachment; filename="..."` (or `inline`),
+`X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`.
+Directories return `400`.
+
+### `POST /api/v1/fs/{root}/upload?dir=<dir>[&overwrite=true]`
+
+`multipart/form-data`. Every part named `file` is stored at
+`<dir>/<filename>`. The `filename` may contain a relative path for folder
+drag-and-drop (`FormData.append("file", blob, entry.webkitRelativePath)`),
+and missing directories are created. Parts are streamed to disk. Other part
+names are ignored. The request is limited to 10 GiB.
+
+Without `overwrite=true`, an existing target gives `409 conflict`. Processing
+stops at the first failing file; files stored before it remain, and the error
+message states how many were stored.
+
+Response `201`:
+
+```json
+{ "files": [ { "name": "a.txt", "path": "photos/2026/a.txt", "type": "file", "size": 5,
+               "mode": "0644", "modTime": "...", "replaced": false } ] }
+```
+
+### `POST /api/v1/fs/{root}/mkdir`
+
+Request: `{ "path": "src/pkg", "parents": true }`. With `parents`, missing
+ancestors are created and an existing directory is not an error.
+Response `201`: the `Entry`. Errors: `409` exists (without `parents`).
+
+### `POST /api/v1/fs/{root}/rename`
+
+Request: `{ "from": "a.txt", "to": "docs/a.txt", "overwrite": false }`.
+Moves within one root. The destination parent must exist. A directory cannot
+move into itself (`400`). An existing destination gives `409` unless
+`overwrite` is true; a directory is never overwritten (`400`).
+Response `200`: the `Entry` at the new path.
+
+### `DELETE /api/v1/fs/{root}/entry?path=<path>[&recursive=true]`
+
+Deletes a file, symlink (the link, not its target), or empty directory. A
+non-empty directory needs `recursive=true`. Response `204`.
+
+## 5. WebDAV gateway — implemented (Phase 1)
+
+`/webdav/` reverse-proxies a supervised `juicefs webdav` bound to a random
+`127.0.0.1` port. The WebDAV root is the JuiceFS volume root, so
+`/webdav/workspace/` and `/webdav/home/agent/` are the two user trees.
+
+- Credentials: user `lydiabox`, password `LYDIABOX_AUTH_TOKEN` (Basic Auth).
+  Bearer and cookie credentials also work.
+- The proxy rewrites the `Destination` header, `Location` headers, and
+  `<href>` elements of XML responses between `/webdav/...` and the backend.
+- `503` when the backend is restarting.
+- Mount examples: macOS Finder "Connect to Server" `http://host:8080/webdav/`;
+  Linux `rclone mount :webdav: --webdav-url=http://host:8080/webdav/`.
+
+## 6. Web UI — implemented (Phase 1 placeholder)
+
+`GET /` and every path that is not an API, WebDAV, or asset path returns the
+SPA `index.html` (client-side routes `/studio`, `/desktop`, `/files`,
+`/models`, `/connectors`). Files under `/assets/` are cached for one year.
+Unknown `/api/...` paths return the JSON `404` envelope. Public.
+
+## 7. VM power — contract (Phase 2)
+
+`VMStatus` object (extends the `vm` section of `/api/v1/status`):
+
+```json
+{
+  "state": "RUNNING",
+  "driver": "chv",
+  "cpus": 4,
+  "memMb": 8192,
+  "gpu": "0000:01:00.0",
+  "bootedAt": "2026-11-10T06:00:00Z",
+  "leases": { "pty": 2, "desktop": 1 },
+  "idleTimeoutSeconds": 1200,
+  "idleSince": "0001-01-01T00:00:00Z",
+  "lastError": ""
+}
+```
+
+`idleSince` is the time the lease count dropped to 0 (zero time while
+leases exist). `gpu` and `lastError` are omitted when empty.
+
+| Route | Effect | Response |
+| :--- | :--- | :--- |
+| `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
+| `POST /api/v1/vm/wake` | `EnsureRunning`: boot from `STOPPED` or resume from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `504` after 120 s |
+| `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause | `200 VMStatus` (`PAUSED`) |
+| `POST /api/v1/vm/stop` | Graceful shutdown; body `{ "force": false }` (optional). `force` kills after 30 s | `200 VMStatus` (`STOPPED`) |
+
+`409 conflict` when the transition is not possible (for example hibernate
+while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM
+themselves; the UI does not need to call `wake` first.
+
+## 8. Sessions and PTY — contract (Phase 2 PTY, Phase 3 bridge)
+
+Harness IDs: `claude-code`, `codex`, `dsh`, `antigravity`, `opencode`, plus
+`shell` for a plain login shell.
+
+`Session` object:
+
+```json
+{
+  "id": "codex:019a6f2c-3b1d-7c0e-9f4a-2d8e5b6c7a10",
+  "harness": "codex",
+  "nativeId": "019a6f2c-3b1d-7c0e-9f4a-2d8e5b6c7a10",
+  "title": "Fix flaky upload test",
+  "workspaceDir": "/workspace/lydiabox",
+  "model": "deepseek/deepseek-v4-pro",
+  "status": "running",
+  "live": true,
+  "createdAt": "2026-11-10T05:10:00Z",
+  "updatedAt": "2026-11-10T06:29:58Z",
+  "usage": { "inputTokens": 182344, "outputTokens": 20311, "costUsd": 0.42 }
+}
+```
+
+- `id` is `<harness>:<nativeId>`; escape it as one path segment.
+- `status`: `running` (a PTY is attached), `idle` (discovered on disk, no
+  PTY), `exited`. `live` is true while a PTY exists.
+- `usage` is omitted when the harness transcript has no usage data.
+- Discovery reads harness files from `home/agent` on the host, so listing
+  works while the VM is `STOPPED`.
+
+### `GET /api/v1/sessions?harness=<id>&workspace=<guest dir>`
+
+Both filters are optional. Response `200`: `{ "sessions": [Session] }`,
+newest `updatedAt` first.
+
+### `POST /api/v1/sessions`
+
+Starts a harness PTY in the guest (wakes the VM).
+
+```json
+{ "harness": "claude-code", "workspaceDir": "/workspace/lydiabox", "model": "kimi/kimi-k3",
+  "resumeNativeId": "", "title": "", "cols": 160, "rows": 48 }
+```
+
+`model`, `resumeNativeId` (resume an existing native session), and `title`
+are optional. Response `201`: `Session`. Errors: `400` unknown harness or a
+`workspaceDir` outside `/workspace` and `/home/agent`.
+
+### `DELETE /api/v1/sessions/{id}[?purge=true]`
+
+Terminates the PTY (`SIGINT`, 3 s, then `SIGTERM`) and removes host
+metadata. With `purge=true`, the native transcript files are also deleted.
+Response `204`.
+
+### `GET /api/v1/sessions/{id}/ws` — WebSocket
+
+Subprotocol: `lydiabox.pty.v1`. Several clients may attach to one session
+("terminal room"); all receive output and any of them may type.
+
+- **Binary frames** carry raw terminal bytes: client → server is PTY input,
+  server → client is PTY output.
+- **Text frames** carry one JSON control message each.
+
+On connect the server sends `hello`, then the ring-buffer replay (up to
+1 MiB) as binary frames, then live output.
+
+Client → server:
+
+```json
+{ "type": "resize", "cols": 160, "rows": 48 }
+{ "type": "signal", "signal": "SIGINT" }
+{ "type": "ping", "id": 7 }
+```
+
+`signal` accepts `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT`.
+
+Server → client:
+
+```json
+{ "type": "hello", "sessionId": "codex:019a...", "replayBytes": 52311, "cols": 160, "rows": 48 }
+{ "type": "resized", "cols": 160, "rows": 48 }
+{ "type": "pong", "id": 7 }
+{ "type": "exit", "code": 0, "signal": "" }
+{ "type": "switched", "fromSessionId": "claude-code:6b1e...", "toSessionId": "dsh:a91f...", "handoffPath": "/workspace/lydiabox/.agent/HANDOFF.md" }
+{ "type": "error", "code": "unavailable", "message": "VM is not running" }
+```
+
+After `switched`, the server keeps the socket open and streams the new
+session in the same room; the client updates its session ID. After `exit`,
+the server closes with status `1000`.
+
+### `POST /api/v1/sessions/switch` — hot-switch and preview
+
+```json
+{ "sourceSessionId": "claude-code:6b1e...", "targetHarness": "dsh",
+  "targetModel": "deepseek/deepseek-v4-pro", "dryRun": true }
+```
+
+`targetModel` is optional (keeps the target harness binding).
+With `dryRun: true` nothing is interrupted or written; response `200`:
+
+```json
+{
+  "dryRun": true,
+  "handoffMarkdown": "# Handoff\n\n## Original goal\n...",
+  "state": {
+    "originalGoal": "Make uploads resumable",
+    "modifiedFiles": ["internal/storage/files/http.go"],
+    "toolActionsSummary": ["edit internal/storage/files/http.go", "run go test ./..."],
+    "recentMessages": [ { "role": "user", "text": "..." }, { "role": "assistant", "text": "..." } ],
+    "unresolvedIssues": ["TestUpload fails on Windows paths"],
+    "gitStatus": " M internal/storage/files/http.go",
+    "gitDiffStat": " 1 file changed, 12 insertions(+), 3 deletions(-)"
+  }
+}
+```
+
+With `dryRun: false` the switch runs (interrupt, extract, write
+`.agent/HANDOFF.md` and `.agent/state.json`, update the managed blocks in
+`AGENTS.md`/`CLAUDE.md`/`GEMINI.md`, bind the model, start the target).
+Response `200`:
+
+```json
+{ "dryRun": false, "previousSessionId": "claude-code:6b1e...", "session": { "id": "dsh:a91f...", "harness": "dsh" },
+  "handoffPath": "/workspace/lydiabox/.agent/HANDOFF.md" }
+```
+
+(`session` is a full `Session` object.) Errors: `404` unknown source,
+`400` same harness or unknown target, `503` VM not available.
+
+## 9. Desktop — contract (Phase 2 guest, Phase 5 UI)
+
+Modes: `OBSERVER` (agent controls, browser input ignored) and `TAKEOVER`
+(browser input injected, agent `computer_*` tools wait up to 30 s).
+Screen coordinates are always in the guest frame, 1920 × 1080.
+
+### `GET /api/v1/desktop/mode` and `PUT /api/v1/desktop/mode`
+
+`GET` response `200`: `{ "mode": "OBSERVER", "changedAt": "...", "changedBy": "user" }`.
+`PUT` request: `{ "mode": "TAKEOVER" }`; response `200` with the same shape.
+`changedBy` is `user`, `agent`, or `system`. `503` when the VM is stopped.
+
+### `GET /api/v1/desktop/ws` — WebSocket signaling
+
+Subprotocol `lydiabox.desktop.v1`. Text frames only, one JSON object each.
+Opening the socket wakes the VM and takes a desktop lease; closing it
+releases the lease (the guest stops `ffmpeg` when no viewer remains).
+
+The browser creates the `RTCPeerConnection` with one `recvonly` H.264 video
+transceiver and a data channel labelled `input`, then sends the offer.
+
+Server → client:
+
+```json
+{ "type": "hello", "mode": "OBSERVER", "screen": { "width": 1920, "height": 1080 },
+  "iceServers": [ { "urls": ["stun:stun.l.google.com:19302"] } ] }
+{ "type": "answer", "sdp": "v=0..." }
+{ "type": "ice", "candidate": { "candidate": "candidate:...", "sdpMid": "0", "sdpMLineIndex": 0 } }
+{ "type": "mode", "mode": "TAKEOVER", "changedBy": "user" }
+{ "type": "viewers", "count": 2 }
+{ "type": "agent_action", "action": "click", "x": 812, "y": 440, "button": "left", "double": false,
+  "text": "", "keys": "", "dx": 0, "dy": 0, "tool": "computer_mouse_click", "timestamp": "2026-11-10T06:30:00.250Z" }
+{ "type": "pong", "id": 3 }
+{ "type": "error", "code": "unavailable", "message": "desktop stream failed to start" }
+```
+
+`agent_action.action` is one of `move`, `click`, `drag`, `scroll`, `type`,
+`key`, `screenshot`, `launch`. Fields that do not apply are zero or empty:
+`x`/`y` for pointer actions (drag end point; drag start in `fromX`/`fromY`),
+`dx`/`dy` for scroll, `text` for `type`, `keys` (for example `"ctrl+l"`)
+for `key`, `text` holds the app name for `launch`.
+
+Client → server:
+
+```json
+{ "type": "offer", "sdp": "v=0..." }
+{ "type": "ice", "candidate": { "candidate": "candidate:...", "sdpMid": "0", "sdpMLineIndex": 0 } }
+{ "type": "mode", "mode": "TAKEOVER" }
+{ "type": "launch", "app": "chrome" }
+{ "type": "ping", "id": 3 }
+```
+
+`launch.app` is `chrome`, `blender`, or `terminal`.
+
+### Data channel `input` (browser → guest, peer-to-peer)
+
+Messages are JSON text. The guest ignores them in `OBSERVER` mode.
+
+```json
+{ "t": "move", "x": 640, "y": 360 }
+{ "t": "down", "button": "left" }
+{ "t": "up", "button": "left" }
+{ "t": "wheel", "dx": 0, "dy": -120 }
+{ "t": "keydown", "code": "KeyA", "key": "a" }
+{ "t": "keyup", "code": "KeyA", "key": "a" }
+{ "t": "text", "text": "héllo" }
+```
+
+`button` is `left`, `middle`, or `right`. `code` and `key` are the DOM
+`KeyboardEvent` values; the guest maps them to X11 keysyms.
+
+## 10. Models and magpie — contract (Phase 3)
+
+Upstream API keys stay in the host magpie data directory. Responses never
+include key values, only `hasKey`.
+
+| Route | Request | Response |
+| :--- | :--- | :--- |
+| `GET /api/v1/models/gateway` | | `200 { "status": "running", "addr": "127.0.0.1:3425", "version": "0.1.3531" }` (`status`: `running`, `starting`, `stopped`, `error`) |
+| `GET /api/v1/models/providers` | | `200 { "providers": [Provider] }` |
+| `POST /api/v1/models/providers` | `{ "kind": "openai", "name": "OpenAI", "baseUrl": "", "apiKey": "sk-..." }` | `201 Provider` |
+| `PATCH /api/v1/models/providers/{id}` | any of `name`, `baseUrl`, `apiKey`, `enabled` | `200 Provider` |
+| `DELETE /api/v1/models/providers/{id}` | | `204` |
+| `GET /api/v1/models` | | `200 { "models": [Model] }` |
+| `GET /api/v1/models/routing` | | `200 { "groups": [RoutingGroup] }` |
+| `PUT /api/v1/models/routing` | `{ "groups": [RoutingGroup] }` | `200 { "groups": [RoutingGroup] }` |
+| `GET /api/v1/models/bindings` | | `200 { "bindings": [Binding] }` (one per harness, `model` empty when unbound) |
+| `PUT /api/v1/models/bindings/{harness}` | `{ "model": "kimi/kimi-k3" }` | `200 Binding` (config file rewritten atomically in `home/agent`) |
+
+```json
+Provider:     { "id": "openai", "kind": "openai", "name": "OpenAI", "baseUrl": "", "enabled": true, "hasKey": true,
+                "models": ["gpt-5.2"], "status": "ok", "lastError": "" }
+Model:        { "id": "openai/gpt-5.2", "provider": "openai", "name": "gpt-5.2", "contextWindow": 400000 }
+RoutingGroup: { "name": "budget", "strategy": "fallback", "targets": ["deepseek/deepseek-v4-pro", "kimi/kimi-k3"] }
+Binding:      { "harness": "codex", "model": "deepseek/deepseek-v4-pro", "configPath": "/home/agent/.codex/config.toml",
+                "updatedAt": "2026-11-10T06:00:00Z" }
+```
+
+`strategy` is `fallback` or `round-robin`. Model IDs are `provider/model`.
+
+## 11. Connectors — contract (Phase 4)
+
+Providers: `github`, `gdrive`, `notion`, `slack`. Tokens are AES-256-GCM
+encrypted in the host `connector_accounts` table and are never returned by
+the API or written to the guest disk.
+
+`Connector` object:
+
+```json
+{
+  "provider": "github",
+  "displayName": "GitHub",
+  "oauthConfigured": true,
+  "oauthSource": "env",
+  "supportsOAuth": true,
+  "supportsToken": true,
+  "defaultScopes": ["repo", "read:org", "workflow"],
+  "accounts": [
+    { "accountLabel": "octocat", "authKind": "oauth2", "scopes": ["repo", "read:org", "workflow"],
+      "expiresAt": "2026-11-10T14:00:00Z", "createdAt": "...", "updatedAt": "...", "status": "ok" }
+  ]
+}
+```
+
+`oauthSource` is `env` (`LYDIABOX_<PROVIDER>_CLIENT_ID`), `stored` (saved
+through the client route below), `relay` (`LYDIABOX_OAUTH_RELAY_URL`), or
+`none`. Account `status` is `ok`, `expired` (refresh failed), or `revoked`.
+
+| Route | Request | Response |
+| :--- | :--- | :--- |
+| `GET /api/v1/connectors` | | `200 { "connectors": [Connector] }` |
+| `GET /api/v1/connectors/{provider}` | | `200 Connector` |
+| `PUT /api/v1/connectors/{provider}/client` | `{ "clientId": "...", "clientSecret": "..." }` | `200 Connector` (secret stored encrypted; env values win) |
+| `POST /api/v1/connectors/{provider}/authorize` | `{ "scopes": [], "returnTo": "/connectors" }` (both optional) | `200 { "authorizeUrl": "https://github.com/login/oauth/authorize?...", "state": "..." }` |
+| `GET /api/v1/connectors/{provider}/callback?code=&state=` | **public** | `302` to `returnTo` with `?connected=<provider>` or `?error=<code>&provider=<provider>` |
+| `POST /api/v1/connectors/{provider}/token` | `{ "token": "ghp_...", "accountLabel": "", "scopes": [] }` | `201 Connector` (token validated against the provider; label defaults to the provider user name) |
+| `DELETE /api/v1/connectors/{provider}?account=<label>` | | `204` (revokes upstream when the provider supports it) |
+| `GET /api/v1/connectors/audit?provider=&before=<id>&limit=<n>` | | `200 { "entries": [AuditEntry], "nextBefore": 120 }` |
+
+`authorize` uses Authorization Code with PKCE (S256). `state` is single-use,
+bound to the session cookie, and expires after 10 minutes. The redirect URI
+is `<origin>/api/v1/connectors/<provider>/callback`. `limit` defaults to
+100 (maximum 1000); `nextBefore` is omitted on the last page.
+
+`AuditEntry`:
+
+```json
+{ "id": 121, "kind": "connector.token.issued", "detail": "{\"provider\":\"github\",\"account\":\"octocat\",\"consumer\":\"git-cred\",\"host\":\"github.com\"}",
+  "createdAt": "2026-11-10T06:30:00Z" }
+```
+
+Audit kinds: `connector.connected`, `connector.disconnected`,
+`connector.token.issued`, `connector.token.refreshed`,
+`connector.token.refresh_failed`, `connector.mcp.call`. `detail` is a JSON
+string and never contains token material.
+
+The connector MCP server (`github_*`, `gdrive_*`, `notion_*`, `slack_*`
+tools) and the `git-cred` broker are reached by the guest over vsock port
+9001 only. They are not routes on the public listener.
+
+## 12. Adding routes (for implementers)
+
+1. Create `internal/api/routes_<subsystem>.go` with a type that implements
+   `api.RouteRegistrar`:
+
+   ```go
+   type VMRoutes struct{ Controller *vmm.Controller }
+
+   func (v VMRoutes) RegisterRoutes(r api.Router) {
+       r.HandleFunc("GET /api/v1/vm/status", v.status)
+       r.HandleFunc("POST /api/v1/vm/wake", v.wake)
+   }
+   ```
+
+   Patterns use Go 1.22 `ServeMux` syntax. Routes require auth by default;
+   pass `api.Public()` only for routes this document marks public.
+   Registering a pattern twice panics at startup.
+2. Build the subsystem in `internal/cli/wire_<subsystem>.go` (already
+   present for `vm`, `harness`, `connector`, `desktop`) and return a
+   `component` with its `Routes`, `Start`, and `Stop`. Do not edit
+   `internal/cli/up.go` or another subsystem's files.
+3. In handlers, read the tenant with `tenant.FromContext(r.Context())`, write
+   responses with `httpx.WriteJSON` / `httpx.WriteError`, and decode bodies
+   with `httpx.DecodeJSON`.
+4. New tables go in `internal/store/migrations_<subsystem>.go` using the
+   migration ID range of the phase (see `internal/store/migrations.go`), with
+   tenant-scoped accessors in `internal/store/<subsystem>.go`.
+5. Update this document and its status table in the same commit.
