@@ -195,7 +195,7 @@ export default function FilesPage() {
             </div>
           ) : null}
           <Button size="sm" icon={HardDriveDownload} onClick={() => setDavOpen(true)}>
-            Mount locally (WebDAV)
+            Mount locally
           </Button>
         </div>
         <UploadBar uploader={uploader} />

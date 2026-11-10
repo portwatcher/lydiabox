@@ -42,6 +42,16 @@ export interface StorageStatus {
   lastSyncAt: string;
   lastUploadAt: string;
   lastSyncError?: string;
+  /** Virtual S3 gateway (api.md section 3); absent on older servers. */
+  s3Gateway?: S3GatewayStatus;
+}
+
+export interface S3GatewayStatus {
+  enabled: boolean;
+  /** Listen address, for example `127.0.0.1:8090` or `0.0.0.0:8090`. */
+  addr: string;
+  bucket: string;
+  running: boolean;
 }
 
 export interface Status {
