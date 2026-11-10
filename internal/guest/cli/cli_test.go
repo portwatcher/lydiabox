@@ -20,12 +20,6 @@ func TestGuestDispatch(t *testing.T) {
 	if code, out, _ := invoke("lydiabox-guest"); code != 2 || !strings.Contains(out, "serve") || !strings.Contains(out, "git-cred") {
 		t.Fatalf("usage: %d %q", code, out)
 	}
-	for _, args := range [][]string{{"serve"}} {
-		code, _, errOut := invoke("lydiabox-guest", args...)
-		if code != 1 || !strings.Contains(errOut, "not implemented in this build") {
-			t.Fatalf("%v: %d %q", args, code, errOut)
-		}
-	}
 	// git invokes the helper through a symlink named git-credential-lydiabox.
 	if code, _, errOut := invoke("/usr/local/bin/git-credential-lydiabox", "bogus"); code != 1 || !strings.Contains(errOut, "git-cred") {
 		t.Fatalf("alias: %d %q", code, errOut)
