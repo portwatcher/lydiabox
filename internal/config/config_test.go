@@ -109,6 +109,31 @@ connectors:
 	}
 }
 
+func TestS3GatewayAddr(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+		yaml string
+		want string
+	}{
+		{"default", nil, "", DefaultS3GatewayAddr},
+		{"yaml", nil, "s3:\n  gateway_addr: 0.0.0.0:9100\n", "0.0.0.0:9100"},
+		{"env overrides yaml", map[string]string{"LYDIABOX_S3_GATEWAY_ADDR": "127.0.0.1:9200"}, "s3:\n  gateway_addr: 0.0.0.0:9100\n", "127.0.0.1:9200"},
+		{"empty env disables", map[string]string{"LYDIABOX_S3_GATEWAY_ADDR": ""}, "", ""},
+		{"off disables", map[string]string{"LYDIABOX_S3_GATEWAY_ADDR": "off"}, "", ""},
+		{"empty yaml disables", nil, "s3:\n  gateway_addr: \"\"\n", ""},
+	}
+	for _, c := range cases {
+		cfg, err := load(t, c.env, c.yaml)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if cfg.S3.GatewayAddr != c.want {
+			t.Errorf("%s: gateway addr = %q, want %q", c.name, cfg.S3.GatewayAddr, c.want)
+		}
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	if _, err := load(t, map[string]string{"LYDIABOX_VM_CPUS": "four"}, ""); err == nil || !strings.Contains(err.Error(), "LYDIABOX_VM_CPUS") {
 		t.Fatalf("want integer error, got %v", err)
@@ -128,6 +153,7 @@ func TestLoadErrors(t *testing.T) {
 func TestValidate(t *testing.T) {
 	cases := map[string]func(c *Config){
 		"LYDIABOX_LISTEN_ADDR":        func(c *Config) { c.ListenAddr = "8080" },
+		"LYDIABOX_S3_GATEWAY_ADDR":    func(c *Config) { c.S3.GatewayAddr = "9000" },
 		"LYDIABOX_AUTH_TOKEN":         func(c *Config) { c.AuthToken = "short" },
 		"LYDIABOX_MASTER_KEY":         func(c *Config) { c.MasterKey = "abcd" },
 		"LYDIABOX_VM_DRIVER":          func(c *Config) { c.VM.Driver = "qemu" },

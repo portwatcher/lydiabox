@@ -79,7 +79,13 @@ type S3Config struct {
 	SecretKey string
 	// BucketURL overrides the JuiceFS --bucket value derived from Endpoint and Bucket.
 	BucketURL string
+	// GatewayAddr is the listen address of the virtual S3 gateway
+	// (`juicefs gateway`) that serves the volume. Empty disables it.
+	GatewayAddr string
 }
+
+// DefaultS3GatewayAddr is the default listen address of the virtual S3 gateway.
+const DefaultS3GatewayAddr = "127.0.0.1:8090"
 
 // VMConfig holds the guest VM settings consumed by internal/vmm.
 type VMConfig struct {
@@ -109,7 +115,7 @@ func Defaults(homeDir string) *Config {
 	return &Config{
 		ListenAddr:       "0.0.0.0:8080",
 		DataDir:          filepath.Join(homeDir, ".lydiabox"),
-		S3:               S3Config{Region: "auto"},
+		S3:               S3Config{Region: "auto", GatewayAddr: DefaultS3GatewayAddr},
 		VM:               VMConfig{Driver: DriverAuto, CPUs: 4, MemMB: 8192, IdleTimeout: 20 * time.Minute},
 		OAuthClients:     map[string]OAuthClient{},
 		Mirrors:          map[string]Mirror{},

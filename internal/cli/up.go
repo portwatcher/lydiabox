@@ -129,6 +129,10 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	if err != nil {
 		return err
 	}
+	s3gw, err := storage.NewS3Gateway(storage.S3GatewayOptions{Config: cfg, JuiceFSBinary: juicefs, Runner: runner, Logger: log})
+	if err != nil {
+		return err
+	}
 
 	d := &deps{
 		Config: cfg, Driver: driver, Logger: log, Store: st, Bootstrap: boot, Storage: sup,
@@ -147,7 +151,7 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	}
 
 	regs := []api.RouteRegistrar{
-		api.CoreRoutes{Auth: d.Auth, VM: d.VMStatus, Storage: sup},
+		api.CoreRoutes{Auth: d.Auth, VM: d.VMStatus, Storage: sup, S3Gateway: s3gw},
 		api.FilesRoutes{Handler: files.NewHandler(files.NewService(sup, files.Options{}))},
 		api.WebDAVRoutes{Handler: dav.Handler()},
 	}
@@ -174,6 +178,10 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 		return err
 	}
 	shutdown.push("webdav", func(ctx context.Context) error { return dav.Stop(ctx, cfg.TenantID) })
+	if err := s3gw.Start(ctx, cfg.TenantID); err != nil {
+		return err
+	}
+	shutdown.push("s3 gateway", func(ctx context.Context) error { return s3gw.Stop(ctx, cfg.TenantID) })
 	for _, c := range comps {
 		if c.Start != nil {
 			if err := c.Start(ctx); err != nil {
@@ -189,6 +197,10 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	go func() { serveErr <- srv.Serve() }()
 	shutdown.push("http", srv.Shutdown)
 	fmt.Fprintf(env.Stdout, "LydiaBox is listening on http://%s (web UI built: %t)\n", addr, webui.Built())
+	if s3gw.Enabled() {
+		fmt.Fprintf(env.Stdout, "S3 gateway on http://%s (bucket %q, access key %q, secret key = admin token)\n",
+			cfg.S3.GatewayAddr, storage.S3GatewayBucket, storage.S3GatewayAccessKey)
+	}
 
 	select {
 	case <-ctx.Done():

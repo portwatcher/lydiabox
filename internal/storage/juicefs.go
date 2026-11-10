@@ -83,6 +83,21 @@ func (j JuiceFS) Dump() Command {
 	return Command{Path: j.Binary, Args: []string{"dump", j.MetaURL}}
 }
 
+// Gateway returns `juicefs gateway` serving the volume as one S3 bucket on
+// addr. MinIO reads the access key and secret key from MINIO_ROOT_USER and
+// MINIO_ROOT_PASSWORD. Background jobs and metadata backups stay with the
+// mount process; the gateway log goes to logPath instead of ~/.juicefs.
+func (j JuiceFS) Gateway(addr, cacheDir, logPath, bucket, accessKey, secretKey string) Command {
+	return Command{
+		Path: j.Binary,
+		Args: []string{"gateway", j.MetaURL, addr,
+			"--cache-dir=" + cacheDir, "--cache-size=1024",
+			"--bucket-name=" + bucket, "--log=" + logPath,
+			"--no-banner", "--no-bgjob"},
+		Env: []string{"MINIO_ROOT_USER=" + accessKey, "MINIO_ROOT_PASSWORD=" + secretKey},
+	}
+}
+
 // WebDAV returns `juicefs webdav` serving the volume on addr. The backend
 // requires the internal Basic Auth credentials passed through the environment.
 func (j JuiceFS) WebDAV(addr, cacheDir, user, password string) Command {

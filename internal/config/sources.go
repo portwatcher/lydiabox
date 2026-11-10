@@ -33,6 +33,8 @@ type fileConfig struct {
 		AccessKey *string `yaml:"access_key"`
 		SecretKey *string `yaml:"secret_key"`
 		BucketURL *string `yaml:"bucket_url"`
+		// GatewayAddr is the virtual S3 gateway address; "" disables it.
+		GatewayAddr *string `yaml:"gateway_addr"`
 	} `yaml:"s3"`
 	VM struct {
 		Driver      *string `yaml:"driver"`
@@ -78,6 +80,9 @@ func applyFile(cfg *Config, path string, explicit bool, home string) error {
 	setStr(&cfg.S3.AccessKey, fc.S3.AccessKey)
 	setStr(&cfg.S3.SecretKey, fc.S3.SecretKey)
 	setStr(&cfg.S3.BucketURL, fc.S3.BucketURL)
+	if fc.S3.GatewayAddr != nil {
+		cfg.S3.GatewayAddr = gatewayAddr(*fc.S3.GatewayAddr)
+	}
 	setStr(&cfg.VM.Driver, fc.VM.Driver)
 	setStr(&cfg.VM.GPUPCIAddr, fc.VM.GPUPCIAddr)
 	if fc.VM.CPUs != nil {
@@ -96,6 +101,15 @@ func applyFile(cfg *Config, path string, explicit bool, home string) error {
 		cfg.OAuthClients[strings.ToLower(provider)] = OAuthClient{ClientID: c.ClientID, ClientSecret: c.ClientSecret}
 	}
 	return nil
+}
+
+// gatewayAddr normalizes the S3 gateway address: "" and "off" disable it.
+func gatewayAddr(v string) string {
+	v = strings.TrimSpace(v)
+	if strings.EqualFold(v, "off") {
+		return ""
+	}
+	return v
 }
 
 func setStr(dst *string, v *string) {
@@ -134,6 +148,11 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 	str("LYDIABOX_S3_ACCESS_KEY", &cfg.S3.AccessKey)
 	str("LYDIABOX_S3_SECRET_KEY", &cfg.S3.SecretKey)
 	str("LYDIABOX_S3_BUCKET_URL", &cfg.S3.BucketURL)
+	// Unlike the other variables, an empty value is meaningful here: it
+	// disables the gateway.
+	if v, ok := env["LYDIABOX_S3_GATEWAY_ADDR"]; ok {
+		cfg.S3.GatewayAddr = gatewayAddr(v)
+	}
 	str("LYDIABOX_VM_DRIVER", &cfg.VM.Driver)
 	str("LYDIABOX_GPU_PCI_ADDR", &cfg.VM.GPUPCIAddr)
 	str("LYDIABOX_OAUTH_RELAY_URL", &cfg.OAuthRelayURL)

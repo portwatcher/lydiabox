@@ -35,6 +35,8 @@ type Status struct {
 	LastSyncAt    time.Time `json:"lastSyncAt"`
 	LastUploadAt  time.Time `json:"lastUploadAt"`
 	LastSyncError string    `json:"lastSyncError,omitempty"`
+	// S3Gateway is filled by the API from the S3Gateway service.
+	S3Gateway S3GatewayStatus `json:"s3Gateway"`
 }
 
 // Snapshotter produces a consistent copy of the host state database.

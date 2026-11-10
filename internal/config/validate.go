@@ -27,6 +27,11 @@ func (c *Config) Validate() error {
 	if _, _, err := net.SplitHostPort(c.ListenAddr); err != nil {
 		errs = append(errs, fmt.Errorf("LYDIABOX_LISTEN_ADDR %q: %w", c.ListenAddr, err))
 	}
+	if c.S3.GatewayAddr != "" {
+		if _, port, err := net.SplitHostPort(c.S3.GatewayAddr); err != nil || port == "" || port == "0" {
+			errs = append(errs, fmt.Errorf("LYDIABOX_S3_GATEWAY_ADDR %q must be host:port (empty or \"off\" disables the gateway)", c.S3.GatewayAddr))
+		}
+	}
 	if c.AuthToken != "" && len(c.AuthToken) < MinAuthTokenLength {
 		errs = append(errs, fmt.Errorf("LYDIABOX_AUTH_TOKEN must have at least %d characters", MinAuthTokenLength))
 	}

@@ -44,6 +44,12 @@ type StorageStatusSource interface {
 	Status(tenantID string) storage.Status
 }
 
+// S3GatewayStatusSource reports the virtual S3 gateway; *storage.S3Gateway
+// implements it.
+type S3GatewayStatusSource interface {
+	Status(tenantID string) storage.S3GatewayStatus
+}
+
 // StatusResponse is the body of GET /api/v1/status.
 type StatusResponse struct {
 	Version  version.Info   `json:"version"`
@@ -58,6 +64,8 @@ type CoreRoutes struct {
 	Auth    *Authenticator
 	VM      VMStatusSource
 	Storage StorageStatusSource
+	// S3Gateway fills storage.s3Gateway; nil reports a disabled gateway.
+	S3Gateway S3GatewayStatusSource
 }
 
 // RegisterRoutes implements RouteRegistrar.
@@ -88,6 +96,9 @@ func (c CoreRoutes) status(w http.ResponseWriter, r *http.Request) {
 		resp.Storage = c.Storage.Status(tid)
 	} else {
 		resp.Storage = storage.Status{TenantID: tid}
+	}
+	if c.S3Gateway != nil {
+		resp.Storage.S3Gateway = c.S3Gateway.Status(tid)
 	}
 	httpx.WriteJSON(w, http.StatusOK, resp)
 }
