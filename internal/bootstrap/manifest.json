@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-11-10",
+  "checksumSources": {
+    "github-release-digest": "SHA256 published by GitHub for the release asset (assets[].digest from the GitHub releases API), retrieved 2026-11-10.",
+    "computed-from-download": "Upstream publishes no checksum. SHA256 computed by the maintainer from an HTTPS download on 2026-11-10. A human must cross-check it before the next release.",
+    "UNVERIFIED": "No checksum is pinned. Bootstrap refuses to install the binary until a human fills sha256 here or sets LYDIABOX_MIRROR_<NAME>_SHA256."
+  },
+  "binaries": [
+    {
+      "name": "juicefs",
+      "version": "1.4.2",
+      "release": "https://github.com/juicedata/juicefs/releases/tag/v1.4.2",
+      "requiredFor": ["chv", "docker"],
+      "platforms": {
+        "linux/amd64": {
+          "url": "https://github.com/juicedata/juicefs/releases/download/v1.4.2/juicefs-1.4.2-linux-amd64.tar.gz",
+          "sha256": "79648a0a67145bf42ca4e8336578c13a5bbc9a0bd34df340b3b93dac1e975247",
+          "checksumSource": "github-release-digest",
+          "archive": "tar.gz",
+          "member": "juicefs"
+        },
+        "linux/arm64": {
+          "url": "https://github.com/juicedata/juicefs/releases/download/v1.4.2/juicefs-1.4.2-linux-arm64.tar.gz",
+          "sha256": "19f72a30d3642a2f7971c8c4a31d2647de62f19520716e85c3a777de5f4c9036",
+          "checksumSource": "github-release-digest",
+          "archive": "tar.gz",
+          "member": "juicefs"
+        },
+        "darwin/amd64": {
+          "url": "https://github.com/juicedata/juicefs/releases/download/v1.4.2/juicefs-1.4.2-darwin-amd64.tar.gz",
+          "sha256": "ebbd140dc1870653317129ccd08c401fa4c898f15dc962a66e94a77ea0a7d8c5",
+          "checksumSource": "github-release-digest",
+          "archive": "tar.gz",
+          "member": "juicefs"
+        },
+        "darwin/arm64": {
+          "url": "https://github.com/juicedata/juicefs/releases/download/v1.4.2/juicefs-1.4.2-darwin-arm64.tar.gz",
+          "sha256": "36167e3bb12657bd886f9ab5509b2b0800897da5cf84069b0970031ce53456cc",
+          "checksumSource": "github-release-digest",
+          "archive": "tar.gz",
+          "member": "juicefs"
+        }
+      }
+    },
+    {
+      "name": "cloud-hypervisor",
+      "version": "54.0",
+      "release": "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/tag/v54.0",
+      "requiredFor": ["chv"],
+      "platforms": {
+        "linux/amd64": {
+          "url": "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v54.0/cloud-hypervisor-static",
+          "sha256": "4f4f98a3d661a40f3e5272627cc895a1b2e525f2f6bedf5f895f9cd21ba5c65b",
+          "checksumSource": "github-release-digest",
+          "archive": "raw"
+        },
+        "linux/arm64": {
+          "url": "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v54.0/cloud-hypervisor-static-aarch64",
+          "sha256": "e8a6d9786ea678e739f1a386682846e93742dcb9c7b6e3e0c62e3bda6cff0ef3",
+          "checksumSource": "github-release-digest",
+          "archive": "raw"
+        }
+      }
+    },
+    {
+      "name": "virtiofsd",
+      "version": "1.14.0",
+      "release": "https://gitlab.com/virtio-fs/virtiofsd/-/releases/v1.14.0",
+      "requiredFor": ["chv"],
+      "notes": "Upstream ships a static x86_64 musl build only. On linux/arm64 install virtiofsd from the distribution (it is found on PATH) or set LYDIABOX_MIRROR_VIRTIOFSD and LYDIABOX_MIRROR_VIRTIOFSD_SHA256.",
+      "platforms": {
+        "linux/amd64": {
+          "url": "https://gitlab.com/-/project/21523468/uploads/f505704014ae7a816e515f2a05a93d8b/virtiofsd-v1.14.0.zip",
+          "sha256": "2e4fe9571f492b00baa34bc4e708e950039c5da05b830b31a8d179cb6ac8978e",
+          "checksumSource": "computed-from-download",
+          "archive": "zip",
+          "member": "target/x86_64-unknown-linux-musl/release/virtiofsd"
+        },
+        "linux/arm64": {
+          "url": "",
+          "sha256": "",
+          "checksumSource": "UNVERIFIED"
+        }
+      }
+    },
+    {
+      "name": "magpie",
+      "version": "0.1.3531",
+      "release": "https://github.com/yetone/magpie/releases/tag/v0.1.3531",
+      "requiredFor": ["chv", "docker"],
+      "notes": "Uses the headless magpie-cli build (no desktop dependencies).",
+      "platforms": {
+        "linux/amd64": {
+          "url": "https://github.com/yetone/magpie/releases/download/v0.1.3531/magpie-cli-linux-amd64",
+          "sha256": "93babd2ada1b963ab0f2b07404a36aaa0dc0b6ec4c2245a52e83e6a7bb9a3103",
+          "checksumSource": "github-release-digest",
+          "archive": "raw"
+        },
+        "linux/arm64": {
+          "url": "https://github.com/yetone/magpie/releases/download/v0.1.3531/magpie-cli-linux-arm64",
+          "sha256": "bc2bd90782f5dcb99b615dfb71d14b8849b9584ee75ea7e632862b7e35485f36",
+          "checksumSource": "github-release-digest",
+          "archive": "raw"
+        },
+        "darwin/amd64": {
+          "url": "https://github.com/yetone/magpie/releases/download/v0.1.3531/magpie-cli-darwin-amd64",
+          "sha256": "a384017bf710995eea52f509efb5b5db5d1d891a8baaf64752c9d0b29238fe21",
+          "checksumSource": "github-release-digest",
+          "archive": "raw"
+        },
+        "darwin/arm64": {
+          "url": "https://github.com/yetone/magpie/releases/download/v0.1.3531/magpie-cli-darwin-arm64",
+          "sha256": "6b3da2b05ab0315a5d92da0b81bdd50fd1bcff3b53935c26fcf7eb6cac452f6f",
+          "checksumSource": "github-release-digest",
+          "archive": "raw"
+        }
+      }
+    }
+  ]
+}
