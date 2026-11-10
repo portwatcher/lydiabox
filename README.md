@@ -120,7 +120,11 @@ from a server that publishes the same files with a `SHA256SUMS` list:
 LYDIABOX_ROOTFS_URL=https://example.com/lydiabox/images ./dist/lydiabox runtime fetch-images
 ```
 
-`lydiabox up` downloads `cloud-hypervisor` and `virtiofsd`. The guest
+`lydiabox up` downloads `cloud-hypervisor` and, on amd64, `virtiofsd`.
+Upstream has no arm64 `virtiofsd`, so on arm64 `runtime build-rootfs` also
+builds it from source with Docker (static, about one minute) and installs
+it. To build it alone: `make virtiofsd`, then
+`./dist/lydiabox runtime install-local virtiofsd dist/virtiofsd-linux-arm64`. The guest
 boots `rootfs.squashfs` read-only with a persistent overlay
 (`system/root-upper.img` on JuiceFS), so `apt install`, `/etc` changes,
 and browser profiles survive a restart. `/home/agent` and `/workspace` are

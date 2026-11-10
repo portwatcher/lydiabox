@@ -4,6 +4,7 @@
   "checksumSources": {
     "github-release-digest": "SHA256 published by GitHub for the release asset (assets[].digest from the GitHub releases API), retrieved 2026-11-10.",
     "computed-from-download": "Upstream publishes no checksum. SHA256 computed by the maintainer from an HTTPS download on 2026-11-10. A human must cross-check it before the next release.",
+    "build": "Not downloaded. The binary is built from the pinned upstream source tag on the host (the build command is in the build field) and installed into runtime/bin; bootstrap accepts it there.",
     "UNVERIFIED": "No checksum is pinned. Bootstrap refuses to install the binary until a human fills sha256 here or sets LYDIABOX_MIRROR_<NAME>_SHA256."
   },
   "binaries": [
@@ -68,7 +69,7 @@
       "version": "1.14.0",
       "release": "https://gitlab.com/virtio-fs/virtiofsd/-/releases/v1.14.0",
       "requiredFor": ["chv"],
-      "notes": "Upstream ships a static x86_64 musl build only. On linux/arm64 install virtiofsd from the distribution (it is found on PATH) or set LYDIABOX_MIRROR_VIRTIOFSD and LYDIABOX_MIRROR_VIRTIOFSD_SHA256.",
+      "notes": "Upstream ships a static x86_64 musl build only. On linux/arm64 LydiaBox builds the same version from source as a static musl binary (deploy/virtiofsd/build.sh, run by make virtiofsd and lydiabox runtime build-rootfs). A virtiofsd on PATH, or LYDIABOX_MIRROR_VIRTIOFSD with LYDIABOX_MIRROR_VIRTIOFSD_SHA256, also works.",
       "platforms": {
         "linux/amd64": {
           "url": "https://gitlab.com/-/project/21523468/uploads/f505704014ae7a816e515f2a05a93d8b/virtiofsd-v1.14.0.zip",
@@ -80,7 +81,8 @@
         "linux/arm64": {
           "url": "",
           "sha256": "",
-          "checksumSource": "UNVERIFIED"
+          "checksumSource": "build",
+          "build": "make virtiofsd"
         }
       }
     },

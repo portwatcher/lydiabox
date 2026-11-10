@@ -144,6 +144,12 @@ func (b *Bootstrapper) Ensure(ctx context.Context) ([]Status, error) {
 		if !st.Required || (st.Source != "missing" && !st.Outdated) {
 			continue
 		}
+		if st.Outdated && b.builtLocally(st.Name) {
+			// A locally built binary cannot be replaced by a download; keep it.
+			b.opts.Logger.Warn("a locally built runtime binary is older than the manifest; rebuild it",
+				"name", st.Name, "version", st.Version, "path", filepath.Join(b.opts.BinDir, st.Name))
+			continue
+		}
 		if err := b.Install(ctx, st.Name); err != nil {
 			errs = append(errs, err)
 			continue
@@ -202,6 +208,11 @@ func (b *Bootstrapper) source(bin Binary) (Artifact, error) {
 		}
 	}
 	env := config.MirrorEnvName(bin.Name)
+	if art.URL == "" && art.BuiltLocally() {
+		return art, fmt.Errorf("bootstrap: %s %s for %s is built from source, not downloaded: run 'lydiabox runtime build-rootfs' "+
+			"(or '%s' and 'lydiabox runtime install-local %s dist/%s-%s'), install it on PATH, or set %s and %s_SHA256",
+			bin.Name, bin.Version, b.Platform(), art.Build, bin.Name, bin.Name, b.opts.GOOS+"-"+b.opts.GOARCH, env, env)
+	}
 	if art.URL == "" {
 		return art, fmt.Errorf("bootstrap: %s has no download for %s; install it on PATH or set %s and %s_SHA256",
 			bin.Name, b.Platform(), env, env)

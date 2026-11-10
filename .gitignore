@@ -14,6 +14,7 @@
 lydiabox.yaml
 /.lydiabox/
 /data/
+/.scratch/
 
 # Editors and OS
 .DS_Store

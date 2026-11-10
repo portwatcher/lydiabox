@@ -21,7 +21,9 @@ Subcommands:
   status         Show runtime binaries and guest images
   install        Download missing (or, with -force, all) required binaries
   fetch-images   Download guest images from LYDIABOX_ROOTFS_URL
-  build-rootfs   Build guest images locally with Docker (deploy/rootfs/build-artifacts.sh)
+  build-rootfs   Build guest images locally with Docker (deploy/rootfs/build-artifacts.sh);
+                 on arm64 it also builds and installs virtiofsd
+  install-local  Install a locally built binary: install-local <name> <file>
 `
 
 func runRuntime(ctx context.Context, env Env, args []string) error {
@@ -39,6 +41,8 @@ func runRuntime(ctx context.Context, env Env, args []string) error {
 		return runtimeFetchImages(ctx, env, rest)
 	case "build-rootfs":
 		return runtimeBuildRootfs(ctx, env, rest)
+	case "install-local":
+		return runtimeInstallLocal(env, rest)
 	default:
 		fmt.Fprintf(env.Stderr, "lydiabox runtime: unknown subcommand %q\n\n%s", sub, runtimeUsage)
 		return errUsage
@@ -143,7 +147,7 @@ const BuildRootfsScript = "deploy/rootfs/build-artifacts.sh"
 
 func runtimeBuildRootfs(ctx context.Context, env Env, args []string) error {
 	var source, arch *string
-	cfg, _, err := runtimeSetup(env, "build-rootfs", args, func(fs *flag.FlagSet) {
+	cfg, boot, err := runtimeSetup(env, "build-rootfs", args, func(fs *flag.FlagSet) {
 		source = fs.String("source", ".", "LydiaBox source checkout that contains deploy/rootfs")
 		arch = fs.String("arch", runtime.GOARCH, "guest architecture: amd64 or arm64")
 	})
@@ -170,5 +174,33 @@ func runtimeBuildRootfs(ctx context.Context, env Env, args []string) error {
 		return fmt.Errorf("build finished but %s does not contain %v", cfg.ImagesDir(), bootstrap.GuestImages)
 	}
 	fmt.Fprintf(env.Stdout, "Guest images installed in %s\n", cfg.ImagesDir())
+	// build-artifacts.sh builds virtiofsd on arm64 (no upstream binary).
+	built := filepath.Join(cmd.Dir, "dist", "virtiofsd-linux-"+*arch)
+	if _, err := os.Stat(built); err == nil && *arch == runtime.GOARCH && runtime.GOOS == "linux" {
+		dest, err := boot.InstallLocal("virtiofsd", built)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(env.Stdout, "virtiofsd installed in %s\n", dest)
+	}
+	return nil
+}
+
+func runtimeInstallLocal(env Env, args []string) error {
+	var flags *flag.FlagSet
+	_, boot, err := runtimeSetup(env, "install-local", args, func(fs *flag.FlagSet) { flags = fs })
+	if err != nil {
+		return err
+	}
+	rest := flags.Args()
+	if len(rest) != 2 {
+		fmt.Fprintln(env.Stderr, "Usage: lydiabox runtime install-local <name> <file>")
+		return errUsage
+	}
+	dest, err := boot.InstallLocal(rest[0], rest[1])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(env.Stdout, "%s installed in %s\n", rest[0], dest)
 	return nil
 }

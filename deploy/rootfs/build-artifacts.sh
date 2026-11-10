@@ -9,7 +9,7 @@
 #
 # Usage: deploy/rootfs/build-artifacts.sh [--out DIR] [--arch amd64|arm64]
 #                                         [--docker-image TAG] [--slim]
-#                                         [--no-vm-images]
+#                                         [--no-vm-images] [--virtiofsd|--no-virtiofsd]
 #
 #   --out DIR           destination (default: $LYDIABOX_DATA_DIR/runtime/images,
 #                       or ~/.lydiabox/runtime/images)
@@ -20,6 +20,11 @@
 #                       Xfce, terminal; no Chrome, Blender, ffmpeg, harnesses)
 #   --no-vm-images      skip vmlinux, initramfs.cpio.gz, and rootfs.squashfs
 #                       (enough for the docker driver)
+#   --virtiofsd         also build virtiofsd from source into
+#                       dist/virtiofsd-linux-ARCH (deploy/virtiofsd/build.sh).
+#                       This is the default with the VM images on arm64,
+#                       where upstream has no binary.
+#   --no-virtiofsd      do not build virtiofsd
 #
 # `lydiabox runtime build-rootfs` runs this script from the repository root.
 # The same directory layout can be published on a web server and used through
@@ -49,6 +54,7 @@ arch=""
 docker_image=""
 vm_images=1
 desktop_target=desktop
+virtiofsd=auto
 
 die() {
 	echo "build-artifacts: $*" >&2
@@ -80,8 +86,16 @@ while [ $# -gt 0 ]; do
 		desktop_target=desktop-slim
 		shift
 		;;
+	--virtiofsd)
+		virtiofsd=1
+		shift
+		;;
+	--no-virtiofsd)
+		virtiofsd=0
+		shift
+		;;
 	-h | --help)
-		sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*)
@@ -116,8 +130,17 @@ if [ -n "$docker_image" ]; then
 		--tag "$docker_image" \
 		"$repo_root"
 fi
+if [ "$virtiofsd" = auto ]; then
+	virtiofsd=0
+	if [ "$vm_images" = 1 ] && [ "$arch" = arm64 ]; then
+		virtiofsd=1
+	fi
+fi
+if [ "$virtiofsd" = 1 ]; then
+	"$repo_root/deploy/virtiofsd/build.sh" --arch "$arch" --out "$repo_root/dist/virtiofsd-linux-$arch"
+fi
 if [ "$vm_images" = 0 ]; then
-	[ -n "$docker_image" ] || die "--no-vm-images without --docker-image builds nothing"
+	[ -n "$docker_image" ] || [ "$virtiofsd" = 1 ] || die "--no-vm-images without --docker-image builds nothing"
 	exit 0
 fi
 

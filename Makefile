@@ -19,7 +19,7 @@ WEBUI_DIST := internal/webui/dist
 
 export CGO_ENABLED := 0
 
-.PHONY: all build build-host build-guest webui release test vet lint fmt web-build rootfs guest-image guest-image-slim clean
+.PHONY: all build build-host build-guest webui release test vet lint fmt web-build rootfs guest-image guest-image-slim virtiofsd clean
 
 all: build
 
@@ -69,7 +69,7 @@ lint: vet
 	if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
 	@if command -v staticcheck >/dev/null 2>&1; then CGO_ENABLED=0 staticcheck ./...; \
 	else echo "staticcheck not installed; skipped (go install honnef.co/go/tools/cmd/staticcheck@latest)"; fi
-	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/rootfs/build-artifacts.sh deploy/rootfs/setup-guest.sh deploy/rootfs/install-harnesses.sh deploy/rootfs/lydiabox-init deploy/initramfs/init; fi
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/rootfs/build-artifacts.sh deploy/rootfs/setup-guest.sh deploy/rootfs/install-harnesses.sh deploy/rootfs/lydiabox-init deploy/initramfs/init deploy/virtiofsd/build.sh; fi
 
 # Builds web/ (Phase 5) and copies the bundle into internal/webui/dist, which
 # go:embed picks up on the next `make build`.
@@ -95,6 +95,15 @@ guest-image:
 
 guest-image-slim:
 	deploy/rootfs/build-artifacts.sh --slim --docker-image $(GUEST_IMAGE_SLIM) --no-vm-images
+
+# virtiofsd from source as a static musl binary, dist/virtiofsd-linux-<arch>
+# (upstream has no linux/arm64 build). Install it into runtime/bin with
+# `lydiabox runtime install-local virtiofsd dist/virtiofsd-linux-<arch>`;
+# `lydiabox runtime build-rootfs` builds and installs it on arm64.
+VIRTIOFSD_ARCH ?= $(GOARCH)
+
+virtiofsd:
+	deploy/virtiofsd/build.sh --arch $(VIRTIOFSD_ARCH)
 
 clean:
 	@test -n "$(DIST)" && test "$(DIST)" != "/" && rm -rf -- "$(DIST)"

@@ -25,6 +25,10 @@ const (
 // ChecksumUnverified marks a manifest entry that has no pinned checksum.
 const ChecksumUnverified = "UNVERIFIED"
 
+// ChecksumBuild marks a manifest entry that is not downloaded but built
+// from source on the host; Artifact.Build names the build command.
+const ChecksumBuild = "build"
+
 // Manifest is the parsed manifest.json.
 type Manifest struct {
 	SchemaVersion   int               `json:"schemaVersion"`
@@ -51,7 +55,14 @@ type Artifact struct {
 	Archive        string `json:"archive"`
 	// Member is the path (or base name) of the executable inside an archive.
 	Member string `json:"member,omitempty"`
+	// Build is the command that builds the binary locally when
+	// ChecksumSource is "build" (no URL).
+	Build string `json:"build,omitempty"`
 }
+
+// BuiltLocally reports whether the artifact is built on the host instead of
+// downloaded.
+func (a Artifact) BuiltLocally() bool { return a.ChecksumSource == ChecksumBuild }
 
 // DefaultManifest parses the embedded manifest.json.
 func DefaultManifest() (*Manifest, error) {
@@ -81,6 +92,12 @@ func ParseManifest(data []byte) (*Manifest, error) {
 				if raw, err := hex.DecodeString(a.SHA256); err != nil || len(raw) != 32 {
 					return nil, fmt.Errorf("bootstrap: %s %s: sha256 must be 64 hex characters", b.Name, plat)
 				}
+			}
+			if a.BuiltLocally() {
+				if a.Build == "" || a.URL != "" || a.SHA256 != "" {
+					return nil, fmt.Errorf("bootstrap: %s %s: a %q entry needs a build command and no url or sha256", b.Name, plat, ChecksumBuild)
+				}
+				continue
 			}
 			if a.URL == "" {
 				continue

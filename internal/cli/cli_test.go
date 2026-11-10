@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +79,17 @@ func TestRuntimeStatusAndBuildRootfs(t *testing.T) {
 	code, _, errOut = run(t, "runtime", "fetch-images")
 	if code != 1 || !strings.Contains(errOut, "LYDIABOX_ROOTFS_URL") {
 		t.Fatalf("fetch-images: %d %q", code, errOut)
+	}
+	if code, _, errOut = run(t, "runtime", "install-local", "virtiofsd"); code == 0 || !strings.Contains(errOut, "install-local <name> <file>") {
+		t.Fatalf("install-local without a file: %d %q", code, errOut)
+	}
+	built := filepath.Join(t.TempDir(), "virtiofsd-linux-arm64")
+	if err := os.WriteFile(built, []byte("\x7fELF"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut = run(t, "runtime", "install-local", "virtiofsd", built)
+	if code != 0 || !strings.Contains(out, "virtiofsd installed in") {
+		t.Fatalf("install-local: %d %q %q", code, out, errOut)
 	}
 }
 
