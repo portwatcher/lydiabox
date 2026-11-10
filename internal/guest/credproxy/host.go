@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -20,7 +21,10 @@ const DefaultUpstream = "http://127.0.0.1:3425"
 var credentialHeaders = []string{"Authorization", "X-Api-Key", "Api-Key", "X-Goog-Api-Key", "Proxy-Authorization"}
 
 // HostGateway is the host side of the vsock port 9002 tunnel: an HTTP
-// reverse proxy to the LLM gateway that adds the gateway credential.
+// reverse proxy to the LLM gateway that adds the gateway credential. The
+// guest listener on 127.0.0.1:3425 copies bytes to it unchanged, so this is
+// where the requests of that listener are parsed: OpenAI-style paths
+// without /v1 are forwarded under /v1 (normalizeOpenAIPath).
 type HostGateway struct {
 	upstream *url.URL
 	inject   atomic.Pointer[func(http.Header)]
@@ -70,6 +74,10 @@ func (g *HostGateway) Upstream() string { return g.upstream.String() }
 
 func (g *HostGateway) rewrite(pr *httputil.ProxyRequest) {
 	pr.SetURL(g.upstream)
+	if p, ok := normalizeOpenAIPath(pr.In.URL.Path); ok {
+		pr.Out.URL.Path = strings.TrimSuffix(g.upstream.Path, "/") + p
+		pr.Out.URL.RawPath = ""
+	}
 	pr.Out.Host = g.upstream.Host
 	if fn := g.inject.Load(); fn != nil {
 		for _, h := range credentialHeaders {
@@ -77,6 +85,25 @@ func (g *HostGateway) rewrite(pr *httputil.ProxyRequest) {
 		}
 		(*fn)(pr.Out.Header)
 	}
+}
+
+// openAIRoots are the OpenAI and DeepSeek API paths that OpenAI-style SDKs
+// append to a base URL. The guest base URLs are the gateway root
+// (http://127.0.0.1:3425, design section 4.4.1), so these paths can arrive
+// without the /v1 that the gateway serves them under.
+var openAIRoots = []string{"/chat/completions", "/completions", "/responses", "/embeddings", "/models"}
+
+// normalizeOpenAIPath returns "/v1"+p, true when p is an OpenAI-style API
+// path without the /v1 prefix (for example /chat/completions or
+// /models/<id>). Paths under /v1/ and other paths (Anthropic /v1/messages,
+// Gemini /v1beta/..., magpie /api/...) stay unchanged.
+func normalizeOpenAIPath(p string) (string, bool) {
+	for _, root := range openAIRoots {
+		if p == root || strings.HasPrefix(p, root+"/") {
+			return "/v1" + p, true
+		}
+	}
+	return p, false
 }
 
 // ServeHTTP implements http.Handler.

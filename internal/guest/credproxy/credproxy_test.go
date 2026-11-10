@@ -158,3 +158,62 @@ func TestSubAddr(t *testing.T) {
 		t.Fatalf("unix %s", got)
 	}
 }
+
+func TestNormalizeOpenAIPath(t *testing.T) {
+	cases := map[string]string{
+		"/chat/completions":    "/v1/chat/completions",
+		"/completions":         "/v1/completions",
+		"/responses":           "/v1/responses",
+		"/responses/resp_1":    "/v1/responses/resp_1",
+		"/embeddings":          "/v1/embeddings",
+		"/models":              "/v1/models",
+		"/models/kimi/kimi-k3": "/v1/models/kimi/kimi-k3",
+		// Already under /v1, or not an OpenAI-style path: unchanged.
+		"/v1/chat/completions": "/v1/chat/completions",
+		"/v1/messages":         "/v1/messages",
+		"/v1/models":           "/v1/models",
+		"/v1beta/models/gemini-3:generateContent": "/v1beta/models/gemini-3:generateContent",
+		"/api/hello":         "/api/hello",
+		"/chat/completionsx": "/chat/completionsx",
+		"/":                  "/",
+	}
+	for in, want := range cases {
+		got, changed := normalizeOpenAIPath(in)
+		if got != want || changed != (in != want) {
+			t.Errorf("normalizeOpenAIPath(%q) = %q, %v; want %q", in, got, changed, want)
+		}
+	}
+}
+
+// TestGatewayAddsV1ForOpenAIPaths sends requests through the host gateway:
+// OpenAI-style paths without /v1 reach the upstream under /v1, and paths
+// that already have /v1 pass through unchanged, with the query.
+func TestGatewayAddsV1ForOpenAIPaths(t *testing.T) {
+	seen := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.URL.RequestURI()
+	}))
+	defer upstream.Close()
+	gw, err := NewHostGateway(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	front := httptest.NewServer(gw)
+	defer front.Close()
+	for in, want := range map[string]string{
+		"/chat/completions":       "/v1/chat/completions",
+		"/models?limit=5":         "/v1/models?limit=5",
+		"/v1/chat/completions":    "/v1/chat/completions",
+		"/v1/messages?beta=true":  "/v1/messages?beta=true",
+		"/v1beta/models/g:stream": "/v1beta/models/g:stream",
+	} {
+		resp, err := http.Post(front.URL+in, "application/json", strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if got := <-seen; got != want {
+			t.Errorf("%s reached the upstream as %s, want %s", in, got, want)
+		}
+	}
+}

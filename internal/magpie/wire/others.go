@@ -31,13 +31,15 @@ func (dshWirer) Apply(homeDir string, b Binding) error {
 }
 
 // dshValues are the managed variables, in a fixed order for stable output.
+// The three base URLs are the gateway root (design section 4.4.1); the
+// gateway adds /v1 to OpenAI-style paths that arrive without it.
 func dshValues(b Binding) [][2]string {
 	return [][2]string{
-		{"OPENAI_BASE_URL", b.openAIBase()},
+		{"OPENAI_BASE_URL", b.GatewayURL},
 		{"OPENAI_API_KEY", b.Token},
 		{"ANTHROPIC_BASE_URL", b.GatewayURL},
 		{"ANTHROPIC_API_KEY", b.Token},
-		{"DEEPSEEK_BASE_URL", b.openAIBase()},
+		{"DEEPSEEK_BASE_URL", b.GatewayURL},
 		{"DEEPSEEK_API_KEY", b.Token},
 	}
 }

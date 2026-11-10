@@ -31,12 +31,13 @@ const GatewayURL = "http://127.0.0.1:3425"
 
 // DefaultEnv returns the variables injected into every PTY: the host broker
 // address used by `lydiabox-guest git-cred`, and the base URLs that route
-// harness LLM traffic through the in-guest gateway.
+// harness LLM traffic through the in-guest gateway. Both base URLs are the
+// gateway root; the gateway adds /v1 to OpenAI-style paths without it.
 func DefaultEnv(hostAddr string) map[string]string {
 	return map[string]string{
 		rpc.EnvHostAddr:      hostAddr,
 		"ANTHROPIC_BASE_URL": GatewayURL,
-		"OPENAI_BASE_URL":    GatewayURL + "/v1",
+		"OPENAI_BASE_URL":    GatewayURL,
 		"TERM":               "xterm-256color",
 		"COLORTERM":          "truecolor",
 	}

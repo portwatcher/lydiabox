@@ -98,8 +98,8 @@ func TestMultiAttachReplayAndInput(t *testing.T) {
 	if _, err := s.Write([]byte("echo second-$OPENAI_BASE_URL\n")); err != nil {
 		t.Fatal(err)
 	}
-	readUntil(t, a, "second-http://127.0.0.1:3425/v1")
-	readUntil(t, b, "second-http://127.0.0.1:3425/v1")
+	readUntil(t, a, "second-http://127.0.0.1:3425\r")
+	readUntil(t, b, "second-http://127.0.0.1:3425\r")
 	if info := s.Info(); info.Attached != 2 || !info.Running {
 		t.Fatalf("info %+v", info)
 	}
