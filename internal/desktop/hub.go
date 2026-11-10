@@ -127,10 +127,10 @@ func (rl *Relay) ServeMode(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if errCode(err) == "bad_request" {
-			httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
+			httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, errMessage(err))
 			return
 		}
-		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, err.Error())
+		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, errMessage(err))
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, st)

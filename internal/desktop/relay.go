@@ -245,6 +245,16 @@ func errCode(err error) string {
 	return "unavailable"
 }
 
+// errMessage returns the message of a guest RPC error without its code
+// prefix, which the HTTP error envelope already carries.
+func errMessage(err error) string {
+	var re *rpc.Error
+	if errors.As(err, &re) {
+		return re.Message
+	}
+	return err.Error()
+}
+
 // client is one browser socket with a serialized writer.
 type client struct {
 	conn   *websocket.Conn
