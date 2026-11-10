@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { describeError } from "../../api/errors";
-import { connectors } from "../../api/domains";
-import type { Connector, ConnectorAccount, ConnectorProvider } from "../../api/types";
-import { ConfirmDialog } from "../../components/Dialog";
-import { ErrorView, LoadingView } from "../../components/StateView";
-import { useToast } from "../../components/Toast";
-import { useResource } from "../../hooks/useResource";
-import { AuditLog } from "./AuditLog";
-import { ConnectorCard } from "./ConnectorCard";
-import { ClientDrawer, TokenDrawer } from "./ConnectorDrawers";
+import { describeError } from "../api/errors";
+import { connectors } from "../api/domains";
+import type { Connector, ConnectorAccount, ConnectorProvider } from "../api/types";
+import { ConfirmDialog } from "../components/Dialog";
+import { ErrorView, LoadingView } from "../components/StateView";
+import { useToast } from "../components/Toast";
+import { useResource } from "../hooks/useResource";
+import { AuditLog } from "./connectors/AuditLog";
+import { ConnectorCard } from "./connectors/ConnectorCard";
+import { ClientDrawer, TokenDrawer } from "./connectors/ConnectorDrawers";
 
 const fallbackNames: Record<ConnectorProvider, string> = {
   github: "GitHub",

@@ -8,11 +8,11 @@ import { ToastProvider } from "./components/Toast";
 import { SystemProvider } from "./hooks/useSystem";
 import { LoginPage } from "./pages/LoginPage";
 
-const StudioPage = lazy(() => import("./pages/studio/StudioPage"));
-const DesktopPage = lazy(() => import("./pages/desktop/DesktopPage"));
-const FilesPage = lazy(() => import("./pages/files/FilesPage"));
-const ModelsPage = lazy(() => import("./pages/models/ModelsPage"));
-const ConnectorsPage = lazy(() => import("./pages/connectors/ConnectorsPage"));
+const StudioPage = lazy(() => import("./pages/StudioPage"));
+const DesktopPage = lazy(() => import("./pages/DesktopPage"));
+const FilesPage = lazy(() => import("./pages/FilesPage"));
+const ModelsPage = lazy(() => import("./pages/ModelsPage"));
+const ConnectorsPage = lazy(() => import("./pages/ConnectorsPage"));
 
 type AuthStatus = { kind: "checking" } | { kind: "signedOut" } | { kind: "signedIn" } | { kind: "error"; error: unknown };
 

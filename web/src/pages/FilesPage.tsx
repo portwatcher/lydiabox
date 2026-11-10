@@ -1,21 +1,21 @@
 import { ChevronRight, FolderPlus, FolderUp, HardDriveDownload, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { files } from "../../api/files";
-import type { Entry, RootName } from "../../api/types";
-import { ConfirmDialog } from "../../components/Dialog";
-import { ErrorView, LoadingView } from "../../components/StateView";
-import { useToast } from "../../components/Toast";
-import { Button, cx } from "../../components/ui";
-import { useResource } from "../../hooks/useResource";
-import { baseName, crumbs, joinPath, parentPath, validName } from "../../lib/paths";
-import { collectDrop, collectInput } from "./collectFiles";
-import { FileTable } from "./FileTable";
-import { FileTree } from "./FileTree";
-import { FileView } from "./FileView";
-import { NameDialog } from "./NameDialog";
-import { UploadBar, useUploader } from "./UploadBar";
-import { WebDavDialog } from "./WebDavDialog";
+import { files } from "../api/files";
+import type { Entry, RootName } from "../api/types";
+import { ConfirmDialog } from "../components/Dialog";
+import { ErrorView, LoadingView } from "../components/StateView";
+import { useToast } from "../components/Toast";
+import { Button, cx } from "../components/ui";
+import { useResource } from "../hooks/useResource";
+import { baseName, crumbs, joinPath, parentPath, validName } from "../lib/paths";
+import { collectDrop, collectInput } from "./files/collectFiles";
+import { FileTable } from "./files/FileTable";
+import { FileTree } from "./files/FileTree";
+import { FileView } from "./files/FileView";
+import { NameDialog } from "./files/NameDialog";
+import { UploadBar, useUploader } from "./files/UploadBar";
+import { WebDavDialog } from "./files/WebDavDialog";
 
 const rootLabels: Record<RootName, string> = { workspace: "/workspace", home: "/home/agent" };
 

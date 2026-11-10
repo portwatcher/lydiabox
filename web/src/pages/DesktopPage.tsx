@@ -1,20 +1,20 @@
 import { Box, Eye, Globe, Monitor, MousePointer2, PanelRightClose, PanelRightOpen, Play, RotateCw, SquareTerminal, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { desktop } from "../../api/domains";
-import { availabilityOf, describeError } from "../../api/errors";
-import type { AgentAction, DesktopMode, LaunchApp } from "../../api/types";
-import { ErrorView, LoadingView, StateView } from "../../components/StateView";
-import { useToast } from "../../components/Toast";
-import { VmPower } from "../../components/VmPower";
-import { Banner, Button, cx } from "../../components/ui";
-import { useSystem } from "../../hooks/useSystem";
-import { count } from "../../lib/format";
-import { ActionFeed } from "./ActionFeed";
-import { DesktopOverlay } from "./DesktopOverlay";
-import { initialOverlay, overlayReducer } from "./overlay";
-import { useDesktopStream } from "./useDesktopStream";
-import { useTakeoverInput } from "./useTakeoverInput";
+import { desktop } from "../api/domains";
+import { availabilityOf, describeError } from "../api/errors";
+import type { AgentAction, DesktopMode, LaunchApp } from "../api/types";
+import { ErrorView, LoadingView, StateView } from "../components/StateView";
+import { useToast } from "../components/Toast";
+import { VmPower } from "../components/VmPower";
+import { Banner, Button, cx } from "../components/ui";
+import { useSystem } from "../hooks/useSystem";
+import { count } from "../lib/format";
+import { ActionFeed } from "./desktop/ActionFeed";
+import { DesktopOverlay } from "./desktop/DesktopOverlay";
+import { initialOverlay, overlayReducer } from "./desktop/overlay";
+import { useDesktopStream } from "./desktop/useDesktopStream";
+import { useTakeoverInput } from "./desktop/useTakeoverInput";
 
 const apps: { app: LaunchApp; label: string; icon: LucideIcon }[] = [
   { app: "chrome", label: "Chrome", icon: Globe },

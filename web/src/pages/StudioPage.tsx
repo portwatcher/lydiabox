@@ -1,21 +1,21 @@
 import { ArrowLeft, ArrowRightLeft, Play, SquareTerminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { describeError } from "../../api/errors";
-import { sessions } from "../../api/domains";
-import type { HarnessID, Session, SwitchResult } from "../../api/types";
-import { ConfirmDialog } from "../../components/Dialog";
-import { StateView } from "../../components/StateView";
-import { useToast } from "../../components/Toast";
-import { Badge, Button, cx } from "../../components/ui";
-import { useModelOptions } from "../../hooks/useModelOptions";
-import { useResource } from "../../hooks/useResource";
-import { harnessLabel, sessionName } from "../../lib/harness";
-import { NewSessionDialog } from "./NewSessionDialog";
-import { SessionList } from "./SessionList";
-import type { SessionFilter } from "./SessionList";
-import { SwitchDialog } from "./SwitchDialog";
-import { TerminalView } from "./TerminalView";
+import { describeError } from "../api/errors";
+import { sessions } from "../api/domains";
+import type { HarnessID, Session, SwitchResult } from "../api/types";
+import { ConfirmDialog } from "../components/Dialog";
+import { StateView } from "../components/StateView";
+import { useToast } from "../components/Toast";
+import { Badge, Button, cx } from "../components/ui";
+import { useModelOptions } from "../hooks/useModelOptions";
+import { useResource } from "../hooks/useResource";
+import { harnessLabel, sessionName } from "../lib/harness";
+import { NewSessionDialog } from "./studio/NewSessionDialog";
+import { SessionList } from "./studio/SessionList";
+import type { SessionFilter } from "./studio/SessionList";
+import { SwitchDialog } from "./studio/SwitchDialog";
+import { TerminalView } from "./studio/TerminalView";
 
 const CELL = { width: 7.8, height: 17 };
 

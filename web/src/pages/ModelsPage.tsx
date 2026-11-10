@@ -1,16 +1,16 @@
 import { CircleAlert, CircleCheck, CircleDashed, LoaderCircle } from "lucide-react";
 import { useCallback } from "react";
-import { availabilityOf } from "../../api/errors";
-import { models as modelsApi } from "../../api/domains";
-import type { GatewayState, Model } from "../../api/types";
-import { ErrorView, LoadingView, StateView } from "../../components/StateView";
-import { Badge, Panel } from "../../components/ui";
-import type { Tone } from "../../components/ui";
-import { useResource } from "../../hooks/useResource";
-import { formatCompact } from "../../lib/format";
-import { BindingsTable } from "./BindingsTable";
-import { ProviderCards } from "./ProviderCards";
-import { RoutingEditor } from "./RoutingEditor";
+import { availabilityOf } from "../api/errors";
+import { models as modelsApi } from "../api/domains";
+import type { GatewayState, Model } from "../api/types";
+import { ErrorView, LoadingView, StateView } from "../components/StateView";
+import { Badge, Panel } from "../components/ui";
+import type { Tone } from "../components/ui";
+import { useResource } from "../hooks/useResource";
+import { formatCompact } from "../lib/format";
+import { BindingsTable } from "./models/BindingsTable";
+import { ProviderCards } from "./models/ProviderCards";
+import { RoutingEditor } from "./models/RoutingEditor";
 
 const gatewayInfo: Record<GatewayState, { label: string; tone: Tone; icon: typeof CircleCheck }> = {
   running: { label: "Running", tone: "success", icon: CircleCheck },
