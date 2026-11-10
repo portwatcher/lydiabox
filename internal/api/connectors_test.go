@@ -14,6 +14,7 @@ import (
 
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/connector"
+	"github.com/lydiabox/lydiabox/internal/connector/broker"
 	"github.com/lydiabox/lydiabox/internal/connector/connectortest"
 	"github.com/lydiabox/lydiabox/internal/store"
 )
@@ -42,10 +43,16 @@ func newConnEnv(t *testing.T) *connEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
+	base := t.TempDir()
+	brk, err := broker.New(broker.Options{Manager: mgr, TenantID: "default", Logger: log,
+		Dirs: dirs{home: filepath.Join(base, "home"), workspace: filepath.Join(base, "workspace")}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	auth := api.NewAuthenticator(token)
 	s, err := api.NewServer(api.Options{Addr: "127.0.0.1:0", Auth: auth, TenantID: "default", Logger: log},
 		api.CoreRoutes{Auth: auth, VM: api.StaticVMStatus{State: api.VMStopped, Driver: "docker"}, Storage: fakeStorage{}},
-		api.ConnectorRoutes{Manager: mgr, Logger: log})
+		api.ConnectorRoutes{Manager: mgr, Logger: log, MCP: brk})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,5 +204,58 @@ func TestConnectorRoutes(t *testing.T) {
 		if r := e.do(t, "GET", "/api/v1/connectors/audit?"+q, "", false, nil); r.StatusCode != 400 && r.StatusCode != 404 {
 			t.Fatalf("audit %s: %d", q, r.StatusCode)
 		}
+	}
+}
+
+// TestHostConnectorMCPRoute checks /mcp/connectors on the main listener: it
+// needs authentication, speaks the broker's MCP protocol, and answers GET
+// with 405.
+func TestHostConnectorMCPRoute(t *testing.T) {
+	e := newConnEnv(t)
+	const list = `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+
+	resp, err := http.Post(e.srv.URL+"/mcp/connectors", "application/json", strings.NewReader(list))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated: %d", resp.StatusCode)
+	}
+
+	var out struct {
+		Result struct {
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if resp := e.do(t, "POST", "/mcp/connectors", list, false, &out); resp.StatusCode != http.StatusOK {
+		t.Fatalf("tools/list: %d", resp.StatusCode)
+	}
+	names := map[string]bool{}
+	for _, tl := range out.Result.Tools {
+		names[tl.Name] = true
+	}
+	for _, want := range []string{"github_list_repos", "gdrive_search", "gdrive_download_to_workspace", "gdrive_upload_from_workspace"} {
+		if !names[want] {
+			t.Errorf("tool %s missing from %v", want, names)
+		}
+	}
+
+	var init struct {
+		Result struct {
+			ServerInfo struct {
+				Name string `json:"name"`
+			} `json:"serverInfo"`
+		} `json:"result"`
+	}
+	body := `{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`
+	if resp := e.do(t, "POST", "/mcp/connectors", body, false, &init); resp.StatusCode != http.StatusOK || init.Result.ServerInfo.Name == "" {
+		t.Fatalf("initialize: %d %+v", resp.StatusCode, init)
+	}
+
+	if resp := e.do(t, "GET", "/mcp/connectors", "", false, nil); resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "POST" {
+		t.Fatalf("GET: %d %v", resp.StatusCode, resp.Header)
 	}
 }

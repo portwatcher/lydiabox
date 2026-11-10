@@ -14,10 +14,15 @@ import (
 	"github.com/lydiabox/lydiabox/internal/tenant"
 )
 
-// ConnectorRoutes registers the connector API (docs/api.md section 11).
+// ConnectorRoutes registers the connector API (docs/api.md section 11) and
+// the host connector MCP server at /mcp/connectors (section 5b).
 type ConnectorRoutes struct {
 	Manager *connector.Manager
 	Logger  *slog.Logger
+	// MCP is the connector broker of the tenant (it serves MCP at /mcp, the
+	// handler that the guest reaches at 127.0.0.1:8911/mcp). Nil skips the
+	// /mcp/connectors routes.
+	MCP http.Handler
 }
 
 // RegisterRoutes implements RouteRegistrar.
@@ -33,6 +38,20 @@ func (c ConnectorRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("GET /api/v1/connectors/{provider}/callback", c.callback, Public())
 	r.HandleFunc("POST /api/v1/connectors/{provider}/token", c.bindToken)
 	r.HandleFunc("DELETE /api/v1/connectors/{provider}", c.disconnect)
+	if c.MCP != nil {
+		// POST is JSON-RPC; GET gets the broker's 405 (no SSE stream).
+		r.HandleFunc("POST /mcp/connectors", c.mcp)
+		r.HandleFunc("GET /mcp/connectors", c.mcp)
+	}
+}
+
+// mcp serves /mcp/connectors with the broker's /mcp handler.
+func (c ConnectorRoutes) mcp(w http.ResponseWriter, r *http.Request) {
+	out := r.Clone(r.Context())
+	out.URL.Path = "/mcp"
+	out.URL.RawPath = ""
+	out.RequestURI = ""
+	c.MCP.ServeHTTP(w, out)
 }
 
 func (c ConnectorRoutes) writeErr(w http.ResponseWriter, err error) {

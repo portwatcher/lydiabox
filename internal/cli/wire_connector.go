@@ -31,8 +31,9 @@ func connectorBroker(d *deps) *broker.Broker {
 }
 
 // wireConnector wires Phase 4 (connectors) into `lydiabox up`: the connector
-// manager behind /api/v1/connectors, and the guest-facing broker (git-cred
-// and the connector MCP server). The broker is served on
+// manager behind /api/v1/connectors, the guest-facing broker (git-cred
+// and the connector MCP server), and the broker's MCP server on the main
+// listener at /mcp/connectors (authenticated). The broker is served on
 // $DATA_DIR/run/host-9001.sock, which the docker driver mounts into the
 // guest and which serves development without a VM.
 func wireConnector(_ context.Context, d *deps) (*component, error) {
@@ -62,7 +63,7 @@ func wireConnector(_ context.Context, d *deps) (*component, error) {
 	)
 	return &component{
 		Name:   "connector",
-		Routes: []api.RouteRegistrar{api.ConnectorRoutes{Manager: mgr, Logger: d.Logger}},
+		Routes: []api.RouteRegistrar{api.ConnectorRoutes{Manager: mgr, Logger: d.Logger, MCP: brk}},
 		Start: func(ctx context.Context) error {
 			ln, err := listenUnix(sock)
 			if err != nil {
