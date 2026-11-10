@@ -76,12 +76,13 @@ RUN set -eux; \
 # --- Desktop root filesystem (also the docker driver image) ------------------
 FROM ${UBUNTU_IMAGE} AS desktop
 ARG TARGETARCH
-ARG NODE_MAJOR=22
+ARG NODE_MAJOR=24
 ARG CLAUDE_CODE_PACKAGE=@anthropic-ai/claude-code
 ARG CODEX_PACKAGE=@openai/codex
 ARG OPENCODE_PACKAGE=opencode-ai
-ARG DSH_INSTALL=""
-ARG ANTIGRAVITY_INSTALL=""
+# Defaults are in install-harnesses.sh; pass an empty value to skip one.
+ARG DSH_INSTALL="npm install -g --no-fund --no-audit @deepseek-ai/dsh"
+ARG ANTIGRAVITY_INSTALL="curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin"
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=Etc/UTC
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	xvfb xorg xfce4 xfce4-terminal dbus dbus-x11 fonts-noto-cjk ffmpeg blender \
