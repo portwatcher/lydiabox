@@ -97,8 +97,11 @@ func (d *Driver) CreateArgs(tid string, spec vmm.Spec, sockDir string) []string 
 		// Chrome's sandbox needs user namespaces an unprivileged container lacks.
 		"LYDIABOX_CHROME_FLAGS=--no-sandbox",
 	}
+	// /tmp is a fresh tmpfs on every boot, as in the VM; the rest of / is the
+	// container's writable layer and persists across stop and start.
 	args := []string{"create", "--name", ContainerName(tid), "--hostname", "lydiabox",
-		"--label", "lydiabox.tenant=" + tid, "--shm-size", "2g", "--add-host", "host.docker.internal:host-gateway"}
+		"--label", "lydiabox.tenant=" + tid, "--shm-size", "2g", "--add-host", "host.docker.internal:host-gateway",
+		"--tmpfs", "/tmp:rw,nosuid,nodev,mode=1777"}
 	if spec.CPUs > 0 {
 		args = append(args, "--cpus", strconv.Itoa(spec.CPUs))
 	}
@@ -139,17 +142,55 @@ func (d *Driver) Create(ctx context.Context, tid string, spec vmm.Spec) error {
 	if err := os.Chmod(sockDir, 0o777); err != nil {
 		return err
 	}
+	name := ContainerName(tid)
+	args := d.CreateArgs(tid, spec, sockDir)
+	hash, err := d.specHash(ctx, spec, args)
+	if err != nil {
+		return err
+	}
+	info, err := d.inspectContainer(ctx, name)
+	if err != nil {
+		return err
+	}
+	if info.exists && info.spec == hash {
+		// Keep the container and its writable layer: changes to / persist.
+		if err := d.stopContainer(ctx, name, info.status, false); err != nil {
+			return err
+		}
+		_ = os.Remove(filepath.Join(sockDir, "guest.sock"))
+		d.opts.Logger.Info("reusing the guest container", "tenant", tid, "container", name)
+		return nil
+	}
+	if info.exists {
+		d.opts.Logger.Warn("the image, VM settings, or guest binary changed; recreating the guest container (changes outside /home/agent and /workspace are lost)",
+			"tenant", tid, "container", name)
+		if _, err := d.docker(ctx, "rm", "--force", name); err != nil && !notFound(err) {
+			return fmt.Errorf("docker: remove container: %w", err)
+		}
+	}
 	_ = os.Remove(filepath.Join(sockDir, "guest.sock"))
-	_, _ = d.docker(ctx, "rm", "--force", ContainerName(tid))
-	if _, err := d.docker(ctx, d.CreateArgs(tid, spec, sockDir)...); err != nil {
+	labeled := append([]string{"create", "--label", SpecLabel + "=" + hash}, args[1:]...)
+	if _, err := d.docker(ctx, labeled...); err != nil {
 		return fmt.Errorf("docker: create container: %w", err)
 	}
 	return nil
 }
 
-// Boot implements vmm.Driver.
+// Boot implements vmm.Driver: it starts the container, or resumes it when
+// it is paused.
 func (d *Driver) Boot(ctx context.Context, tid string) error {
-	_, err := d.docker(ctx, "start", ContainerName(tid))
+	st, err := d.State(ctx, tid)
+	if err != nil {
+		return err
+	}
+	switch st {
+	case vmm.StateRunning:
+		return nil
+	case vmm.StatePaused:
+		_, err = d.docker(ctx, "unpause", ContainerName(tid))
+	default:
+		_, err = d.docker(ctx, "start", ContainerName(tid))
+	}
 	return err
 }
 
@@ -166,33 +207,18 @@ func (d *Driver) Resume(ctx context.Context, tid string) error {
 }
 
 // Shutdown implements vmm.Driver: `docker stop -t 30` (or `docker kill`
-// with force), then removes the container.
+// with force). The stopped container is kept, so its writable layer (the
+// persistent root) survives until the spec changes or ResetRoot.
 func (d *Driver) Shutdown(ctx context.Context, tid string, force bool) error {
 	if err := vmm.ValidTenantID(tid); err != nil {
 		return err
 	}
 	name := ContainerName(tid)
-	st, err := d.State(ctx, tid)
-	if err != nil {
+	info, err := d.inspectContainer(ctx, name)
+	if err != nil || !info.exists {
 		return err
 	}
-	if st == vmm.StatePaused {
-		_, _ = d.docker(ctx, "unpause", name)
-	}
-	if st != vmm.StateStopped {
-		if force {
-			_, err = d.docker(ctx, "kill", name)
-		} else {
-			_, err = d.docker(ctx, "stop", "--time", "30", name)
-		}
-		if err != nil && !notFound(err) {
-			return fmt.Errorf("docker: stop container: %w", err)
-		}
-	}
-	if _, err := d.docker(ctx, "rm", "--force", name); err != nil && !notFound(err) {
-		return fmt.Errorf("docker: remove container: %w", err)
-	}
-	return nil
+	return d.stopContainer(ctx, name, info.status, force)
 }
 
 func notFound(err error) bool {

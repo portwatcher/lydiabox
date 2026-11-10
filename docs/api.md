@@ -345,7 +345,7 @@ paused (`PAUSED`). `gpu` and `lastError` are omitted when empty;
 | `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
 | `POST /api/v1/vm/wake` | `EnsureRunning`: boot from `STOPPED` or resume from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `504` after 120 s |
 | `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause | `200 VMStatus` (`PAUSED`) |
-| `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway | `200 VMStatus` (`STOPPED`) |
+| `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot` | `200 VMStatus` (`STOPPED`) |
 
 `409 conflict` when the transition is not possible (for example hibernate
 or stop while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM

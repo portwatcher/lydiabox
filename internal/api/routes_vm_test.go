@@ -107,4 +107,41 @@ func TestVMRoutes(t *testing.T) {
 	if code, _ := vmDo(t, ts, "POST", "/api/v1/vm/wake", ""); code != 503 {
 		t.Fatalf("wake unavailable %d", code)
 	}
+	if code, _ := vmDo(t, ts, "POST", "/api/v1/vm/stop", `{"resetRoot":true}`); code != 400 {
+		t.Fatalf("resetRoot without support %d", code)
+	}
+}
+
+type resetVM struct {
+	fakeVM
+	resets int
+}
+
+func (f *resetVM) ResetRoot(context.Context, string) error {
+	if f.state != VMStopped {
+		return fmt.Errorf("%w: reset while %s", ErrVMConflict, f.state)
+	}
+	f.resets++
+	return nil
+}
+
+func TestVMStopResetRoot(t *testing.T) {
+	vm := &resetVM{fakeVM: fakeVM{state: VMRunning}}
+	auth := NewAuthenticator("0123456789abcdef0123")
+	srv, err := NewServer(Options{Addr: "127.0.0.1:0", Auth: auth, TenantID: "default"}, VMRoutes{Controller: vm})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	if code, out := vmDo(t, ts, "POST", "/api/v1/vm/stop", `{"resetRoot":true}`); code != 200 || out["state"] != VMStopped || vm.resets != 1 {
+		t.Fatalf("stop and reset %d %v resets=%d", code, out, vm.resets)
+	}
+	// Already stopped: the reset still runs.
+	if code, _ := vmDo(t, ts, "POST", "/api/v1/vm/stop", `{"resetRoot":true}`); code != 200 || vm.resets != 2 {
+		t.Fatalf("reset while stopped %d resets=%d", code, vm.resets)
+	}
+	if code, _ := vmDo(t, ts, "POST", "/api/v1/vm/stop", ""); code != 409 || vm.resets != 2 {
+		t.Fatalf("plain stop while stopped %d", code)
+	}
 }

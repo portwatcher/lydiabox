@@ -87,6 +87,14 @@ func (v VMRoutes) hibernate(w http.ResponseWriter, r *http.Request) {
 // StopRequest is the optional body of POST /api/v1/vm/stop.
 type StopRequest struct {
 	Force bool `json:"force"`
+	// ResetRoot discards the persistent root after the stop (docker driver).
+	ResetRoot bool `json:"resetRoot"`
+}
+
+// VMRootResetter is implemented by controllers that can discard the
+// persistent root of a stopped VM (*vmm.Controller).
+type VMRootResetter interface {
+	ResetRoot(ctx context.Context, tenantID string) error
 }
 
 func (v VMRoutes) stop(w http.ResponseWriter, r *http.Request) {
@@ -105,9 +113,22 @@ func (v VMRoutes) stop(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	tid := tenant.FromContext(r.Context())
-	if err := v.Controller.Stop(r.Context(), tid, req.Force); err != nil {
+	rr, canReset := v.Controller.(VMRootResetter)
+	if req.ResetRoot && !canReset {
+		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, "resetRoot is not supported")
+		return
+	}
+	err = v.Controller.Stop(r.Context(), tid, req.Force)
+	// With resetRoot, an already stopped VM is not an error.
+	if err != nil && !(req.ResetRoot && errors.Is(err, ErrVMConflict) && v.Controller.Status(tid).State == VMStopped) {
 		writeVMError(w, err)
 		return
+	}
+	if req.ResetRoot {
+		if err := rr.ResetRoot(r.Context(), tid); err != nil {
+			writeVMError(w, err)
+			return
+		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, v.Controller.Status(tid))
 }

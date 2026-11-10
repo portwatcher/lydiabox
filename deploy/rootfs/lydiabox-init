@@ -26,6 +26,7 @@ mkdir -p /tmp/.X11-unix /run/dbus /run/user/1000 /var/log/supervisor
 chmod 1777 /tmp /tmp/.X11-unix
 chown 1000:1000 /run/user/1000
 chmod 700 /run/user/1000
-rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 /run/dbus/pid
+# Stale files from the previous boot of a persistent root.
+rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 /run/dbus/pid /run/supervisord.pid /run/supervisor.sock
 
 exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf

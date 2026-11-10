@@ -19,9 +19,12 @@ import (
 
 // fakeDocker emulates the docker CLI state machine.
 type fakeDocker struct {
-	mu     sync.Mutex
-	calls  []string
-	status string // "" means no container
+	mu      sync.Mutex
+	calls   []string
+	status  string // "" means no container
+	label   string // lydiabox.spec label of the container
+	imageID string // "" means the image is not present
+	creates int
 }
 
 func (f *fakeDocker) Run(_ context.Context, c storage.Command) error {
@@ -30,8 +33,24 @@ func (f *fakeDocker) Run(_ context.Context, c storage.Command) error {
 	f.calls = append(f.calls, strings.Join(c.Args, " "))
 	noSuch := errors.New("Error response from daemon: No such container: lydiabox-default")
 	switch c.Args[0] {
+	case "image":
+		if f.imageID == "" {
+			return errors.New("Error response from daemon: No such image")
+		}
+		fmt.Fprintln(c.Stdout, f.imageID)
+	case "pull":
+		f.imageID = "sha256:pulled"
 	case "create":
+		if f.status != "" {
+			return errors.New("Conflict. The container name is already in use")
+		}
 		f.status = "created"
+		f.creates++
+		for i, a := range c.Args {
+			if a == "--label" && strings.HasPrefix(c.Args[i+1], SpecLabel+"=") {
+				f.label = strings.TrimPrefix(c.Args[i+1], SpecLabel+"=")
+			}
+		}
 	case "start", "unpause":
 		f.status = "running"
 	case "pause":
@@ -47,7 +66,11 @@ func (f *fakeDocker) Run(_ context.Context, c storage.Command) error {
 		if f.status == "" {
 			return noSuch
 		}
-		fmt.Fprintln(c.Stdout, f.status)
+		if strings.Contains(c.Args[2], SpecLabel) {
+			fmt.Fprintln(c.Stdout, f.status+" "+f.label)
+		} else {
+			fmt.Fprintln(c.Stdout, f.status)
+		}
 	}
 	return nil
 }
@@ -77,20 +100,22 @@ func TestDockerLifecycleAndSockets(t *testing.T) {
 	if st, err := d.State(ctx, "default"); err != nil || st != vmm.StateStopped {
 		t.Fatalf("state %s %v", st, err)
 	}
+	guest := writeGuest(t, dir, "v1")
 	spec := vmm.Spec{CPUs: 2, MemMB: 4096, HomeDir: "/jfs/home/agent", WorkspaceDir: "/jfs/workspace",
-		GuestBinary: "/opt/lydiabox/lydiabox-guest", WebRTCPort: 50000}
+		GuestBinary: guest, WebRTCPort: 50000}
 	if err := d.Create(ctx, "default", spec); err != nil {
 		t.Fatal(err)
 	}
 	sockDir := filepath.Join(dir, "vm", "default", "sock")
 	create := fd.last()
 	for _, w := range []string{
-		"create --name lydiabox-default ", "--cpus 2", "--memory 4096m",
+		"create --label " + SpecLabel + "=", "--name lydiabox-default ", "--cpus 2", "--memory 4096m",
+		"--tmpfs /tmp:rw,nosuid,nodev,mode=1777",
 		"--env LYDIABOX_GUEST_LISTEN=unix:///run/lydiabox/guest.sock",
 		"--env LYDIABOX_HOST_ADDR=unix:///run/lydiabox/host-9001.sock",
 		"--env LYDIABOX_GATEWAY_ADDR=unix:///run/lydiabox/host-9002.sock",
 		"--volume " + sockDir + ":/run/lydiabox", "--volume /jfs/home/agent:/home/agent", "--volume /jfs/workspace:/workspace",
-		"--volume /opt/lydiabox/lydiabox-guest:/usr/local/bin/lydiabox-guest:ro", "--publish 0.0.0.0:50000:50000/udp",
+		"--volume " + guest + ":/usr/local/bin/lydiabox-guest:ro", "--publish 0.0.0.0:50000:50000/udp",
 	} {
 		if !strings.Contains(create, w) {
 			t.Fatalf("missing %q in %s", w, create)
@@ -159,13 +184,19 @@ func TestDockerLifecycleAndSockets(t *testing.T) {
 		t.Fatal(err)
 	}
 	fd.mu.Lock()
-	tail := strings.Join(fd.calls[len(fd.calls)-3:], ",")
+	tail := fd.calls[len(fd.calls)-1]
 	fd.mu.Unlock()
-	if tail != "inspect --format {{.State.Status}} lydiabox-default,stop --time 30 lydiabox-default,rm --force lydiabox-default" {
+	if tail != "stop --time 30 lydiabox-default" {
 		t.Fatalf("shutdown calls %s", tail)
 	}
 	if st, _ := d.State(ctx, "default"); st != vmm.StateStopped {
 		t.Fatalf("state %s", st)
+	}
+	if err := d.Shutdown(ctx, "default", true); err != nil {
+		t.Fatalf("shutdown of a stopped container: %v", err)
+	}
+	if err := d.ResetRoot(ctx, "default"); err != nil {
+		t.Fatal(err)
 	}
 	if err := d.Shutdown(ctx, "default", true); err != nil {
 		t.Fatalf("shutdown of a missing container: %v", err)

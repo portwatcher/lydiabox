@@ -136,7 +136,11 @@ make guest-image-slim     # lydiabox/guest:slim: Xvfb, Xfce, terminal, ffmpeg
 
 Set `LYDIABOX_DOCKER_IMAGE` to use the slim image. The container shares
 `/home/agent` and `/workspace` through bind mounts of the JuiceFS mount.
-Its root filesystem is reset when the VM stops.
+Stop keeps the container, so changes to its root filesystem (`apt install`,
+`/etc`) persist across stop and wake, as with `chv`. `/tmp` is empty
+on each boot. LydiaBox creates a new container (and loses those changes)
+when the image, the VM settings, or the guest binary changes, or when you
+stop with `{"resetRoot": true}` (`POST /api/v1/vm/stop`).
 
 ### macOS and hosts without FUSE
 
