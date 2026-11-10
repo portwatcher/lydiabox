@@ -13,7 +13,7 @@ workstation. See [docs/design.md](docs/design.md) for the architecture and
 | :--- | :--- | :--- |
 | 1 | Config, encrypted store, runtime bootstrap, JuiceFS storage, File API, WebDAV | Done |
 | 2 | Guest daemon, VMM drivers (`chv`, `docker`), desktop streaming | Done |
-| 3 | magpie gateway, harness session bridge | Planned |
+| 3 | magpie gateway, harness session bridge | Done |
 | 4 | Connectors and credential broker | Done |
 | 5 | Web UI (Studio, Desktop, Files, Models, Connectors) | Done |
 
@@ -96,6 +96,31 @@ connector MCP bridge on `127.0.0.1:8911/mcp` (vsock port 9001). Desktop
 media uses UDP port `LYDIABOX_WEBRTC_UDP_PORT` (default 50000), which the
 host must allow.
 
+## Models and harness sessions (Phase 3)
+
+`lydiabox up` runs `magpie serve` on `127.0.0.1:3425` (data in
+`$LYDIABOX_DATA_DIR/state/magpie`) and restarts it when it stops. Upstream
+API keys stay in that directory on the host. Add providers, routing groups,
+and the default model of each harness in the Models page or through
+`/api/v1/models/*`.
+
+Inside the VM, the five harnesses (`claude-code`, `codex`, `dsh`,
+`antigravity`, `opencode`) talk to the guest gateway on
+`127.0.0.1:3425` with the placeholder token `lydiabox-local`. The host side
+of the tunnel replaces it with the VM gateway key (`lydiabox-vm`, encrypted
+in the state database). LydiaBox keeps the harness configs in
+`/home/agent` pointed at the gateway and registers the computer-use and
+connector MCP servers; it changes only the keys it manages and keeps user
+settings and comments.
+
+Sessions of all five harnesses are discovered from `/home/agent`, so the
+Studio lists them while the VM is off. Starting or resuming a session
+wakes the VM. "Switch Harness / Model" interrupts the running harness,
+writes `.agent/HANDOFF.md` and `.agent/state.json` into the workspace, adds a
+managed block to `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`, and resumes the
+task in the other harness in the same terminal. See
+[docs/harness-formats.md](docs/harness-formats.md) for the session formats.
+
 ## Development
 
 ```sh
@@ -138,6 +163,10 @@ internal/vmm/chv        Cloud Hypervisor driver (REST API, virtiofsd, TAP NAT, v
 internal/vmm/docker     container fallback driver
 internal/vmm/guestclient host client of the guest daemon RPC (PTY, MCP, desktop)
 internal/desktop        desktop signaling relay, takeover mode, action broadcast
+internal/magpie         magpie gateway supervisor, admin client, VM gateway key
+internal/magpie/wire    non-destructive harness config wirers
+internal/harness        session manager, terminal rooms, hot-switch bridge
+internal/harness/adapters  claude-code, codex, dsh, antigravity, opencode session formats
 internal/guest/*        guest daemon: rpc, ptymanager, x11, webrtc, mcp, credproxy
 internal/api            HTTP server, auth, route registration contract
 internal/webui          embedded web UI (built from web/, placeholder when not built)

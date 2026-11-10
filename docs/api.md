@@ -19,9 +19,9 @@ Status legend:
 | WebDAV gateway | `/webdav/` | Implemented (Phase 1) |
 | Web UI | `/` | Implemented (Phase 1 placeholder, Phase 5 app) |
 | VM power | `/api/v1/vm/*` | Implemented (Phase 2) |
-| Sessions and PTY | `/api/v1/sessions*` | Contract (Phase 2 PTY, Phase 3 bridge) |
+| Sessions and PTY | `/api/v1/sessions*` | Implemented (Phase 3, guest PTYs from Phase 2) |
 | Desktop | `/api/v1/desktop/*` | Implemented (Phase 2 guest and relay, Phase 5 UI) |
-| Models | `/api/v1/models/*` | Contract (Phase 3) |
+| Models | `/api/v1/models/*` | Implemented (Phase 3) |
 | Connectors | `/api/v1/connectors/*` | Implemented (Phase 4) |
 
 ## 1. Conventions
@@ -319,7 +319,7 @@ paused (`PAUSED`). `gpu` and `lastError` are omitted when empty;
 or stop while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM
 themselves; the UI does not need to call `wake` first.
 
-## 8. Sessions and PTY — contract (Phase 2 PTY, Phase 3 bridge)
+## 8. Sessions and PTY — implemented (Phase 3)
 
 Harness IDs: `claude-code`, `codex`, `dsh`, `antigravity`, `opencode`, plus
 `shell` for a plain login shell.
@@ -365,7 +365,22 @@ Starts a harness PTY in the guest (wakes the VM).
 
 `model`, `resumeNativeId` (resume an existing native session), and `title`
 are optional. Response `201`: `Session`. Errors: `400` unknown harness or a
-`workspaceDir` outside `/workspace` and `/home/agent`.
+`workspaceDir` outside `/workspace` and `/home/agent`, `503` when the VM or
+the guest terminal service is not available.
+
+Details:
+
+- `workspaceDir` defaults to `/workspace` and is created when it is missing.
+- `model` is passed to the harness for this session only (`--model`); the
+  default model of a harness is its binding (section 10).
+- Before every start the harness config is pointed at the gateway again
+  (`PUT /api/v1/models/bindings` rewrites the same keys).
+- `codex`, `dsh`, `opencode`, and `antigravity` pick the native ID of a new
+  session at runtime. The response then has a provisional `nativeId`
+  (`new-<hex>`); after the harness writes its transcript, the next list
+  shows the session under its real ID, and the old ID keeps resolving for
+  the WebSocket. `claude-code` and resumed sessions keep their ID.
+- A live session holds a `pty` lease, so the VM does not idle-pause.
 
 ### `DELETE /api/v1/sessions/{id}[?purge=true]`
 
@@ -383,7 +398,14 @@ Subprotocol: `lydiabox.pty.v1`. Several clients may attach to one session
 - **Text frames** carry one JSON control message each.
 
 On connect the server sends `hello`, then the ring-buffer replay (up to
-1 MiB) as binary frames, then live output.
+1 MiB) as binary frames, then live output. A socket without the subprotocol
+is closed with status `1008`. When the session has no running terminal, the
+server sends an `error` message (`not_found`, `conflict` for a session that
+is idle or exited, `unavailable` when the VM cannot be woken) and closes the
+socket (`1008`, or `1013` for `unavailable`). A terminal that survived a host
+restart is attached again from the guest. Invalid control messages give an
+`error` message with `code` `bad_request`; the socket stays open. A client
+that falls more than 512 frames behind is disconnected.
 
 Client → server:
 
@@ -417,7 +439,9 @@ the server closes with status `1000`.
   "targetModel": "deepseek/deepseek-v4-pro", "dryRun": true }
 ```
 
-`targetModel` is optional (keeps the target harness binding).
+`targetModel` is optional (keeps the target harness binding). With a
+`targetModel`, the binding of the target harness is changed as with
+`PUT /api/v1/models/bindings/{harness}`.
 With `dryRun: true` nothing is interrupted or written; response `200`:
 
 ```json
@@ -447,7 +471,17 @@ Response `200`:
 ```
 
 (`session` is a full `Session` object.) Errors: `404` unknown source,
-`400` same harness or unknown target, `503` VM not available.
+`400` same harness, unknown target, or a source without a workspace
+directory, `503` VM not available.
+
+The switch works for idle sessions too (no terminal to interrupt; the
+target starts in a new room). The target gets a native seed session that
+holds the handoff where the harness format allows it (`claude-code`,
+`codex`, `dsh`, `opencode` through `opencode import`); `antigravity` gets
+the continuation prompt only. If the target cannot start after the source
+was interrupted, room clients get an `error` message and the socket closes.
+On-disk formats and what is verified are listed in
+[harness-formats.md](harness-formats.md).
 
 ## 9. Desktop — implemented (Phase 2 guest and relay, Phase 5 UI)
 
@@ -537,7 +571,7 @@ Messages are JSON text. The guest ignores them in `OBSERVER` mode.
 `button` is `left`, `middle`, or `right`. `code` and `key` are the DOM
 `KeyboardEvent` values; the guest maps them to X11 keysyms.
 
-## 10. Models and magpie — contract (Phase 3)
+## 10. Models and magpie — implemented (Phase 3)
 
 Upstream API keys stay in the host magpie data directory. Responses never
 include key values, only `hasKey`.
@@ -565,6 +599,35 @@ Binding:      { "harness": "codex", "model": "deepseek/deepseek-v4-pro", "config
 ```
 
 `strategy` is `fallback` or `round-robin`. Model IDs are `provider/model`.
+
+Details:
+
+- The gateway is a supervised `magpie serve` on `127.0.0.1:3425` with data in
+  `$LYDIABOX_DATA_DIR/state/magpie`; it restarts with backoff (1 s to 30 s).
+  `GET /api/v1/models/gateway` answers `200` in every state. The other
+  provider, model, and routing routes answer `503 unavailable` while magpie
+  is not running. Bindings work without magpie.
+- `POST /api/v1/models/providers`: without `baseUrl`, `kind` names a magpie
+  preset (`openai`, `anthropic`, `deepseek`, …). With `baseUrl` (an absolute
+  `http(s)` URL), the provider is a custom endpoint: `kind` `anthropic` or
+  `gemini` selects that protocol, any other kind is OpenAI compatible and is
+  reported as `openai-compatible`. The `id` is the lowercase `name` with
+  other characters as `-`; `409 conflict` when it exists.
+- Provider `status`: `ok`, `pending` (models not listed yet), `error` (see
+  `lastError`), or `disabled`.
+- `PUT /api/v1/models/routing` replaces the whole set: groups that are not in
+  the body are deleted. Group names must be unique; each needs at least one
+  `provider/model` target.
+- `PUT /api/v1/models/bindings/{harness}`: `model` is required; an empty
+  string removes the binding and leaves the model in the config file as it
+  is. `400` for an unknown harness or a malformed model ID, `409` when the
+  existing config file cannot be parsed (it is not changed).
+- Harness configs keep user keys and comments: JSON files change only the
+  managed keys, `config.toml` and `.env` are edited line by line. Every
+  harness gets the MCP servers `lydiabox` (`http://127.0.0.1:8910/mcp`) and
+  `lydiabox-connectors` (`http://127.0.0.1:8911/mcp`). Harnesses inside the
+  VM send the placeholder token `lydiabox-local`; the host side of the
+  gateway tunnel replaces it with the VM gateway key `lydiabox-vm`.
 
 ## 11. Connectors — implemented (Phase 4)
 
