@@ -264,7 +264,10 @@ func TestRoomReattachAfterRestart(t *testing.T) {
 		m, _ := e.store.Get(tenant, harness.Shell, s.NativeID)
 		return m.Status == harness.StatusExited
 	})
-	if _, err := mgr2.Room(ctx, tenant, s.ID); !errors.Is(err, harness.ErrConflict) {
-		t.Fatalf("exited session room = %v, want ErrConflict", err)
-	}
+	// Both managers watch the same fake PTY, so the store can show the exit
+	// (written by the first manager) before mgr2 has dropped its live room.
+	eventually(t, "exited session room gives ErrConflict", func() bool {
+		_, err := mgr2.Room(ctx, tenant, s.ID)
+		return errors.Is(err, harness.ErrConflict)
+	})
 }
