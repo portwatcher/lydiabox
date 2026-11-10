@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,10 +14,18 @@ import (
 	"github.com/lydiabox/lydiabox/internal/config"
 )
 
+// S3GatewayPrefix is the public URL path of the virtual S3 gateway on the
+// main listener. It is also the bucket name: clients send path-style
+// requests to the endpoint http://<host>:8080, so `/s3/<key>` addresses the
+// object <key> in the bucket "s3".
+const S3GatewayPrefix = "/s3"
+
 // S3GatewayBucket is the bucket name under which the virtual S3 gateway
 // serves the volume. Object keys are paths from the volume root, so the user
-// trees are `workspace/...` and `home/agent/...`.
-const S3GatewayBucket = "lydiabox"
+// trees are `workspace/...` and `home/agent/...`. It equals the public path
+// prefix, so the proxy forwards path-style requests unchanged and SigV4
+// signatures stay valid.
+const S3GatewayBucket = "s3"
 
 // S3GatewayAccessKey is the access key of the virtual S3 gateway; the
 // secret key is LYDIABOX_AUTH_TOKEN.
@@ -22,8 +33,11 @@ const S3GatewayAccessKey = "lydiabox"
 
 // S3GatewayStatus is reported by GET /api/v1/status under storage.s3Gateway.
 type S3GatewayStatus struct {
-	Enabled bool   `json:"enabled"`
-	Addr    string `json:"addr"`
+	Enabled bool `json:"enabled"`
+	// Addr is the backend listen address (LYDIABOX_S3_GATEWAY_ADDR).
+	Addr string `json:"addr"`
+	// Path is the public path on the main listener ("/s3").
+	Path    string `json:"path"`
 	Bucket  string `json:"bucket"`
 	Running bool   `json:"running"`
 }
@@ -39,11 +53,13 @@ type S3GatewayOptions struct {
 	Dial func(ctx context.Context, addr string) error
 }
 
-// S3Gateway supervises `juicefs gateway` on LYDIABOX_S3_GATEWAY_ADDR. It
-// listens on its own address because S3 clients sign the request path
-// (SigV4), which a reverse proxy under a path prefix would change. Clients
-// authenticate with access key "lydiabox" and LYDIABOX_AUTH_TOKEN as the
-// secret key. An empty address disables the gateway.
+// S3Gateway supervises `juicefs gateway` on LYDIABOX_S3_GATEWAY_ADDR
+// (loopback by default) and reverse-proxies /s3 on the main listener to it.
+// S3 clients sign the request path and the Host header (SigV4), so the proxy
+// forwards both unchanged: the bucket is named "s3", and a path-style request
+// to http://<host>:8080/s3/<key> verifies at the backend without re-signing.
+// Clients authenticate with access key "lydiabox" and LYDIABOX_AUTH_TOKEN as
+// the secret key. An empty address disables the gateway.
 type S3Gateway struct {
 	tenant  string
 	addr    string
@@ -125,5 +141,42 @@ func (g *S3Gateway) Status(tenantID string) S3GatewayStatus {
 	if tenantID != g.tenant || g.child == nil {
 		return S3GatewayStatus{}
 	}
-	return S3GatewayStatus{Enabled: true, Addr: g.addr, Bucket: S3GatewayBucket, Running: g.child.Addr() != ""}
+	return S3GatewayStatus{Enabled: true, Addr: g.addr, Path: S3GatewayPrefix, Bucket: S3GatewayBucket, Running: g.child.Addr() != ""}
+}
+
+// Handler returns the reverse proxy for /s3 and /s3/. It answers 503 while
+// the backend is down or the gateway is disabled. The backend does its own
+// SigV4 authentication, so the caller must not add API authentication.
+func (g *S3Gateway) Handler() http.Handler {
+	if g.child == nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "the S3 gateway is disabled (LYDIABOX_S3_GATEWAY_ADDR is empty)", http.StatusServiceUnavailable)
+		})
+	}
+	proxy := NewS3Proxy(&url.URL{Scheme: "http", Host: dialAddr(g.addr)})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if g.child.Addr() == "" {
+			http.Error(w, "the S3 gateway is not running", http.StatusServiceUnavailable)
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	})
+}
+
+// NewS3Proxy forwards requests to the S3 server at backend without changes:
+// the escaped path, the query, the Host header, and every x-amz-* and
+// Authorization header stay as the client signed them. It adds no
+// X-Forwarded-* headers.
+func NewS3Proxy(backend *url.URL) http.Handler {
+	return &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.Out.URL.Scheme = backend.Scheme
+			pr.Out.URL.Host = backend.Host
+			pr.Out.URL.Path = pr.In.URL.Path
+			pr.Out.URL.RawPath = pr.In.URL.RawPath
+			pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+			pr.Out.Host = pr.In.Host
+		},
+		FlushInterval: -1,
+	}
 }

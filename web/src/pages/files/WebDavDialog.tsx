@@ -3,7 +3,6 @@ import { CopyField } from "../../components/CopyField";
 import { Dialog } from "../../components/Dialog";
 import { Button } from "../../components/ui";
 import { useSystem } from "../../hooks/useSystem";
-import { s3Endpoint } from "./s3Endpoint";
 
 function Secret({ label }: { label: string }) {
   return (
@@ -17,8 +16,9 @@ function Secret({ label }: { label: string }) {
 }
 
 function S3Section({ gateway }: { gateway: S3GatewayStatus }) {
-  const { url, serverOnly } = s3Endpoint(gateway.addr, window.location.hostname);
+  const url = window.location.origin;
   const aws = `AWS_ACCESS_KEY_ID=lydiabox AWS_SECRET_ACCESS_KEY="$LYDIABOX_AUTH_TOKEN" aws --endpoint-url ${url} s3 ls s3://${gateway.bucket}/workspace/`;
+  const rclone = `rclone lsd :s3:${gateway.bucket}/workspace --s3-provider=Minio --s3-force-path-style --s3-endpoint=${url} --s3-access-key-id=lydiabox --s3-secret-access-key="$LYDIABOX_AUTH_TOKEN"`;
   return (
     <section className="flex flex-col gap-4 border-t border-border-subtle pt-4">
       <h3 className="text-[13px] font-semibold">S3</h3>
@@ -29,12 +29,9 @@ function S3Section({ gateway }: { gateway: S3GatewayStatus }) {
         <Secret label="Secret key" />
       </div>
       {!gateway.running ? <p className="text-warning-fg">The S3 gateway is not running.</p> : null}
-      {serverOnly ? (
-        <p className="text-fg-muted text-pretty">
-          Reachable from the server only. Set <code className="text-fg">LYDIABOX_S3_GATEWAY_ADDR</code> to share it.
-        </p>
-      ) : null}
+      <p className="text-fg-muted text-pretty">Use path-style addressing.</p>
       <CopyField label="AWS CLI" value={aws} />
+      <CopyField label="rclone" value={rclone} />
     </section>
   );
 }

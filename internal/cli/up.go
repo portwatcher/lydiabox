@@ -154,6 +154,7 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 		api.CoreRoutes{Auth: d.Auth, VM: d.VMStatus, Storage: sup, S3Gateway: s3gw},
 		api.FilesRoutes{Handler: files.NewHandler(files.NewService(sup, files.Options{}))},
 		api.WebDAVRoutes{Handler: dav.Handler()},
+		api.S3Routes{Handler: s3gw.Handler()},
 	}
 	for _, c := range comps {
 		regs = append(regs, c.Routes...)
@@ -198,8 +199,8 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	shutdown.push("http", srv.Shutdown)
 	fmt.Fprintf(env.Stdout, "LydiaBox is listening on http://%s (web UI built: %t)\n", addr, webui.Built())
 	if s3gw.Enabled() {
-		fmt.Fprintf(env.Stdout, "S3 gateway on http://%s (bucket %q, access key %q, secret key = admin token)\n",
-			cfg.S3.GatewayAddr, storage.S3GatewayBucket, storage.S3GatewayAccessKey)
+		fmt.Fprintf(env.Stdout, "S3 gateway: endpoint http://%s, bucket %q (path style), access key %q, secret key = admin token\n",
+			addr, storage.S3GatewayBucket, storage.S3GatewayAccessKey)
 	}
 
 	select {

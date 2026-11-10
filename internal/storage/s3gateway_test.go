@@ -92,7 +92,7 @@ func TestS3GatewaySupervisor(t *testing.T) {
 	cmd := r.starts[0]
 	first := r.procs[0]
 	r.mu.Unlock()
-	if cmd.Args[0] != "gateway" || cmd.Args[2] != "0.0.0.0:8090" ||
+	if cmd.Args[0] != "gateway" || cmd.Args[2] != "0.0.0.0:8090" || !slices.Contains(cmd.Args, "--bucket-name=s3") ||
 		!slices.Contains(cmd.Env, "MINIO_ROOT_PASSWORD=admin-token-0123456789") ||
 		!slices.Contains(cmd.Args, "--log="+filepath.Join(cfg.DataDir, "logs", "juicefs-gateway.log")) {
 		t.Fatalf("command = %+v", cmd)

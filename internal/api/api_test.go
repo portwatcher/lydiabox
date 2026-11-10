@@ -128,10 +128,10 @@ func TestHealthAndStatus(t *testing.T) {
 	if st.VM.State != "STOPPED" || st.VM.Driver != "docker" || !st.Storage.Mounted || st.TenantID != "default" || st.Version.Version == "" {
 		t.Fatalf("status = %+v", st)
 	}
-	if gw := st.Storage.S3Gateway; !gw.Enabled || !gw.Running || gw.Addr != "127.0.0.1:8090" || gw.Bucket != "lydiabox" {
+	if gw := st.Storage.S3Gateway; !gw.Enabled || !gw.Running || gw.Addr != "127.0.0.1:8090" || gw.Path != "/s3" || gw.Bucket != "s3" {
 		t.Fatalf("storage.s3Gateway = %+v", gw)
 	}
-	if !strings.Contains(string(body), `"s3Gateway":{"enabled":true,"addr":"127.0.0.1:8090","bucket":"lydiabox","running":true}`) {
+	if !strings.Contains(string(body), `"s3Gateway":{"enabled":true,"addr":"127.0.0.1:8090","path":"/s3","bucket":"s3","running":true}`) {
 		t.Fatalf("status JSON = %s", body)
 	}
 	if resp.Header.Get("X-Content-Type-Options") != "nosniff" || resp.Header.Get("Cache-Control") != "no-store" {
@@ -142,7 +142,7 @@ func TestHealthAndStatus(t *testing.T) {
 type fakeGateway struct{}
 
 func (fakeGateway) Status(tid string) storage.S3GatewayStatus {
-	return storage.S3GatewayStatus{Enabled: true, Addr: "127.0.0.1:8090", Bucket: "lydiabox", Running: true}
+	return storage.S3GatewayStatus{Enabled: true, Addr: "127.0.0.1:8090", Path: "/s3", Bucket: "s3", Running: true}
 }
 
 func TestAuthMethods(t *testing.T) {

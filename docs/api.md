@@ -17,6 +17,7 @@ Status legend:
 | Session auth | `/api/v1/auth/*` | Implemented (Phase 1) |
 | File Manager | `/api/v1/fs/*` | Implemented (Phase 1) |
 | WebDAV gateway | `/webdav/` | Implemented (Phase 1) |
+| Virtual S3 gateway | `/s3`, `/s3/` | Implemented (Phase 6) |
 | Web UI | `/` | Implemented (Phase 1 placeholder, Phase 5 app) |
 | VM power | `/api/v1/vm/*` | Implemented (Phase 2) |
 | Sessions and PTY | `/api/v1/sessions*` | Implemented (Phase 3, guest PTYs from Phase 2) |
@@ -121,7 +122,7 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
     "lastSyncAt": "2026-11-10T06:29:41Z",
     "lastUploadAt": "2026-11-10T06:20:41Z",
     "lastSyncError": "",
-    "s3Gateway": { "enabled": true, "addr": "127.0.0.1:8090", "bucket": "lydiabox", "running": true }
+    "s3Gateway": { "enabled": true, "addr": "127.0.0.1:8090", "path": "/s3", "bucket": "s3", "running": true }
   },
   "time": "2026-11-10T06:30:00Z"
 }
@@ -133,15 +134,11 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
   shows "Synced Xs ago" from `time - lastSyncAt`). `lastUploadAt` is the
   last time a changed snapshot was uploaded. `lastSyncError` is omitted when
   empty.
-- `storage.s3Gateway` describes the virtual S3 gateway (`juicefs gateway`).
-  It listens on its own address, `LYDIABOX_S3_GATEWAY_ADDR` (default
-  `127.0.0.1:8090`), not under this server, because S3 clients sign the
-  request path. `enabled` is false (and the other fields empty) when the
-  address is empty or `off`. `running` is false while the process restarts.
-  Clients use path-style requests, access key `lydiabox`, and
-  `LYDIABOX_AUTH_TOKEN` as the secret key. The volume is one bucket,
-  `bucket`; object keys are paths from the volume root (`workspace/...`,
-  `home/agent/...`), as in WebDAV.
+- `storage.s3Gateway` describes the virtual S3 gateway (section 5a).
+  `addr` is the backend address, `LYDIABOX_S3_GATEWAY_ADDR`; `path` is the
+  public path on this server. `enabled` is false (and the other fields
+  empty) when the address is empty or `off`. `running` is false while the
+  process restarts.
 
 ## 4. File Manager — implemented (Phase 1)
 
@@ -284,9 +281,35 @@ non-empty directory needs `recursive=true`. Response `204`.
 - Mount examples: macOS Finder "Connect to Server" `http://host:8080/webdav/`;
   Linux `rclone mount :webdav: --webdav-url=http://host:8080/webdav/`.
 
+## 5a. Virtual S3 gateway — implemented (Phase 6)
+
+`/s3` and `/s3/...` reverse-proxy a supervised `juicefs gateway` on
+`LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). The volume is one
+bucket named `s3`; object keys are paths from the volume root
+(`workspace/...`, `home/agent/...`), as in WebDAV.
+
+- Endpoint `http://host:8080`, bucket `s3`, path-style addressing. A request
+  to `/s3/workspace/a.txt` is the object `workspace/a.txt` in the bucket
+  `s3`.
+- Credentials: access key `lydiabox`, secret key `LYDIABOX_AUTH_TOKEN`
+  (AWS Signature Version 4). The routes are public on this server: the
+  gateway verifies the signature itself. Bearer, cookie, and CSRF checks do
+  not apply.
+- The proxy forwards the request without changes: method, escaped path,
+  query, `Host`, `Authorization`, and every `x-amz-*` header. SigV4 signs the
+  path and the host, so the signature that the client made for
+  `host:8080/s3/...` verifies at the backend.
+- `ListBuckets` (`GET /`) is not available, because `/` is the web UI. Name
+  the bucket in every request.
+- `503` when the backend is restarting or the gateway is disabled.
+- Examples:
+  `aws --endpoint-url http://host:8080 s3 ls s3://s3/workspace/`;
+  rclone with `provider = Minio`, `endpoint = http://host:8080`, and
+  `force_path_style = true`.
+
 ## 6. Web UI — implemented (Phase 5; a placeholder page when `web/` is not built)
 
-`GET /` and every path that is not an API, WebDAV, or asset path returns the
+`GET /` and every path that is not an API, WebDAV, S3, or asset path returns the
 SPA `index.html` (client-side routes `/studio`, `/desktop`, `/files`,
 `/models`, `/connectors`). Files under `/assets/` are cached for one year.
 Unknown `/api/...` paths return the JSON `404` envelope. Public.
