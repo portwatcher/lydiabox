@@ -101,6 +101,19 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 					log.Error("guest LLM gateway tunnel stopped", "err", err)
 				}
 			}()
+			// The connector broker (built by wireConnector) is reached by the
+			// guest's git-cred helper and connector MCP bridge on port 9001.
+			if brk := connectorBroker(d); brk != nil {
+				bln, err := drv.ListenGuestPort(ctx, tid, config.HostBrokerPort)
+				if err != nil {
+					return fmt.Errorf("listen for the guest connector broker: %w", err)
+				}
+				go func() {
+					if err := brk.Serve(gwCtx, bln); err != nil {
+						log.Error("guest connector broker stopped", "err", err)
+					}
+				}()
+			}
 			return nil
 		},
 		Stop: func(ctx context.Context) error {
