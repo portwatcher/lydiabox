@@ -62,6 +62,7 @@ func notionProvider() Provider {
 		tokenAuth:       authBasicJSON,
 		identify:        notionIdentify,
 		parseToken:      parseStandardToken,
+		revoke:          notionRevoke,
 	}
 }
 
@@ -347,4 +348,21 @@ func slackRevoke(ctx context.Context, h *http.Client, p *Provider, _ OAuthClient
 		return err
 	}
 	return SlackCall(h, req, nil)
+}
+
+// notionRevoke calls POST /v1/oauth/revoke with the client credentials as
+// HTTP Basic auth (developers.notion.com/reference/revoke-token).
+func notionRevoke(ctx context.Context, h *http.Client, p *Provider, client OAuthClient, token string) error {
+	if client.ClientID == "" || client.ClientSecret == "" {
+		return errNoClient
+	}
+	body, _ := json.Marshal(map[string]string{"token": token})
+	req, err := NewRequest(ctx, http.MethodPost, p.API("/v1/oauth/revoke"), "", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.SetBasicAuth(client.ClientID, client.ClientSecret)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Notion-Version", NotionVersion)
+	return Do(h, req, p.ID, nil)
 }

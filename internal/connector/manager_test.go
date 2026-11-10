@@ -375,6 +375,20 @@ func TestDisconnectRevokes(t *testing.T) {
 	if page.Entries[0].Kind != connector.KindDisconnected || !strings.Contains(page.Entries[0].Detail, `"revoked":false`) {
 		t.Fatalf("notion audit = %+v", page.Entries)
 	}
+	// With an OAuth client, Notion tokens are revoked through /v1/oauth/revoke.
+	if _, err := h.mgr.SetClient(ctx, tenantID, connector.Notion, connectortest.ClientID, connectortest.ClientSecret); err != nil {
+		t.Fatal(err)
+	}
+	notion = h.fake.IssueToken(connector.Notion, "ws2")
+	if _, err := h.mgr.BindToken(ctx, tenantID, connector.Notion, connector.BindTokenRequest{Token: notion}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.mgr.Disconnect(ctx, tenantID, connector.Notion, "ws2"); err != nil {
+		t.Fatal(err)
+	}
+	if ti, _ := h.fake.Token(notion); !ti.Revoked {
+		t.Fatal("notion token not revoked upstream")
+	}
 	page, _ = h.mgr.Audit(ctx, tenantID, connector.GitHub, 0, 10)
 	if page.Entries[0].Kind != connector.KindDisconnected || !strings.Contains(page.Entries[0].Detail, `"revoked":true`) {
 		t.Fatalf("github audit = %+v", page.Entries)

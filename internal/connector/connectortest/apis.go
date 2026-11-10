@@ -154,6 +154,20 @@ func (f *Fake) driveUpload(w http.ResponseWriter, r *http.Request, id string, bo
 }
 
 func (f *Fake) notion(w http.ResponseWriter, r *http.Request, path string, body []byte) {
+	if path == "/v1/oauth/revoke" && r.Method == http.MethodPost {
+		id, secret, _ := r.BasicAuth()
+		var v struct {
+			Token string `json:"token"`
+		}
+		_ = json.Unmarshal(body, &v)
+		if id != ClientID || secret != ClientSecret || r.Header.Get("Notion-Version") == "" {
+			f.unauthorized(w)
+			return
+		}
+		f.RevokeToken(v.Token)
+		f.writeJSON(w, http.StatusOK, map[string]string{"request_id": "req-1"})
+		return
+	}
 	ti, ok := f.bearer(r, connector.Notion)
 	if !ok || r.Header.Get("Notion-Version") == "" {
 		f.writeJSON(w, http.StatusUnauthorized, map[string]string{"object": "error", "code": "unauthorized", "message": "API token is invalid."})
