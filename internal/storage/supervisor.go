@@ -319,7 +319,7 @@ func (s *Supervisor) launchMount(ctx context.Context) (Process, *procWatch, erro
 		}
 		select {
 		case <-watch.done:
-			return nil, nil, fmt.Errorf("storage: juicefs mount exited before ready: %v", watch.err)
+			return nil, nil, fmt.Errorf("storage: juicefs mount exited before ready: %v%s", watch.err, hostFUSEHint())
 		case <-deadline.C:
 			s.terminate(proc, watch)
 			return nil, nil, fmt.Errorf("storage: juicefs mount not ready after %s", s.opts.MountTimeout)
