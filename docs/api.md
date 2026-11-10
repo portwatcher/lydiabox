@@ -126,8 +126,7 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
 }
 ```
 
-- `vm.state` is one of `STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`. Phase 1
-  always reports `STOPPED`; Phase 2 provides the live value.
+- `vm.state` is one of `STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`.
 - `vm.driver` is the resolved backend: `chv` or `docker`.
 - `storage.lastSyncAt` is the last successful metadata backup check (the UI
   shows "Synced Xs ago" from `time - lastSyncAt`). `lastUploadAt` is the
@@ -275,7 +274,7 @@ non-empty directory needs `recursive=true`. Response `204`.
 - Mount examples: macOS Finder "Connect to Server" `http://host:8080/webdav/`;
   Linux `rclone mount :webdav: --webdav-url=http://host:8080/webdav/`.
 
-## 6. Web UI — implemented (Phase 1 placeholder)
+## 6. Web UI — implemented (Phase 5; a placeholder page when `web/` is not built)
 
 `GET /` and every path that is not an API, WebDAV, or asset path returns the
 SPA `index.html` (client-side routes `/studio`, `/desktop`, `/files`,
@@ -699,9 +698,10 @@ Details:
   failed refresh sets `status` to `expired`. A `401` from the provider during
   a tool call sets `status` to `revoked`. Connecting again resets `status`.
 - `DELETE` without `account` removes the only account of the provider, and
-  answers `400` when there are several. GitHub (OAuth client required),
-  Google, and Slack tokens are revoked upstream; Notion tokens are only
-  deleted. The audit `detail` records `"revoked": true|false`.
+  answers `400` when there are several. GitHub and Notion (OAuth client
+  required), Google, and Slack tokens are revoked upstream; a GitHub or
+  Notion token without an OAuth client is only deleted. The audit `detail`
+  records `"revoked": true|false`.
 - `audit` lists only `connector.*` kinds. `provider` filters on the
   `provider` field of `detail`.
 - Relay mode (`LYDIABOX_OAUTH_RELAY_URL`): the authorize URL is
