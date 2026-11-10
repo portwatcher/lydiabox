@@ -178,6 +178,23 @@ func TestCreateDeleteAndLeases(t *testing.T) {
 		t.Fatalf("signals = %v", sig)
 	}
 
+	// An interactive shell ignores SIGINT and SIGTERM; SIGHUP ends it and
+	// releases its lease.
+	e.runner.IgnoreSIGTERM = true
+	s3, err := e.mgr.Create(ctx, tenant, harness.CreateRequest{Harness: harness.Shell})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p3 := e.runner.Last()
+	if err := e.mgr.Delete(ctx, tenant, s3.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if sig := p3.Signals(); strings.Join(sig, ",") != "SIGINT,SIGTERM,SIGHUP" {
+		t.Fatalf("shell signals = %v", sig)
+	}
+	eventually(t, "shell lease release", func() bool { return e.waker.Leases("pty") == 0 })
+	e.runner.IgnoreSIGINT, e.runner.IgnoreSIGTERM = false, false
+
 	for _, bad := range []harness.CreateRequest{{Harness: "vim"}, {Harness: harness.Codex, WorkspaceDir: "/etc"},
 		{Harness: harness.Codex, WorkspaceDir: "/workspace/../etc"}, {Harness: harness.Shell, ResumeNativeID: "x"}} {
 		if _, err := e.mgr.Create(ctx, tenant, bad); !errors.Is(err, harness.ErrBadRequest) {

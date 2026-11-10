@@ -36,6 +36,9 @@ type PTY struct {
 	// IgnoreSIGINT makes the process survive SIGINT (it still exits on
 	// SIGTERM), to exercise the escalation path.
 	IgnoreSIGINT bool
+	// IgnoreSIGTERM makes the process survive SIGTERM too (it still exits
+	// on SIGHUP), like an interactive shell.
+	IgnoreSIGTERM bool
 	// Echo writes input back as output.
 	Echo bool
 }
@@ -78,7 +81,7 @@ func (p *PTY) Resize(cols, rows uint16) error {
 func (p *PTY) Signal(sig string) error {
 	p.mu.Lock()
 	p.signals = append(p.signals, sig)
-	ignore := p.IgnoreSIGINT && sig == "SIGINT"
+	ignore := (p.IgnoreSIGINT && sig == "SIGINT") || (p.IgnoreSIGTERM && sig == "SIGTERM")
 	p.mu.Unlock()
 	if !ignore && (sig == "SIGINT" || sig == "SIGTERM" || sig == "SIGHUP" || sig == "SIGQUIT") {
 		code := 130
@@ -167,9 +170,10 @@ type Runner struct {
 	Err error
 	// Replay is the ring buffer content of new PTYs.
 	Replay []byte
-	// IgnoreSIGINT is copied to new PTYs.
-	IgnoreSIGINT bool
-	Echo         bool
+	// IgnoreSIGINT and IgnoreSIGTERM are copied to new PTYs.
+	IgnoreSIGINT  bool
+	IgnoreSIGTERM bool
+	Echo          bool
 	// Started receives every new PTY when non-nil.
 	Started chan *PTY
 }
@@ -182,7 +186,7 @@ func (r *Runner) StartPTY(_ context.Context, _ string, spec harness.PTYSpec) (ha
 		return nil, r.Err
 	}
 	p := newPTY(spec, r.Replay)
-	p.IgnoreSIGINT, p.Echo = r.IgnoreSIGINT, r.Echo
+	p.IgnoreSIGINT, p.IgnoreSIGTERM, p.Echo = r.IgnoreSIGINT, r.IgnoreSIGTERM, r.Echo
 	r.ptys = append(r.ptys, p)
 	ch := r.Started
 	r.mu.Unlock()

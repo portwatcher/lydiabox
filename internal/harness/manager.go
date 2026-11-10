@@ -320,7 +320,7 @@ func (m *Manager) lookupLive(tenantID, id string) *liveSession {
 }
 
 // stop interrupts a live session: SIGINT, KillGrace, SIGTERM, TermGrace,
-// then detach. With keepRoom the room survives for a hot-switch.
+// SIGHUP, TermGrace, then detach. With keepRoom the room survives for a hot-switch.
 func (m *Manager) stop(ctx context.Context, ls *liveSession, keepRoom bool) {
 	pty := ls.pty
 	if keepRoom {
@@ -329,8 +329,13 @@ func (m *Manager) stop(ctx context.Context, ls *liveSession, keepRoom bool) {
 	_ = pty.Signal("SIGINT")
 	if !waitExit(ctx, pty, m.opts.KillGrace) {
 		_ = pty.Signal("SIGTERM")
+		// An interactive shell ignores SIGINT and SIGTERM but exits on a
+		// terminal hangup.
 		if !waitExit(ctx, pty, m.opts.TermGrace) {
-			m.log.Warn("harness did not exit after SIGTERM; detaching", "session", SessionID(ls.harness, ls.nativeID))
+			_ = pty.Signal("SIGHUP")
+			if !waitExit(ctx, pty, m.opts.TermGrace) {
+				m.log.Warn("harness did not exit after SIGHUP; detaching", "session", SessionID(ls.harness, ls.nativeID))
+			}
 		}
 	}
 	if keepRoom {
