@@ -50,7 +50,7 @@ export interface S3GatewayStatus {
   enabled: boolean;
   /** Backend listen address, for example `127.0.0.1:8090`. */
   addr: string;
-  /** Public path on this server, `/lydiabox`: `/` + the bucket name. */
+  /** Public path on this server, `/s3`: the S3 endpoint is the origin + this path. */
   path: string;
   bucket: string;
   running: boolean;

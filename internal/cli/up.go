@@ -208,8 +208,8 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	shutdown.push("http", srv.Shutdown)
 	fmt.Fprintf(env.Stdout, "LydiaBox is listening on http://%s (web UI built: %t)\n", addr, webui.Built())
 	if s3gw.Enabled() {
-		fmt.Fprintf(env.Stdout, "S3 gateway: endpoint http://%s, bucket %q (path style), access key %q, secret key = admin token\n",
-			addr, storage.S3GatewayBucket, storage.S3GatewayAccessKey)
+		fmt.Fprintf(env.Stdout, "S3 gateway: endpoint http://%s%s, bucket %q (path style), access key %q, secret key = admin token\n",
+			addr, storage.S3GatewayPrefix, storage.S3GatewayBucket, storage.S3GatewayAccessKey)
 	}
 
 	select {

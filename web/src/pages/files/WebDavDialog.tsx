@@ -16,7 +16,7 @@ function Secret({ label }: { label: string }) {
 }
 
 function S3Section({ gateway }: { gateway: S3GatewayStatus }) {
-  const url = window.location.origin;
+  const url = `${window.location.origin}${gateway.path || "/s3"}`;
   const aws = `AWS_ACCESS_KEY_ID=lydiabox AWS_SECRET_ACCESS_KEY="$LYDIABOX_AUTH_TOKEN" aws --endpoint-url ${url} s3 ls s3://${gateway.bucket}/workspace/`;
   const rclone = `rclone lsd :s3:${gateway.bucket}/workspace --s3-provider=Minio --s3-force-path-style --s3-endpoint=${url} --s3-access-key-id=lydiabox --s3-secret-access-key="$LYDIABOX_AUTH_TOKEN"`;
   return (

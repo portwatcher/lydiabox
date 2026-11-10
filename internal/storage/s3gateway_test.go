@@ -28,11 +28,10 @@ func TestGatewayCommand(t *testing.T) {
 	}
 }
 
-// The proxy forwards path-style requests verbatim, so the public path must be
-// "/" + the bucket, and the bucket must be a valid S3 name (3 to 63
-// characters; juicefs gateway refuses shorter ones such as "s3").
-func TestS3GatewayPathIsBucket(t *testing.T) {
-	if S3GatewayPrefix != "/"+S3GatewayBucket || len(S3GatewayBucket) < 3 || len(S3GatewayBucket) > 63 {
+// The bucket must be a valid S3 name (3 to 63 characters; juicefs gateway
+// refuses shorter ones such as "s3"), and the public path is /s3.
+func TestS3GatewayPathAndBucket(t *testing.T) {
+	if S3GatewayPrefix != "/s3" || len(S3GatewayBucket) < 3 || len(S3GatewayBucket) > 63 {
 		t.Fatalf("prefix %q, bucket %q", S3GatewayPrefix, S3GatewayBucket)
 	}
 }

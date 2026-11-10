@@ -6,8 +6,8 @@ import (
 	"github.com/lydiabox/lydiabox/internal/storage"
 )
 
-// S3Routes mounts the virtual S3 gateway at /lydiabox and /lydiabox/. The routes are
-// public: the gateway verifies SigV4 signatures itself (access key
+// S3Routes mounts the virtual S3 gateway at /s3 and /s3/. The routes are
+// public: the S3 proxy verifies SigV4 signatures itself (access key
 // "lydiabox", secret key LYDIABOX_AUTH_TOKEN), and the cookie and CSRF
 // checks of the API would break S3 clients.
 type S3Routes struct {

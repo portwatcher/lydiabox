@@ -5,28 +5,24 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/lydiabox/lydiabox/internal/storage/s3proxy"
 )
 
 // S3GatewayPrefix is the public URL path of the virtual S3 gateway on the
-// main listener: "/" + the bucket name. Clients send path-style requests to
-// the endpoint http://<host>:8080, so `/lydiabox/<key>` addresses the object
-// <key> in the bucket "lydiabox". The design names `/s3`, but S3 bucket
-// names need at least 3 characters (juicefs gateway refuses "s3"), and a
-// verbatim proxy needs the path to start with the bucket name.
-const S3GatewayPrefix = "/" + S3GatewayBucket
+// main listener. Clients use the endpoint http://<host>:8080/s3 with
+// path-style addressing, so `/s3/lydiabox/<key>` addresses the object <key>
+// in the bucket "lydiabox", and `/s3/` lists the buckets.
+const S3GatewayPrefix = "/s3"
 
 // S3GatewayBucket is the bucket name under which the virtual S3 gateway
 // serves the volume. Object keys are paths from the volume root, so the user
-// trees are `workspace/...` and `home/agent/...`. It equals the public path
-// path, so the proxy forwards path-style requests unchanged and SigV4
-// signatures stay valid.
+// trees are `workspace/...` and `home/agent/...`.
 const S3GatewayBucket = "lydiabox"
 
 // S3GatewayAccessKey is the access key of the virtual S3 gateway; the
@@ -38,7 +34,7 @@ type S3GatewayStatus struct {
 	Enabled bool `json:"enabled"`
 	// Addr is the backend listen address (LYDIABOX_S3_GATEWAY_ADDR).
 	Addr string `json:"addr"`
-	// Path is the public path on the main listener ("/lydiabox").
+	// Path is the public path on the main listener ("/s3").
 	Path    string `json:"path"`
 	Bucket  string `json:"bucket"`
 	Running bool   `json:"running"`
@@ -56,17 +52,16 @@ type S3GatewayOptions struct {
 }
 
 // S3Gateway supervises `juicefs gateway` on LYDIABOX_S3_GATEWAY_ADDR
-// (loopback by default) and reverse-proxies /lydiabox on the main listener
-// to it.
-// S3 clients sign the request path and the Host header (SigV4), so the proxy
-// forwards both unchanged: the bucket is named "lydiabox", and a path-style
-// request to http://<host>:8080/lydiabox/<key> verifies at the backend
-// without re-signing.
+// (loopback by default) and serves it at /s3 on the main listener.
+// S3 clients sign the request path (SigV4), so the proxy (package s3proxy)
+// verifies the client signature, removes the /s3 prefix, and signs the
+// request again for the backend with the same credentials.
 // Clients authenticate with access key "lydiabox" and LYDIABOX_AUTH_TOKEN as
 // the secret key. An empty address disables the gateway.
 type S3Gateway struct {
 	tenant  string
 	addr    string
+	secret  string
 	logPath string
 	child   *childServer
 }
@@ -99,6 +94,7 @@ func NewS3Gateway(opts S3GatewayOptions) (*S3Gateway, error) {
 	logPath := filepath.Join(c.DataDir, "logs", "juicefs-gateway.log")
 	g.logPath = logPath
 	token := c.AuthToken
+	g.secret = token
 	g.child = &childServer{
 		name: "juicefs gateway", log: opts.Logger.With("component", "s3gateway", "tenant", c.TenantID),
 		runner: opts.Runner, dial: opts.Dial, readyTimeout: opts.ReadyTimeout, fixedAddr: g.addr,
@@ -148,16 +144,22 @@ func (g *S3Gateway) Status(tenantID string) S3GatewayStatus {
 	return S3GatewayStatus{Enabled: true, Addr: g.addr, Path: S3GatewayPrefix, Bucket: S3GatewayBucket, Running: g.child.Addr() != ""}
 }
 
-// Handler returns the reverse proxy for S3GatewayPrefix and below. It answers 503 while
-// the backend is down or the gateway is disabled. The backend does its own
-// SigV4 authentication, so the caller must not add API authentication.
+// Handler returns the verify-and-re-sign proxy for S3GatewayPrefix and
+// below. It answers 503 while the backend is down or the gateway is
+// disabled. The proxy checks the SigV4 signature itself, so the caller must
+// not add API authentication.
 func (g *S3Gateway) Handler() http.Handler {
 	if g.child == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "the S3 gateway is disabled (LYDIABOX_S3_GATEWAY_ADDR is empty)", http.StatusServiceUnavailable)
 		})
 	}
-	proxy := NewS3Proxy(&url.URL{Scheme: "http", Host: dialAddr(g.addr)})
+	proxy, err := NewS3Proxy(&url.URL{Scheme: "http", Host: dialAddr(g.addr)}, g.secret)
+	if err != nil {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		})
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if g.child.Addr() == "" {
 			http.Error(w, "the S3 gateway is not running", http.StatusServiceUnavailable)
@@ -167,20 +169,12 @@ func (g *S3Gateway) Handler() http.Handler {
 	})
 }
 
-// NewS3Proxy forwards requests to the S3 server at backend without changes:
-// the escaped path, the query, the Host header, and every x-amz-* and
-// Authorization header stay as the client signed them. It adds no
-// X-Forwarded-* headers.
-func NewS3Proxy(backend *url.URL) http.Handler {
-	return &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.Out.URL.Scheme = backend.Scheme
-			pr.Out.URL.Host = backend.Host
-			pr.Out.URL.Path = pr.In.URL.Path
-			pr.Out.URL.RawPath = pr.In.URL.RawPath
-			pr.Out.URL.RawQuery = pr.In.URL.RawQuery
-			pr.Out.Host = pr.In.Host
-		},
-		FlushInterval: -1,
-	}
+// NewS3Proxy serves the S3 server at backend under S3GatewayPrefix: it
+// verifies SigV4 with access key S3GatewayAccessKey and secret, removes the
+// prefix, and re-signs the request for the backend with the same
+// credentials. The Host header and the query stay unchanged.
+func NewS3Proxy(backend *url.URL, secret string) (http.Handler, error) {
+	return s3proxy.New(s3proxy.Options{
+		AccessKey: S3GatewayAccessKey, SecretKey: secret, Backend: backend, Prefix: S3GatewayPrefix,
+	})
 }
