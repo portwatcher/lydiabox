@@ -65,7 +65,34 @@ func IptablesRules(nw Network, webrtcPort int, add bool) [][]string {
 		rules = append(rules, []string{"-t", "nat", app, "PREROUTING", "!", "-i", tap, "-p", "udp", "--dport",
 			fmt.Sprint(webrtcPort), "-j", "DNAT", "--to-destination", nw.GuestIP})
 	}
+	// Appended after the inserted private-network drops.
+	return append(rules, ForwardAcceptRules(nw, webrtcPort, app)...)
+}
+
+// ForwardAcceptRules returns the iptables rules that let guest traffic
+// through a filter FORWARD chain with policy DROP (Docker and ufw set it).
+// Every base chain on the forward hook must accept a packet, so the accept
+// in the lydiabox nftables table does not override that policy; the
+// private-network drops of the lydiabox table still apply.
+func ForwardAcceptRules(nw Network, webrtcPort int, op string) [][]string {
+	rules := [][]string{
+		{op, "FORWARD", "-i", nw.Tap, "-j", "ACCEPT"},
+		{op, "FORWARD", "-o", nw.Tap, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"},
+	}
+	if webrtcPort > 0 {
+		rules = append(rules, []string{op, "FORWARD", "-o", nw.Tap, "-p", "udp", "--dport", fmt.Sprint(webrtcPort), "-j", "ACCEPT"})
+	}
 	return rules
+}
+
+// forwardPolicyDrop reports whether the iptables filter FORWARD chain drops
+// by default.
+func (f Firewall) forwardPolicyDrop(ctx context.Context, ipt string) bool {
+	var out strings.Builder
+	if err := f.Runner.Run(ctx, storage.Command{Path: ipt, Args: []string{"-w", "-S", "FORWARD"}, Stdout: &out}); err != nil {
+		return false
+	}
+	return strings.Contains(out.String(), "-P FORWARD DROP")
 }
 
 // Setup enables forwarding and installs the rules.
@@ -78,6 +105,13 @@ func (f Firewall) Setup(ctx context.Context, nw Network, webrtcPort int) error {
 		script := NftScript(nw, webrtcPort)
 		if err := f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"-f", "-"}, Stdin: strings.NewReader(script)}); err != nil {
 			return fmt.Errorf("chv: install nftables rules: %w", err)
+		}
+		if ipt, err := f.LookPath("iptables"); err == nil && f.forwardPolicyDrop(ctx, ipt) {
+			for _, r := range ForwardAcceptRules(nw, webrtcPort, "-I") {
+				if err := f.Runner.Run(ctx, storage.Command{Path: ipt, Args: append([]string{"-w"}, r...)}); err != nil {
+					return fmt.Errorf("chv: allow guest traffic in the iptables FORWARD chain: %w", err)
+				}
+			}
 		}
 		return nil
 	}
@@ -96,6 +130,12 @@ func (f Firewall) Setup(ctx context.Context, nw Network, webrtcPort int) error {
 // Teardown removes the rules (missing rules are not an error).
 func (f Firewall) Teardown(ctx context.Context, nw Network, webrtcPort int) error {
 	if nft, err := f.LookPath("nft"); err == nil {
+		if ipt, err := f.LookPath("iptables"); err == nil {
+			for _, r := range ForwardAcceptRules(nw, webrtcPort, "-D") {
+				// Missing rules are expected when the FORWARD policy is ACCEPT.
+				_ = f.Runner.Run(ctx, storage.Command{Path: ipt, Args: append([]string{"-w"}, r...)})
+			}
+		}
 		err := f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"delete", "table", "ip", tableName(nw)}})
 		if err != nil && !strings.Contains(err.Error(), "No such file") {
 			return err
