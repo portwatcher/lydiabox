@@ -10,7 +10,7 @@
 !/internal/webui/dist/.gitkeep
 
 # Local configuration and data
-.env
+/.env
 lydiabox.yaml
 /.lydiabox/
 /data/
