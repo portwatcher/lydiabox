@@ -133,6 +133,8 @@ behind NAT and cannot reach private networks of the host. Other tenants
 get their own subnet, `172.30.<n>.0/24` (n = 1 to 254, kept in the state
 database).
 
+To boot and check the `chv` driver on a KVM host (also nested in Lima on a Mac), see [docs/kvm-test.md](docs/kvm-test.md).
+
 ### Docker fallback (`docker`)
 
 Without `/dev/kvm` (for example on a VPS without nested virtualization),

@@ -14,7 +14,9 @@ Status values:
 - **missing**: not implemented.
 
 "Verified by" names Go tests (`go test ./...`), web tests (`npm run test`),
-the integration run at the end of this document (**E2E**), or `unverified`.
+the integration run at the end of this document (**E2E**), the `chv` run
+on KVM ([Integration run (chv on KVM)](#integration-run-chv-on-kvm),
+**KVM run**), or `unverified`.
 
 ## Summary
 
@@ -32,11 +34,11 @@ the integration run at the end of this document (**E2E**), or `unverified`.
 | 5. Web UI | 6 | 0 | 0 | 0 |
 | 6. Phase gates | 6 | 0 | 0 | 0 |
 
-Open items (not `done`):
-
-| Item | Status | Reason |
-| :--- | :--- | :--- |
-| Real KVM boot | unverified | This macOS host has no `/dev/kvm`. The Phase 2 gate asks for payload generation and a mock lifecycle, which the tests cover: `TestBuildConfigPayload` and `TestTenantNetwork` (the `vm.create` JSON, per-tenant network and kernel command line), `TestLifecycleAgainstMockCloudHypervisor` (two `virtiofsd` processes, a fake `cloud-hypervisor` API socket: `vm.create`, `vm.boot`, `vm.pause`, `vm.resume`, `vm.shutdown`, adoption after a restart), `TestVsockHandshake` (`CONNECT <port>` / `OK` and the `vsock.sock_<port>` listeners), and `TestNetworkRules` (nftables and iptables rules). The kernel, initramfs, and squashfs build and a real boot were not run. |
+Open items (not `done`): none. The last one, the real KVM boot, passed:
+see [Integration run (chv on KVM)](#integration-run-chv-on-kvm) and
+[kvm-test.md](kvm-test.md). Not tested in that run: GPU passthrough (no
+PCI GPU in the Lima VM), WebRTC video from a browser, and an amd64 KVM
+host.
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
 host state database restore, `virtiofsd` on `linux/arm64`, the Antigravity
@@ -60,7 +62,7 @@ single WebRTC UDP port, and the extra packages.
 | JuiceFS with `sqlite3://` metadata and background snapshot sync | done | `internal/storage` | `TestSyncUploadsOnlyChanges`; E2E |
 | File access while the VM is `STOPPED`: Web UI, WebDAV | done | `internal/storage/files`, `internal/storage/webdav.go` | `TestFileAPICRUD`; E2E |
 | Virtual S3 gateway | done | `internal/storage/s3gateway.go`, `internal/storage/s3proxy`, `internal/api/routes_s3.go` | `TestS3GatewaySupervisor`, `TestS3RouteVerifiesAndResigns`, `TestRoundTrip`; E2E (`aws s3` through port 8080 at `/s3`, steps 43 to 52) |
-| Persistent root (squashfs + `root-upper.img` overlay) | done (`chv`) | `deploy/initramfs/init`, `internal/vmm/chv` | `TestBuildConfigPayload`; boot unverified |
+| Persistent root (squashfs + `root-upper.img` overlay) | done (`chv`) | `deploy/initramfs/init`, `internal/vmm/chv` | `TestBuildConfigPayload`; KVM run (steps K11, K15) |
 | Persistent root with the `docker` driver: stop keeps the container; recreated only when the image, settings, or guest binary change, or on `resetRoot` | done | `internal/vmm/docker` | `TestStopKeepsContainer`, `TestBootStartsExistingContainer`, `TestRecreateOnChangedSpec`; E2E (a file in `/etc` survives stop and wake) |
 | Five harnesses | done | `internal/harness/adapters` | `TestDiscoverAndParse`, `TestHotSwitchPairs` |
 | magpie on the host, bridged into the VM, keys only on the host | done | `internal/magpie`, `internal/guest/credproxy` | `TestGatewayRoundTripOverUnixSockets`; E2E (`/api/hello` from the guest) |
@@ -81,7 +83,7 @@ single WebRTC UDP port, and the extra packages.
 | `tenantID string` on `vmm.Driver` | done | `internal/vmm/driver.go` | `TestDockerLifecycleAndSockets` |
 | `tenantID string` on `harness.Manager` | done | `internal/harness/manager*.go` | `TestCreateDeleteAndLeases` |
 | `tenantID` on the connector broker | done | `internal/connector` (every method), `broker.New` (one broker per tenant) | `TestGitCred` |
-| `chv` and `docker` drivers, `LYDIABOX_VM_DRIVER` (`auto`, `chv`, `docker`) | done | `internal/vmm/chv`, `internal/vmm/docker`, `internal/config` | `TestResolveVMDriver`; E2E (`docker`) |
+| `chv` and `docker` drivers, `LYDIABOX_VM_DRIVER` (`auto`, `chv`, `docker`) | done | `internal/vmm/chv`, `internal/vmm/docker`, `internal/config` | `TestResolveVMDriver`; E2E (`docker`); KVM run (`chv`) |
 | `juicefs` and `magpie` run only on the host | done | `internal/storage`, `internal/magpie`; the guest image has neither | Dockerfile review |
 | Path-traversal sandboxing with `os.Root` on File APIs | done | `internal/storage/files`, `internal/harness/safefile` | `TestTraversalRejected`, `TestSymlinkEscapes`; E2E (`..` gives `400`) |
 
@@ -141,15 +143,15 @@ single WebRTC UDP port, and the extra packages.
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
-| Two `virtiofsd` daemons with the given flags | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor` |
-| `cloud-hypervisor --api-socket`, `PUT vm.create` payload (CPUs, shared memory, payload, 3 disks, 2 fs, vsock, net, devices) | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload` |
-| Auto-built read-only `lydiabox-guest.ext4` | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor` |
-| TAP `172.30.0.2/24`, NAT, no access to host private networks | done | `internal/vmm/chv/network.go` | `TestNetworkRules` |
+| Two `virtiofsd` daemons with the given flags | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor`; KVM run |
+| `cloud-hypervisor --api-socket`, `PUT vm.create` payload (CPUs, shared memory, payload, 3 disks with `image_type` `Raw`, 2 fs with one request queue, vsock, net, devices; `console=ttyAMA0` on arm64) | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload`; KVM run |
+| Auto-built read-only `lydiabox-guest.ext4` | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor`; KVM run |
+| TAP `172.30.0.2/24`, NAT, no access to host private networks | done | `internal/vmm/chv/network.go` | `TestNetworkRules`, `TestFirewallForwardPolicyDrop`; KVM run (steps K7, K8) |
 | Per-tenant subnet: `default` keeps `172.30.0.0/24`; other tenants get `172.30.<n>.0/24` from a stable index in the store (`vm_networks`), passed to the initramfs as `lydiabox.ip` / `lydiabox.gw` | done | `internal/vmm/chv/payload.go`, `internal/store/vmnet.go`, `internal/cli/wire_vm.go` | `TestTenantNetwork`, `TestTenantSubnet` |
 | Optional VFIO GPU device | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload` |
-| `vm.boot`, `vm.pause`, `vm.resume`, `vm.shutdown` | done | `internal/vmm/chv/client.go` | `TestLifecycleAgainstMockCloudHypervisor` |
-| vsock `CONNECT <port>` / `OK`, and `vsock.sock_<port>` listeners | done | `internal/vmm/chv/vsock.go` | `TestVsockHandshake` |
-| Initramfs: squashfs, ext4 upper, overlay, virtiofs, guest bind mount, `switch_root` | done | `deploy/initramfs/init` | shellcheck; boot unverified |
+| `vm.boot`, `vm.pause`, `vm.resume`, `vm.shutdown` | done | `internal/vmm/chv/client.go` | `TestLifecycleAgainstMockCloudHypervisor`; KVM run |
+| vsock `CONNECT <port>` / `OK`, and `vsock.sock_<port>` listeners | done | `internal/vmm/chv/vsock.go` | `TestVsockHandshake`; KVM run (steps K3, K9, K10) |
+| Initramfs: squashfs, ext4 upper, overlay, virtiofs, guest bind mount, `switch_root` | done | `deploy/initramfs/init` | shellcheck; KVM run |
 | `EnsureRunning` singleflight wake from terminal, session, desktop, MCP | done | `internal/vmm/controller.go` | `TestEnsureRunningIsSingleflight`; E2E (`wake`, session start) |
 | Leases (PTY, desktop), idle timeout, `sync`, pause | done | `internal/vmm/controller.go` | `TestIdleTimerHibernatesWithoutLeases`; E2E (idle pause) |
 | `docker` driver: same image and protocol over a bind-mounted UNIX socket, persistent root | done | `internal/vmm/docker` | `TestDockerLifecycleAndSockets`, `TestStopKeepsContainer`; E2E (steps 35 to 38) |
@@ -412,6 +414,104 @@ switch between real harness CLIs, and OAuth against real providers.
 
 Not fixed: in Takeover mode, text inserted without key events (IME commit,
 paste) does not reach the guest; typed keys do.
+
+## Integration run (chv on KVM)
+
+Date: 2026-11-10. Host: Apple M3 Pro (macOS 26), Lima 2.3.0 VM with
+`vmType: vz` and `nestedVirtualization: true` (Ubuntu 24.04 arm64, kernel
+6.8, 8 vCPUs, 12 GiB, 80 GiB disk). Nested KVM works: `/dev/kvm` is
+present in the Lima VM. The guest ran with Cloud Hypervisor 54.0,
+virtiofsd 1.14.0 (built from source), the `ch-6.12.8` kernel, and the
+`desktop-slim` root filesystem. MinIO ran in Docker in the Lima VM. The
+procedure is in [kvm-test.md](kvm-test.md).
+
+Build times in the Lima VM (`build-artifacts.sh --slim`, stages in
+parallel): 904 s in total; kernel compile 591 s, `desktop-slim` packages
+398 s, virtiofsd `cargo build` 140 s, `mksquashfs` 88 s. A rebuild after a
+change to `lydiabox-init` took 99 s. Sizes: `vmlinux` 23 MiB,
+`initramfs.cpio.gz` 1 MiB, `rootfs.squashfs` 219 MiB. The kernel config
+needed no change: `ch_defconfig` exists for arm64 in the fork, and
+`kernel.config` merged without warnings.
+
+Boot time (`POST /vm/wake` to `RUNNING`): 45 s to 85 s with 2 or 4 vCPUs.
+The guest is slow under nested virtualization (`python3 -c pass` takes
+3.5 s), and other processes loaded the Mac during the run (load average
+about 150). With 4 vCPUs, one boot did not finish in the 120 s boot limit;
+the final runs used 2 vCPUs and 2 GiB (`LYDIABOX_VM_CPUS=2`,
+`LYDIABOX_VM_MEM_MB=2048`).
+
+Final run (all fixes below applied), `LYDIABOX_IDLE_TIMEOUT=60s`:
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| K1 | `POST /vm/wake` from `STOPPED`: `RUNNING` in 85 s; `GET /vm/status` shows `"driver":"chv"`, 2 CPUs, 2048 MiB | pass |
+| K2 | `shell` session over the PTY WebSocket: `uname -a` gives `Linux lydiabox 6.12.8+ ... aarch64`; `id` gives `uid=1000(agent)`; `grep -c processor /proc/cpuinfo` gives 2 | pass |
+| K3 | `mount`: `overlay on /` (lower `/mnt/ro`, upper `/mnt/rw/upper`), `lydia_home on /home/agent type virtiofs`, `lydia_workspace on /workspace type virtiofs` | pass |
+| K4 | `PATH` includes `/usr/local/bin`; `lydiabox-guest` is found | pass (after fix 5) |
+| K5 | A file written in the guest under `/workspace` is read with `GET /fs/workspace/text` | pass |
+| K6 | A file written with `PUT /fs/workspace/text` is read in the guest | pass |
+| K7 | `curl -sI https://example.com` in the guest: `HTTP/2 200` | pass (after fix 3) |
+| K8 | From the guest, the host LAN address `192.168.5.15:8080`, the TAP host address `172.30.0.1:8080`, and the Docker bridge `172.17.0.1:9000` time out | pass |
+| K9 | `curl http://127.0.0.1:3425/v1/models` in the guest reaches magpie through vsock port 9002: 40 of 40 requests give 200 | pass (after fix 6) |
+| K10 | `lydiabox-guest git-cred get` reaches the host broker over vsock port 9001: exit 0, no output (broker 404, no account). With `LYDIABOX_HOST_ADDR=vsock://2:9555` it fails (`connection reset by peer`) | pass |
+| K11 | Root persistence: `sudo tee /etc/lydiabox-kvm.txt`, `POST /vm/stop`, `POST /vm/wake` (69 s), the file has the same content | pass |
+| K12 | `PUT /desktop/mode` `TAKEOVER` and `OBSERVER` 200; `Xvfb :0` runs | pass |
+| K13 | `POST /vm/hibernate`: `PAUSED`, and `vm.info` on the Cloud Hypervisor API socket gives `"state":"Paused"`; `wake` resumes in 0.2 s; the same shell session still has its variable | pass |
+| K14 | `POST /vm/stop`: `STOPPED` in 4 s; no `cloud-hypervisor` or `virtiofsd` process, no TAP device, no `lydiabox_*` nftables table, no `FORWARD` rules | pass |
+| K15 | `DELETE /sessions/{id}` for every session (5 s for a live shell), then the VM pauses about 60 s after the last lease ends | pass (after fix 4) |
+| K16 | `SIGTERM` to `lydiabox up`: the VM stops, virtiofsd logs "Client disconnected, shutting down", JuiceFS unmounts, "shutdown complete" | pass |
+
+Not tested: GPU passthrough (the Lima VM has no PCI GPU to pass through),
+WebRTC video in a browser over the forwarded UDP port, and an amd64 KVM
+host.
+
+### Bugs found and fixed (chv on KVM)
+
+1. Cloud Hypervisor 54 refused `vm.boot` with "Image type required for
+   disk". The disks now have `"image_type": "Raw"`.
+2. Cloud Hypervisor refused the virtio-fs devices with "Queue number is
+   not correct": virtiofsd serves one request queue. `num_queues` is now 1
+   (design section 4.3 said 2).
+3. The guest had no internet access on a host with Docker: Docker sets
+   the iptables `FORWARD` policy to `DROP`, and an accept in the LydiaBox
+   nftables table does not override a drop in another table. When the
+   `FORWARD` policy is `DROP`, the driver now also inserts iptables accept
+   rules for the TAP device (and removes them on stop); the private-network
+   drops of the LydiaBox table still apply (`TestFirewallForwardPolicyDrop`).
+4. `DELETE /api/v1/sessions/{id}` of a live shell never returned:
+   `ptyConn.Wait` took the read lock that the terminal pump holds while it
+   waits for output, so it ignored its context. `Wait` now reads the exit
+   state without that lock (`TestPTYWaitDoesNotBlockBehindRead`). Also, an
+   interactive shell ignores `SIGINT` and `SIGTERM`, so the session stayed
+   alive and kept its PTY lease (the VM never went idle). The stop sequence
+   now sends `SIGHUP` after `SIGTERM`.
+5. In the VM, `PATH` was the initramfs value (`/bin:/sbin:/usr/bin:/usr/sbin`),
+   so sessions did not find `/usr/local/bin/lydiabox-guest`.
+   `lydiabox-init` now sets the standard `PATH`, `LANG`, `LC_ALL`, and
+   `TZ`.
+6. Most guest-to-host tunnel requests (magpie on port 9002) failed with an
+   empty reply. The guest RPC dialer used a non-blocking `AF_VSOCK`
+   connect and took the first writable event as the end of the connect,
+   before the connection was established. It now connects in blocking mode
+   (bounded by the kernel vsock connect timeout), as the git-cred dialer
+   already did.
+7. The arm64 serial console is `ttyAMA0` (PL011), so `console=ttyS0` gave
+   no guest console output. The kernel command line now uses `ttyAMA0` on
+   arm64.
+8. `build-artifacts.sh --slim` built the full `desktop` stage into
+   `rootfs.squashfs`. The `ROOTFS_STAGE` build argument now selects
+   `desktop-slim`.
+
+Open items:
+
+- `vm.shutdown` stops the guest without a guest power-off, so the ext4
+  upper layer is replayed from its journal at the next boot ("recovery
+  complete"). The controller syncs the guest file systems first, and no
+  data was lost in the run.
+- The guest kernel logs a `pps pps0` line every second (from
+  `ch_defconfig`); it fills `dmesg`.
+- On nested virtualization with a loaded host, a boot can take more than
+  the fixed 120 s boot limit.
 
 ## Final validation
 
