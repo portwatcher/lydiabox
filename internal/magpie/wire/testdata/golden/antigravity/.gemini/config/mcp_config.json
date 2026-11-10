@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "lydiabox": {
+      "serverUrl": "http://127.0.0.1:8910/mcp"
+    },
+    "lydiabox-connectors": {
+      "serverUrl": "http://127.0.0.1:8911/mcp"
+    }
+  }
+}

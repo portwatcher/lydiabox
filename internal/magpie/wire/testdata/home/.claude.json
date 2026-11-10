@@ -1,0 +1,14 @@
+{
+  "numStartups": 42,
+  "theme": "dark",
+  "projects": {
+    "/workspace/lydiabox": {
+      "allowedTools": [],
+      "mcpServers": {}
+    }
+  },
+  "mcpServers": {
+    "github": {"type": "stdio", "command": "github-mcp-server", "args": ["stdio"]},
+    "lydiabox": {"type": "sse", "url": "http://old.invalid/sse", "headers": {"X-Trace": "1"}}
+  }
+}

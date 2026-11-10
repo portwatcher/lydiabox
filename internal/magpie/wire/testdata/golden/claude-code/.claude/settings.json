@@ -1,0 +1,19 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(git status:*)",
+            "Read(/workspace/**)"
+        ],
+        "deny": []
+    },
+    "env": {
+        "BASH_DEFAULT_TIMEOUT_MS": "120000",
+        "ANTHROPIC_BASE_URL": "http://127.0.0.1:3425",
+        "ANTHROPIC_AUTH_TOKEN": "lydiabox-local"
+    },
+    "model": "kimi/kimi-k3",
+    "statusLine": {
+        "type": "command",
+        "command": "~/.claude/statusline.sh"
+    }
+}

@@ -1,0 +1,12 @@
+{
+  "theme": "solarized",
+  "telemetry": false,
+  "model": "kimi/kimi-k3",
+  "env": {
+    "HTTP_PROXY": "http://proxy.local:3128",
+    "GOOGLE_GEMINI_BASE_URL": "http://127.0.0.1:3425",
+    "GEMINI_API_KEY": "lydiabox-local"
+  },
+  "endpoint": "http://127.0.0.1:3425",
+  "apiKey": "lydiabox-local"
+}

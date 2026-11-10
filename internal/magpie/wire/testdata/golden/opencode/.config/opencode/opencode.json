@@ -1,0 +1,48 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "tokyonight",
+  "provider": {
+    "anthropic": {
+      "options": {
+        "timeout": 600000
+      }
+    },
+    "lydiabox": {
+      "name": "LydiaBox (magpie)",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://127.0.0.1:3425/v1",
+        "apiKey": "lydiabox-local"
+      },
+      "models": {
+        "kimi/kimi-k3": {
+          "name": "kimi/kimi-k3"
+        }
+      }
+    }
+  },
+  "model": "lydiabox/kimi/kimi-k3",
+  "mcp": {
+    "local-db": {
+      "type": "local",
+      "command": [
+        "db-mcp",
+        "--readonly"
+      ],
+      "enabled": true
+    },
+    "lydiabox": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8910/mcp",
+      "enabled": true
+    },
+    "lydiabox-connectors": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8911/mcp",
+      "enabled": true
+    }
+  },
+  "keybinds": {
+    "leader": "ctrl+x"
+  }
+}

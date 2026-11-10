@@ -1,0 +1,6 @@
+{
+  "theme": "solarized",
+  "telemetry": false,
+  "model": "gemini-3-pro",
+  "env": {"HTTP_PROXY": "http://proxy.local:3128"}
+}

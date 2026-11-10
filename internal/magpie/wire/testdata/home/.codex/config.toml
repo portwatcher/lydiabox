@@ -1,0 +1,23 @@
+# Personal Codex configuration. Keep this comment.
+approval_policy = "on-request"  # ask before running commands
+model = "gpt-5.2" # my default model
+model_reasoning_effort = "high"
+
+[profiles.fast]
+# The fast profile keeps its own model.
+model = "gpt-5.2-mini"
+
+# Local docs server
+[mcp_servers.docs]
+command = "npx"
+args = [
+  "-y",
+  "@acme/docs-mcp", # pinned
+]
+
+[mcp_servers.lydiabox]
+url = "http://127.0.0.1:9999/mcp" # stale port
+startup_timeout_sec = 20
+
+[tui]
+notifications = true

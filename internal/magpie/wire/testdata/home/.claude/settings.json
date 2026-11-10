@@ -1,0 +1,12 @@
+{
+    "permissions": {
+        "allow": ["Bash(git status:*)", "Read(/workspace/**)"],
+        "deny": []
+    },
+    "env": {
+        "BASH_DEFAULT_TIMEOUT_MS": "120000",
+        "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+    },
+    "model": "opus",
+    "statusLine": {"type": "command", "command": "~/.claude/statusline.sh"}
+}

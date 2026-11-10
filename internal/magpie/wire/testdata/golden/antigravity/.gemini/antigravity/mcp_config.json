@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/workspace"
+      ]
+    },
+    "lydiabox": {
+      "serverUrl": "http://127.0.0.1:8910/mcp"
+    },
+    "lydiabox-connectors": {
+      "serverUrl": "http://127.0.0.1:8911/mcp"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+# Personal Codex configuration. Keep this comment.
+approval_policy = "on-request"  # ask before running commands
+model = "kimi/kimi-k3" # my default model
+model_reasoning_effort = "high"
+model_provider = "lydiabox"
+
+[profiles.fast]
+# The fast profile keeps its own model.
+model = "gpt-5.2-mini"
+
+# Local docs server
+[mcp_servers.docs]
+command = "npx"
+args = [
+  "-y",
+  "@acme/docs-mcp", # pinned
+]
+
+[mcp_servers.lydiabox]
+url = "http://127.0.0.1:8910/mcp" # stale port
+startup_timeout_sec = 20
+
+[tui]
+notifications = true
+
+[model_providers.lydiabox]
+name = "LydiaBox (magpie)"
+base_url = "http://127.0.0.1:3425/v1"
+env_key = "LYDIABOX_GATEWAY_TOKEN"
+wire_api = "responses"
+
+[mcp_servers.lydiabox-connectors]
+url = "http://127.0.0.1:8911/mcp"

@@ -1,0 +1,30 @@
+{
+  "numStartups": 42,
+  "theme": "dark",
+  "projects": {
+    "/workspace/lydiabox": {
+      "allowedTools": [],
+      "mcpServers": {}
+    }
+  },
+  "mcpServers": {
+    "github": {
+      "type": "stdio",
+      "command": "github-mcp-server",
+      "args": [
+        "stdio"
+      ]
+    },
+    "lydiabox": {
+      "type": "http",
+      "url": "http://127.0.0.1:8910/mcp",
+      "headers": {
+        "X-Trace": "1"
+      }
+    },
+    "lydiabox-connectors": {
+      "type": "http",
+      "url": "http://127.0.0.1:8911/mcp"
+    }
+  }
+}

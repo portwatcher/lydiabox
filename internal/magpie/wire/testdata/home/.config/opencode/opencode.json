@@ -1,0 +1,12 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "tokyonight",
+  "provider": {
+    "anthropic": {"options": {"timeout": 600000}}
+  },
+  "model": "anthropic/claude-sonnet-4-5",
+  "mcp": {
+    "local-db": {"type": "local", "command": ["db-mcp", "--readonly"], "enabled": true}
+  },
+  "keybinds": {"leader": "ctrl+x"}
+}
