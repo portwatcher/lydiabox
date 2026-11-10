@@ -1,0 +1,477 @@
+package vmm
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/lydiabox/lydiabox/internal/api"
+)
+
+// Lease kinds (docs/api.md section 7).
+const (
+	LeasePTY     = "pty"
+	LeaseDesktop = "desktop"
+)
+
+// Default timeouts.
+const (
+	DefaultBootTimeout = 120 * time.Second
+	FlushTimeout       = 30 * time.Second
+)
+
+// Options configures a Controller.
+type Options struct {
+	Driver Driver
+	// Spec builds the VM spec for a tenant at boot time.
+	Spec func(ctx context.Context, tenantID string) (Spec, error)
+	// IdleTimeout hibernates the VM after this long without leases
+	// (0 disables).
+	IdleTimeout time.Duration
+	// Ready reports whether the guest daemon answers; EnsureRunning polls it
+	// after boot or resume.
+	Ready func(ctx context.Context, tenantID string) error
+	// Flush syncs guest filesystems before a pause or stop.
+	Flush func(ctx context.Context, tenantID string) error
+	// OnStateChange is called after every state change (outside locks).
+	OnStateChange func(tenantID string, st State)
+	// BootTimeout bounds one boot (default 120 s).
+	BootTimeout time.Duration
+	// CPUs, MemMB, and GPU are reported by Status.
+	CPUs  int
+	MemMB int
+	GPU   string
+	// Logger and Now are optional.
+	Logger *slog.Logger
+	Now    func() time.Time
+}
+
+// Controller owns the VM lifecycle of every tenant: singleflight boot,
+// leases, and idle hibernation.
+type Controller struct {
+	opts Options
+
+	mu      sync.Mutex
+	tenants map[string]*tenantVM
+}
+
+type tenantVM struct {
+	// trans serializes driver transitions (boot, pause, stop).
+	trans sync.Mutex
+
+	state     State
+	bootedAt  time.Time
+	leases    map[string]int
+	idleSince time.Time
+	lastError string
+	boot      *bootCall
+	timer     *time.Timer
+	pausing   bool
+}
+
+type bootCall struct {
+	done chan struct{}
+	err  error
+}
+
+// NewController returns a controller. Call Refresh to adopt a VM that
+// survived a host restart.
+func NewController(opts Options) (*Controller, error) {
+	if opts.Driver == nil || opts.Spec == nil {
+		return nil, errors.New("vmm: Driver and Spec are required")
+	}
+	if opts.BootTimeout <= 0 {
+		opts.BootTimeout = DefaultBootTimeout
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	return &Controller{opts: opts, tenants: map[string]*tenantVM{}}, nil
+}
+
+// Driver returns the backend.
+func (c *Controller) Driver() Driver { return c.opts.Driver }
+
+func (c *Controller) tenant(tid string) *tenantVM {
+	t := c.tenants[tid]
+	if t == nil {
+		t = &tenantVM{state: StateStopped, leases: map[string]int{}, idleSince: c.opts.Now().UTC()}
+		c.tenants[tid] = t
+	}
+	return t
+}
+
+func (c *Controller) setState(tid string, t *tenantVM, st State) {
+	c.mu.Lock()
+	changed := t.state != st
+	t.state = st
+	switch st {
+	case StateRunning:
+		if t.bootedAt.IsZero() {
+			t.bootedAt = c.opts.Now().UTC()
+		}
+		if changed && len(t.leases) == 0 {
+			// The idle period starts when the VM becomes usable.
+			t.idleSince = c.opts.Now().UTC()
+		}
+		c.armIdleLocked(tid, t)
+	case StateStopped:
+		t.bootedAt = time.Time{}
+		c.stopTimerLocked(t)
+	default:
+		c.stopTimerLocked(t)
+	}
+	c.mu.Unlock()
+	if changed {
+		c.opts.Logger.Info("vm state", "tenant", tid, "state", st)
+		if c.opts.OnStateChange != nil {
+			c.opts.OnStateChange(tid, st)
+		}
+	}
+}
+
+// Refresh reads the driver state, adopting a VM that is already running.
+func (c *Controller) Refresh(ctx context.Context, tid string) error {
+	c.mu.Lock()
+	t := c.tenant(tid)
+	c.mu.Unlock()
+	t.trans.Lock()
+	defer t.trans.Unlock()
+	st, err := c.opts.Driver.State(ctx, tid)
+	if err != nil {
+		return err
+	}
+	if st == StateBooting {
+		st = StateStopped
+	}
+	c.setState(tid, t, st)
+	return nil
+}
+
+// EnsureRunning boots a stopped VM or resumes a paused one and waits until
+// the guest daemon answers. Concurrent calls share one boot, which keeps
+// running when a caller's ctx ends.
+func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
+	c.mu.Lock()
+	t := c.tenant(tid)
+	if t.state == StateRunning && !t.pausing && t.boot == nil {
+		c.mu.Unlock()
+		return nil
+	}
+	call := t.boot
+	if call == nil {
+		call = &bootCall{done: make(chan struct{})}
+		t.boot = call
+		go c.runBoot(tid, t, call)
+	}
+	c.mu.Unlock()
+	select {
+	case <-call.done:
+		return call.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *Controller) runBoot(tid string, t *tenantVM, call *bootCall) {
+	t.trans.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), c.opts.BootTimeout)
+	err := c.bootLocked(ctx, tid, t)
+	cancel()
+	t.trans.Unlock()
+	c.mu.Lock()
+	t.boot = nil
+	if err != nil {
+		t.lastError = err.Error()
+	} else {
+		t.lastError = ""
+	}
+	c.mu.Unlock()
+	call.err = err
+	close(call.done)
+}
+
+func (c *Controller) bootLocked(ctx context.Context, tid string, t *tenantVM) error {
+	st, err := c.opts.Driver.State(ctx, tid)
+	if err != nil {
+		return fmt.Errorf("vmm: read VM state: %w", err)
+	}
+	switch st {
+	case StateRunning:
+		// Already running (adopted after a host restart or a cancelled pause).
+	case StatePaused:
+		c.setState(tid, t, StateBooting)
+		if err := c.opts.Driver.Resume(ctx, tid); err != nil {
+			c.setState(tid, t, StatePaused)
+			return fmt.Errorf("vmm: resume: %w", err)
+		}
+	default:
+		c.setState(tid, t, StateBooting)
+		c.mu.Lock()
+		t.bootedAt = time.Time{}
+		c.mu.Unlock()
+		if err := c.create(ctx, tid); err != nil {
+			c.cleanupFailedBoot(tid, t)
+			return err
+		}
+	}
+	if err := c.waitReady(ctx, tid); err != nil {
+		c.cleanupFailedBoot(tid, t)
+		return err
+	}
+	c.mu.Lock()
+	t.pausing = false
+	c.mu.Unlock()
+	c.setState(tid, t, StateRunning)
+	return nil
+}
+
+func (c *Controller) create(ctx context.Context, tid string) error {
+	spec, err := c.opts.Spec(ctx, tid)
+	if err != nil {
+		return fmt.Errorf("vmm: build VM spec: %w", err)
+	}
+	if err := c.opts.Driver.Create(ctx, tid, spec); err != nil {
+		return fmt.Errorf("vmm: create VM: %w", err)
+	}
+	if err := c.opts.Driver.Boot(ctx, tid); err != nil {
+		return fmt.Errorf("vmm: boot VM: %w", err)
+	}
+	return nil
+}
+
+// cleanupFailedBoot tears down a half-started VM so the next attempt starts
+// clean.
+func (c *Controller) cleanupFailedBoot(tid string, t *tenantVM) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := c.opts.Driver.Shutdown(ctx, tid, true); err != nil {
+		c.opts.Logger.Warn("cleanup after failed boot", "tenant", tid, "err", err)
+	}
+	c.setState(tid, t, StateStopped)
+}
+
+func (c *Controller) waitReady(ctx context.Context, tid string) error {
+	if c.opts.Ready == nil {
+		return nil
+	}
+	var last error
+	for {
+		rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		last = c.opts.Ready(rctx, tid)
+		cancel()
+		if last == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("vmm: guest daemon not ready: %w (%v)", ctx.Err(), last)
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+// AcquireLease records activity that keeps the VM awake (an open desktop
+// stream or a running PTY). Acquire the lease before EnsureRunning so an
+// idle hibernation cannot slip in between.
+func (c *Controller) AcquireLease(tid, kind string) func() {
+	c.mu.Lock()
+	t := c.tenant(tid)
+	t.leases[kind]++
+	t.idleSince = time.Time{}
+	c.stopTimerLocked(t)
+	c.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			t.leases[kind]--
+			if t.leases[kind] <= 0 {
+				delete(t.leases, kind)
+			}
+			if len(t.leases) == 0 {
+				t.idleSince = c.opts.Now().UTC()
+				c.armIdleLocked(tid, t)
+			}
+		})
+	}
+}
+
+func (c *Controller) stopTimerLocked(t *tenantVM) {
+	if t.timer != nil {
+		t.timer.Stop()
+		t.timer = nil
+	}
+}
+
+func (c *Controller) armIdleLocked(tid string, t *tenantVM) {
+	c.stopTimerLocked(t)
+	if c.opts.IdleTimeout <= 0 || len(t.leases) > 0 || t.state != StateRunning {
+		return
+	}
+	if t.idleSince.IsZero() {
+		t.idleSince = c.opts.Now().UTC()
+	}
+	wait := c.opts.IdleTimeout - c.opts.Now().Sub(t.idleSince)
+	t.timer = time.AfterFunc(max(wait, 0), func() { c.idleExpired(tid) })
+}
+
+func (c *Controller) idleExpired(tid string) {
+	c.mu.Lock()
+	t := c.tenant(tid)
+	idle := len(t.leases) == 0 && t.state == StateRunning && t.boot == nil &&
+		c.opts.Now().Sub(t.idleSince) >= c.opts.IdleTimeout-time.Second
+	if idle {
+		t.pausing = true
+	}
+	c.mu.Unlock()
+	if !idle {
+		return
+	}
+	c.opts.Logger.Info("vm idle; hibernating", "tenant", tid, "idleTimeout", c.opts.IdleTimeout)
+	err := c.hibernate(context.Background(), tid, true)
+	c.mu.Lock()
+	t.pausing = false
+	c.mu.Unlock()
+	if err != nil && !errors.Is(err, ErrConflict) {
+		c.opts.Logger.Warn("idle hibernate failed", "tenant", tid, "err", err)
+	}
+}
+
+// Hibernate flushes guest filesystems and pauses the VM.
+func (c *Controller) Hibernate(ctx context.Context, tid string) error {
+	return c.hibernate(ctx, tid, false)
+}
+
+func (c *Controller) hibernate(ctx context.Context, tid string, onlyIfIdle bool) error {
+	c.mu.Lock()
+	t := c.tenant(tid)
+	c.mu.Unlock()
+	t.trans.Lock()
+	defer t.trans.Unlock()
+	c.mu.Lock()
+	st, leases := t.state, len(t.leases)
+	c.mu.Unlock()
+	if st != StateRunning {
+		return fmt.Errorf("%w: hibernate while %s", ErrConflict, st)
+	}
+	if onlyIfIdle && leases > 0 {
+		return fmt.Errorf("%w: leases appeared", ErrConflict)
+	}
+	c.flush(ctx, tid)
+	if err := c.opts.Driver.Pause(ctx, tid); err != nil {
+		c.recordError(t, err)
+		return fmt.Errorf("vmm: pause: %w", err)
+	}
+	c.setState(tid, t, StatePaused)
+	return nil
+}
+
+func (c *Controller) flush(ctx context.Context, tid string) error {
+	if c.opts.Flush == nil {
+		return nil
+	}
+	fctx, cancel := context.WithTimeout(ctx, FlushTimeout)
+	defer cancel()
+	err := c.opts.Flush(fctx, tid)
+	if err != nil {
+		c.opts.Logger.Warn("guest filesystem sync failed", "tenant", tid, "err", err)
+	}
+	return err
+}
+
+func (c *Controller) recordError(t *tenantVM, err error) {
+	c.mu.Lock()
+	t.lastError = err.Error()
+	c.mu.Unlock()
+}
+
+// Stop flushes guest filesystems and shuts the VM down. Without force a
+// failed flush aborts the stop; with force the VM is shut down anyway.
+func (c *Controller) Stop(ctx context.Context, tid string, force bool) error {
+	c.mu.Lock()
+	t := c.tenant(tid)
+	c.mu.Unlock()
+	t.trans.Lock()
+	defer t.trans.Unlock()
+	c.mu.Lock()
+	st := t.state
+	c.mu.Unlock()
+	if st == StateStopped {
+		if ds, err := c.opts.Driver.State(ctx, tid); err != nil || ds == StateStopped {
+			return fmt.Errorf("%w: stop while %s", ErrConflict, st)
+		}
+	}
+	if st == StatePaused && !force {
+		if err := c.opts.Driver.Resume(ctx, tid); err != nil {
+			return fmt.Errorf("vmm: resume before stop: %w", err)
+		}
+	}
+	if !force || st == StateRunning {
+		if err := c.flush(ctx, tid); err != nil && !force {
+			return fmt.Errorf("%w: sync guest filesystems before stop: %v (retry with force)", ErrUnavailable, err)
+		}
+	}
+	if err := c.opts.Driver.Shutdown(ctx, tid, force); err != nil {
+		c.recordError(t, err)
+		return fmt.Errorf("vmm: shutdown: %w", err)
+	}
+	c.setState(tid, t, StateStopped)
+	return nil
+}
+
+// Close stops every running VM (host shutdown, before storage unmounts).
+func (c *Controller) Close(ctx context.Context) error {
+	c.mu.Lock()
+	var ids []string
+	for id, t := range c.tenants {
+		c.stopTimerLocked(t)
+		if t.state != StateStopped {
+			ids = append(ids, id)
+		}
+	}
+	c.mu.Unlock()
+	var errs []error
+	for _, id := range ids {
+		if err := c.Stop(ctx, id, true); err != nil && !errors.Is(err, ErrConflict) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// State returns the cached state.
+func (c *Controller) State(tid string) State {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.tenant(tid).state
+}
+
+// Status returns the VMStatus object of docs/api.md section 7.
+func (c *Controller) Status(tid string) Status {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := c.tenant(tid)
+	leases := map[string]int{LeasePTY: 0, LeaseDesktop: 0}
+	for k, v := range t.leases {
+		leases[k] = v
+	}
+	return Status{
+		State: string(t.state), Driver: c.opts.Driver.Name(), CPUs: c.opts.CPUs, MemMB: c.opts.MemMB, GPU: c.opts.GPU,
+		BootedAt: t.bootedAt, Leases: leases, IdleTimeoutSeconds: int64(c.opts.IdleTimeout / time.Second),
+		IdleSince: t.idleSince, LastError: t.lastError,
+	}
+}
+
+// VMStatus implements api.VMStatusSource.
+func (c *Controller) VMStatus(_ context.Context, tid string) (api.VMStatus, error) {
+	st := c.Status(tid)
+	return api.VMStatus{State: st.State, Driver: st.Driver}, nil
+}
