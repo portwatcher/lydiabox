@@ -9,6 +9,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -234,5 +236,50 @@ func TestLocalAppsStartsChromeForCDP(t *testing.T) {
 	}
 	if _, err := apps.CDPEndpoint(context.Background()); err != nil || len(started) != 1 {
 		t.Fatalf("second call restarted chrome: %v %v", started, err)
+	}
+}
+
+func TestCDPEndpointWaitsForStartingChrome(t *testing.T) {
+	dir := t.TempDir()
+	starts := 0
+	apps := NewLocalApps(LocalAppsOptions{
+		CDPPort:           1, // nothing listens: Chrome is still starting
+		ChromeUserDataDir: dir,
+		LookPath:          func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		Start: func(string, []string, []string, string) error {
+			starts++
+			return nil
+		},
+	})
+	call := func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
+		defer cancel()
+		_, err := apps.CDPEndpoint(ctx)
+		return err
+	}
+	if err := call(); err == nil || starts != 1 {
+		t.Fatalf("first call: err %v, starts %d, want an error and 1 start", err, starts)
+	}
+	// The Chrome started above is in its start period: no second start.
+	if err := call(); err == nil || starts != 1 {
+		t.Fatalf("second call: err %v, starts %d, want no new start", err, starts)
+	}
+
+	// A Chrome not started here holds the profile lock (this process
+	// stands in for it): no start.
+	apps = NewLocalApps(LocalAppsOptions{
+		CDPPort: 1, ChromeUserDataDir: dir,
+		LookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		Start: func(string, []string, []string, string) error {
+			starts++
+			return nil
+		},
+	})
+	lock := fmt.Sprintf("lydiabox-%d", os.Getpid())
+	if err := os.Symlink(lock, filepath.Join(dir, "SingletonLock")); err != nil {
+		t.Fatal(err)
+	}
+	if err := call(); err == nil || starts != 1 {
+		t.Fatalf("live profile lock: err %v, starts %d, want no new start", err, starts)
 	}
 }

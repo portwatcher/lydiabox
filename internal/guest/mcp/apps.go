@@ -8,8 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -55,6 +58,8 @@ type LocalAppsOptions struct {
 type LocalApps struct {
 	opts     LocalAppsOptions
 	chromeMu sync.Mutex
+	// chromeStart is the time (Unix nanoseconds) of the last Chrome start.
+	chromeStart atomic.Int64
 }
 
 var (
@@ -140,7 +145,11 @@ func (a *LocalApps) startChrome() error {
 	if err != nil {
 		return err
 	}
-	return a.opts.Start(p, a.ChromeArgs(), a.env(), a.opts.WorkDir)
+	if err := a.opts.Start(p, a.ChromeArgs(), a.env(), a.opts.WorkDir); err != nil {
+		return err
+	}
+	a.chromeStart.Store(time.Now().UnixNano())
+	return nil
 }
 
 func (a *LocalApps) cdpVersion(ctx context.Context) (string, error) {
@@ -178,8 +187,13 @@ func (a *LocalApps) CDPEndpoint(ctx context.Context) (string, error) {
 	if ws, err := a.cdpVersion(ctx); err == nil {
 		return ws, nil
 	}
-	if err := a.startChrome(); err != nil {
-		return "", err
+	// A Chrome that is still starting holds the profile lock. Starting
+	// another one only adds load (it hands its command line to the first
+	// one and exits), so wait for the running one.
+	if !a.chromeRunning() {
+		if err := a.startChrome(); err != nil {
+			return "", err
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -198,6 +212,35 @@ func (a *LocalApps) CDPEndpoint(ctx context.Context) (string, error) {
 			lastErr = err
 		}
 	}
+}
+
+// chromeStartGrace is how long a Chrome started here counts as starting
+// before it has made its profile lock.
+const chromeStartGrace = 3 * time.Minute
+
+// chromeRunning reports whether a Chrome started here is in its start
+// period, or a live process holds the Chrome profile lock. Chrome makes
+// <user-data-dir>/SingletonLock a symbolic link to "<hostname>-<pid>". A
+// second Chrome on the same profile that gets no answer from the first one
+// kills it, so a slow start must not be interrupted.
+func (a *LocalApps) chromeRunning() bool {
+	if t := a.chromeStart.Load(); t != 0 && time.Since(time.Unix(0, t)) < chromeStartGrace {
+		return true
+	}
+	target, err := os.Readlink(filepath.Join(a.opts.ChromeUserDataDir, "SingletonLock"))
+	if err != nil {
+		return false
+	}
+	i := strings.LastIndexByte(target, '-')
+	if i < 0 {
+		return false
+	}
+	pid, err := strconv.Atoi(target[i+1:])
+	if err != nil || pid <= 0 {
+		return false
+	}
+	err = syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 // RunBlender implements Apps: blender --background [file] --python <script>.
