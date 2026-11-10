@@ -1,0 +1,21 @@
+{
+  "id": "msg_4f00aa11dffeLegacyAsst01",
+  "sessionID": "ses_4f00aa11bffeLegacy0000001",
+  "role": "assistant",
+  "time": {
+    "created": 1759305610000,
+    "completed": 1759305660000
+  },
+  "modelID": "gpt-5.2",
+  "providerID": "openai",
+  "cost": 0.004,
+  "tokens": {
+    "input": 1200,
+    "output": 300,
+    "reasoning": 0,
+    "cache": {
+      "read": 0,
+      "write": 0
+    }
+  }
+}
