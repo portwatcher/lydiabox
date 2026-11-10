@@ -452,8 +452,9 @@ Details:
 
 ### `DELETE /api/v1/sessions/{id}[?purge=true]`
 
-Terminates the PTY (`SIGINT`, 3 s, then `SIGTERM`) and removes host
-metadata. With `purge=true`, the native transcript files are also deleted.
+Terminates the PTY (`SIGINT`, 3 s, `SIGTERM`, 2 s, then `SIGHUP` for a
+program that ignores both, such as an interactive shell, 2 s) and removes
+host metadata. With `purge=true`, the native transcript files are also deleted.
 Response `204`.
 
 ### `GET /api/v1/sessions/{id}/ws` — WebSocket
