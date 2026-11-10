@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/lydiabox/lydiabox/internal/guest/rpc"
 )
@@ -71,9 +72,12 @@ type ptyConn struct {
 	st       *rpc.Stream
 	replay   []byte
 
+	// rmu serializes Read, which holds it while it blocks on the stream.
 	rmu     sync.Mutex
 	pending []byte
-	exit    *rpc.PTYEvent
+	// exit is set by Read and read by Wait without rmu, so Wait does not
+	// block behind a Read that waits for output.
+	exit atomic.Pointer[rpc.PTYEvent]
 }
 
 func (p *ptyConn) ID() string     { return p.info.ID }
@@ -83,7 +87,7 @@ func (p *ptyConn) Read(b []byte) (int, error) {
 	p.rmu.Lock()
 	defer p.rmu.Unlock()
 	for len(p.pending) == 0 {
-		if p.exit != nil {
+		if p.exit.Load() != nil {
 			return 0, io.EOF
 		}
 		typ, payload, err := p.st.ReadFrame()
@@ -100,7 +104,7 @@ func (p *ptyConn) Read(b []byte) (int, error) {
 			}
 			switch ev.Type {
 			case "exit":
-				p.exit = &ev
+				p.exit.Store(&ev)
 				return 0, io.EOF
 			case "error":
 				return 0, fmt.Errorf("guestclient: PTY %s: %s", p.info.ID, ev.Message)
@@ -128,10 +132,7 @@ func (p *ptyConn) Signal(sig string) error {
 }
 
 func (p *ptyConn) Wait(ctx context.Context) (int, error) {
-	p.rmu.Lock()
-	exit := p.exit
-	p.rmu.Unlock()
-	if exit != nil {
+	if exit := p.exit.Load(); exit != nil {
 		return exit.Code, nil
 	}
 	res, err := p.c.WaitPTY(ctx, p.tenantID, p.info.ID)
