@@ -67,7 +67,9 @@ func (l *vsockListener) Accept() (net.Conn, error) {
 	)
 	err = rc.Read(func(fd uintptr) bool {
 		nfd, sa, accErr = unix.Accept4(int(fd), unix.SOCK_CLOEXEC|unix.SOCK_NONBLOCK)
-		return !errors.Is(accErr, unix.EAGAIN)
+		// Transient failures wait for the next connection instead of
+		// ending the accept loop.
+		return !errors.Is(accErr, unix.EAGAIN) && !errors.Is(accErr, unix.EINTR) && !errors.Is(accErr, unix.ECONNABORTED)
 	})
 	if err != nil {
 		return nil, err
