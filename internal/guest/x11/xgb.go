@@ -164,6 +164,12 @@ func (x *XGB) Key(keysym uint32, down bool) error {
 		}
 	}
 	if down {
+		// The browser repeats a held key itself (one keydown per repeat). X
+		// server autorepeat would add characters when the keyup arrives late
+		// over the network, so keep it off. The Xfce settings daemon turns it
+		// on at session start, so set it again before each press (an
+		// unchecked request, no round trip).
+		xproto.ChangeKeyboardControl(x.conn, xproto.KbAutoRepeatMode, []uint32{xproto.AutoRepeatModeOff})
 		if shiftKC != 0 {
 			if err := x.fake(xproto.KeyPress, byte(shiftKC), 0, 0); err != nil {
 				return err
