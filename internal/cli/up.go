@@ -15,6 +15,7 @@ import (
 	"github.com/lydiabox/lydiabox/internal/storage"
 	"github.com/lydiabox/lydiabox/internal/storage/files"
 	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
 	"github.com/lydiabox/lydiabox/internal/webui"
 )
 
@@ -30,6 +31,10 @@ type deps struct {
 	Auth      *api.Authenticator
 	// VMStatus feeds GET /api/v1/status. Phase 2 replaces it in wireVM.
 	VMStatus api.VMStatusSource
+	// VM and Guest are set by wireVM (Phase 2): the VM controller, driver,
+	// and gateway tunnel, and the guest daemon client (PTYs, MCP tools).
+	VM    *vmRuntime
+	Guest *guestclient.Client
 }
 
 // component is one subsystem wired into `lydiabox up`: its routes and an
