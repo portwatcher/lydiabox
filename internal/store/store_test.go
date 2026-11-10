@@ -32,7 +32,8 @@ func TestCipherRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(msg) > 0 && bytes.Contains(ct, msg) {
+		// Short messages can occur in random ciphertext by chance.
+		if len(msg) >= 8 && bytes.Contains(ct, msg) {
 			t.Fatal("ciphertext contains plaintext")
 		}
 		pt, err := c.Decrypt(ct, []byte("aad"))
