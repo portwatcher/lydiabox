@@ -47,15 +47,15 @@ func TestBuildConfigPayload(t *testing.T) {
 	want := map[string]any{
 		"cpus":    map[string]any{"boot_vcpus": 4.0, "max_vcpus": 4.0},
 		"memory":  map[string]any{"size": float64(8192 << 20), "shared": true},
-		"payload": map[string]any{"kernel": "/img/vmlinux", "initramfs": "/img/initramfs.cpio.gz", "cmdline": "console=ttyS0 root=/dev/vda ro quiet"},
+		"payload": map[string]any{"kernel": "/img/vmlinux", "initramfs": "/img/initramfs.cpio.gz", "cmdline": BaseCmdline()},
 		"disks": []any{
-			map[string]any{"path": "/img/rootfs.squashfs", "readonly": true},
-			map[string]any{"path": "/run/vm/default/lydiabox-guest.ext4", "readonly": true},
-			map[string]any{"path": "/jfs/system/root-upper.img", "readonly": false},
+			map[string]any{"path": "/img/rootfs.squashfs", "readonly": true, "image_type": "Raw"},
+			map[string]any{"path": "/run/vm/default/lydiabox-guest.ext4", "readonly": true, "image_type": "Raw"},
+			map[string]any{"path": "/jfs/system/root-upper.img", "readonly": false, "image_type": "Raw"},
 		},
 		"fs": []any{
-			map[string]any{"tag": "lydia_home", "socket": "/run/vm/default/vfs-home.sock", "num_queues": 2.0, "queue_size": 1024.0},
-			map[string]any{"tag": "lydia_workspace", "socket": "/run/vm/default/vfs-workspace.sock", "num_queues": 2.0, "queue_size": 1024.0},
+			map[string]any{"tag": "lydia_home", "socket": "/run/vm/default/vfs-home.sock", "num_queues": 1.0, "queue_size": 1024.0},
+			map[string]any{"tag": "lydia_workspace", "socket": "/run/vm/default/vfs-workspace.sock", "num_queues": 1.0, "queue_size": 1024.0},
 		},
 		"vsock":   map[string]any{"cid": 3.0, "socket": "/run/vm/default/vsock.sock"},
 		"net":     []any{map[string]any{"tap": TapName("default"), "ip": "172.30.0.1", "mask": "255.255.255.0", "mac": MAC("default")}},
@@ -107,7 +107,7 @@ func TestNetworkRules(t *testing.T) {
 
 func TestTenantNetwork(t *testing.T) {
 	def := DefaultNetwork("default")
-	if def != TenantNetwork("default", 0) || def.Subnet() != "172.30.0.0/24" || def.cmdline() != Cmdline {
+	if def != TenantNetwork("default", 0) || def.Subnet() != "172.30.0.0/24" || def.cmdline() != BaseCmdline() {
 		t.Fatalf("default network %+v %q", def, def.cmdline())
 	}
 	alice := TenantNetwork("alice", 7)
@@ -120,7 +120,7 @@ func TestTenantNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := Cmdline + " lydiabox.ip=172.30.7.2/24 lydiabox.gw=172.30.7.1"; cfg.Payload.Cmdline != want {
+	if want := BaseCmdline() + " lydiabox.ip=172.30.7.2/24 lydiabox.gw=172.30.7.1"; cfg.Payload.Cmdline != want {
 		t.Fatalf("cmdline %q, want %q", cfg.Payload.Cmdline, want)
 	}
 	if cfg.Net[0].IP != "172.30.7.1" || cfg.Net[0].Mask != "255.255.255.0" {

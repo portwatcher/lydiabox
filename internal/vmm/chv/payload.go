@@ -6,12 +6,27 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"runtime"
 
 	"github.com/lydiabox/lydiabox/internal/vmm"
 )
 
-// Cmdline is the guest kernel command line (docs/design.md section 4.3).
+// Cmdline is the guest kernel command line on x86_64 (docs/design.md
+// section 4.3).
 const Cmdline = "console=ttyS0 root=/dev/vda ro quiet"
+
+// CmdlineARM64 is the guest kernel command line on arm64, where the Cloud
+// Hypervisor serial port is a PL011 UART (ttyAMA0, not ttyS0).
+const CmdlineARM64 = "console=ttyAMA0 root=/dev/vda ro quiet"
+
+// BaseCmdline returns the kernel command line for the guest architecture,
+// which is the host architecture.
+func BaseCmdline() string {
+	if runtime.GOARCH == "arm64" {
+		return CmdlineARM64
+	}
+	return Cmdline
+}
 
 // VMConfig is the vm.create payload.
 type VMConfig struct {
@@ -48,11 +63,17 @@ type PayloadConfig struct {
 	Cmdline   string `json:"cmdline"`
 }
 
-// DiskConfig is one virtio-blk disk.
+// DiskConfig is one virtio-blk disk. Cloud Hypervisor 54 refuses a disk
+// without image_type ("Image type required for disk"); every LydiaBox disk
+// is a raw image.
 type DiskConfig struct {
-	Path     string `json:"path"`
-	Readonly bool   `json:"readonly"`
+	Path      string `json:"path"`
+	Readonly  bool   `json:"readonly"`
+	ImageType string `json:"image_type"`
 }
+
+// ImageTypeRaw is the image_type of a raw disk image.
+const ImageTypeRaw = "Raw"
 
 // FSConfig is one virtio-fs device.
 type FSConfig struct {
@@ -61,6 +82,11 @@ type FSConfig struct {
 	NumQueues int    `json:"num_queues"`
 	QueueSize int    `json:"queue_size"`
 }
+
+// FSQueues is the number of virtio-fs request queues. virtiofsd serves one
+// request queue; Cloud Hypervisor rejects 2 with "Queue number is not
+// correct" when it creates the device.
+const FSQueues = 1
 
 // VsockConfig is the vsock device.
 type VsockConfig struct {
@@ -146,9 +172,9 @@ func TenantNetwork(tenantID string, index int) Network {
 // default one is passed to the initramfs as lydiabox.ip and lydiabox.gw.
 func (n Network) cmdline() string {
 	if n.Disabled || (n.GuestIP == "172.30.0.2" && n.HostIP == "172.30.0.1" && n.Prefix == 24) {
-		return Cmdline
+		return BaseCmdline()
 	}
-	return fmt.Sprintf("%s lydiabox.ip=%s/%d lydiabox.gw=%s", Cmdline, n.GuestIP, n.Prefix, n.HostIP)
+	return fmt.Sprintf("%s lydiabox.ip=%s/%d lydiabox.gw=%s", BaseCmdline(), n.GuestIP, n.Prefix, n.HostIP)
 }
 
 // TapName returns a stable interface name of at most 15 characters.
@@ -192,13 +218,13 @@ func BuildConfig(spec vmm.Spec, p Paths, nw Network, tenantID string) (*VMConfig
 		Memory:  MemoryConfig{Size: int64(spec.MemMB) << 20, Shared: true},
 		Payload: PayloadConfig{Kernel: spec.Kernel, Initramfs: spec.Initramfs, Cmdline: nw.cmdline()},
 		Disks: []DiskConfig{
-			{Path: spec.Rootfs, Readonly: true},
-			{Path: p.GuestImage, Readonly: true},
-			{Path: spec.RootUpper, Readonly: false},
+			{Path: spec.Rootfs, Readonly: true, ImageType: ImageTypeRaw},
+			{Path: p.GuestImage, Readonly: true, ImageType: ImageTypeRaw},
+			{Path: spec.RootUpper, Readonly: false, ImageType: ImageTypeRaw},
 		},
 		FS: []FSConfig{
-			{Tag: "lydia_home", Socket: p.VFSHome, NumQueues: 2, QueueSize: 1024},
-			{Tag: "lydia_workspace", Socket: p.VFSWorkspace, NumQueues: 2, QueueSize: 1024},
+			{Tag: "lydia_home", Socket: p.VFSHome, NumQueues: FSQueues, QueueSize: 1024},
+			{Tag: "lydia_workspace", Socket: p.VFSWorkspace, NumQueues: FSQueues, QueueSize: 1024},
 		},
 		Vsock:   &VsockConfig{CID: 3, Socket: p.Vsock},
 		Serial:  &ConsoleConfig{Mode: "File", File: p.SerialLog},
