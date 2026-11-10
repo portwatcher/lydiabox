@@ -1,0 +1,133 @@
+import { Play } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { describeError } from "../../api/errors";
+import { sessions } from "../../api/domains";
+import { SESSION_HARNESSES } from "../../api/types";
+import type { HarnessID, Model, Session } from "../../api/types";
+import { Dialog } from "../../components/Dialog";
+import { ModelInput } from "../../components/ModelInput";
+import { Banner, Button, Field, Select, TextInput } from "../../components/ui";
+import { harnessLabels } from "../../lib/harness";
+
+interface NewSessionDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (session: Session) => void;
+  workspaces: string[];
+  models: Model[];
+  size: () => { cols: number; rows: number };
+  defaultHarness: HarnessID | "";
+}
+
+function validWorkspace(dir: string): boolean {
+  const clean = dir.trim();
+  const inside = (root: string) => clean === root || clean.startsWith(`${root}/`);
+  return (inside("/workspace") || inside("/home/agent")) && !clean.split("/").includes("..");
+}
+
+export function NewSessionDialog({ open, onClose, onCreated, workspaces, models, size, defaultHarness }: NewSessionDialogProps) {
+  const [harness, setHarness] = useState<HarnessID>("claude-code");
+  const [workspace, setWorkspace] = useState("/workspace");
+  const [model, setModel] = useState("");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setHarness(defaultHarness || "claude-code");
+      setWorkspace(workspaces[0] ?? "/workspace");
+      setModel("");
+      setTitle("");
+      setError(null);
+      setWorkspaceError(null);
+    }
+  }, [open, defaultHarness, workspaces]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!validWorkspace(workspace)) {
+      setWorkspaceError("Choose a folder inside /workspace or /home/agent.");
+      return;
+    }
+    setWorkspaceError(null);
+    setBusy(true);
+    setError(null);
+    try {
+      const { cols, rows } = size();
+      const created = await sessions.create({
+        harness,
+        workspaceDir: workspace.trim().replace(/\/+$/, ""),
+        model: model.trim() || undefined,
+        title: title.trim() || undefined,
+        cols,
+        rows,
+      });
+      onCreated(created);
+      onClose();
+    } catch (err) {
+      setError(describeError(err, "Session not started"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="New session"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="new-session" variant="primary" icon={Play} busy={busy}>
+            {busy ? "Starting…" : "Start session"}
+          </Button>
+        </>
+      }
+    >
+      <form id="new-session" onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+        <Field id="ns-harness" label="Harness">
+          <Select
+            id="ns-harness"
+            value={harness}
+            onChange={(e) => setHarness(SESSION_HARNESSES.find((h) => h === e.target.value) ?? "claude-code")}
+          >
+            {SESSION_HARNESSES.map((h) => (
+              <option key={h} value={h}>
+                {harnessLabels[h]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field id="ns-workspace" label="Workspace folder" error={workspaceError}>
+          <TextInput
+            id="ns-workspace"
+            list="ns-workspaces"
+            value={workspace}
+            onChange={(e) => setWorkspace(e.target.value)}
+            spellCheck={false}
+            aria-invalid={workspaceError ? true : undefined}
+            aria-describedby={workspaceError ? "ns-workspace-error" : undefined}
+          />
+          <datalist id="ns-workspaces">
+            {workspaces.map((w) => (
+              <option key={w} value={w} />
+            ))}
+          </datalist>
+        </Field>
+        {harness !== "shell" ? (
+          <Field id="ns-model" label="Model" hint="Leave empty to use the harness default.">
+            <ModelInput id="ns-model" value={model} onChange={setModel} models={models} describedBy="ns-model-hint" />
+          </Field>
+        ) : null}
+        <Field id="ns-title" label="Title">
+          <TextInput id="ns-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Fix flaky upload test" />
+        </Field>
+      </form>
+    </Dialog>
+  );
+}
