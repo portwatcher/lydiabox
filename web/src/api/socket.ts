@@ -68,14 +68,16 @@ export class ReconnectingSocket {
     Pick<SocketOptions, "onOpen" | "onJson" | "onBinary" | "onState">;
 
   constructor(options: SocketOptions) {
+    // Defaults apply to options that are absent or explicitly undefined:
+    // wrappers pass `factory: options.factory` through unchanged.
     this.opts = {
-      binaryType: "arraybuffer",
-      pingIntervalMs: 20_000,
-      pongTimeoutMs: 10_000,
-      maxAttempts: 8,
-      factory: defaultFactory,
-      random: Math.random,
       ...options,
+      binaryType: options.binaryType ?? "arraybuffer",
+      pingIntervalMs: options.pingIntervalMs ?? 20_000,
+      pongTimeoutMs: options.pongTimeoutMs ?? 10_000,
+      maxAttempts: options.maxAttempts ?? 8,
+      factory: options.factory ?? defaultFactory,
+      random: options.random ?? Math.random,
     };
   }
 

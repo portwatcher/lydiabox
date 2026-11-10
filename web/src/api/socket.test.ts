@@ -42,6 +42,27 @@ describe("ReconnectingSocket", () => {
     expect(states).toEqual(["connecting", "open", "reconnecting", "open"]);
   });
 
+  it("uses the browser WebSocket when wrappers pass factory: undefined", () => {
+    const { factory, sockets } = fakeFactory();
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "WebSocket",
+      vi.fn(function (url: string, protocol: string) {
+        urls.push(url);
+        return factory(url, protocol);
+      }),
+    );
+    try {
+      const socket = new ReconnectingSocket({ url: () => "ws://h/x", protocol: "p", factory: undefined, random: noJitter });
+      socket.start();
+      expect(urls).toEqual(["ws://h/x"]);
+      sockets[0]?.open();
+      expect(socket.current).toBe("open");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("gives up after maxAttempts consecutive failures and retries on demand", () => {
     const { factory, sockets } = fakeFactory();
     const socket = new ReconnectingSocket({ url: () => "ws://h/x", protocol: "p", factory, random: noJitter, maxAttempts: 2 });
