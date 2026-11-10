@@ -18,9 +18,9 @@ Status legend:
 | File Manager | `/api/v1/fs/*` | Implemented (Phase 1) |
 | WebDAV gateway | `/webdav/` | Implemented (Phase 1) |
 | Web UI | `/` | Implemented (Phase 1 placeholder, Phase 5 app) |
-| VM power | `/api/v1/vm/*` | Contract (Phase 2) |
+| VM power | `/api/v1/vm/*` | Implemented (Phase 2) |
 | Sessions and PTY | `/api/v1/sessions*` | Contract (Phase 2 PTY, Phase 3 bridge) |
-| Desktop | `/api/v1/desktop/*` | Contract (Phase 2 guest, Phase 5 UI) |
+| Desktop | `/api/v1/desktop/*` | Implemented (Phase 2 guest and relay, Phase 5 UI) |
 | Models | `/api/v1/models/*` | Contract (Phase 3) |
 | Connectors | `/api/v1/connectors/*` | Implemented (Phase 4) |
 
@@ -55,6 +55,7 @@ Status legend:
 | 500 | `internal` | Unexpected server error |
 | 501 | `not_implemented` | Route exists but the subsystem is not in this build |
 | 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running |
+| 504 | `timeout` | The VM did not reach `RUNNING` in time (`POST /api/v1/vm/wake`) |
 
 ## 2. Authentication
 
@@ -281,7 +282,7 @@ SPA `index.html` (client-side routes `/studio`, `/desktop`, `/files`,
 `/models`, `/connectors`). Files under `/assets/` are cached for one year.
 Unknown `/api/...` paths return the JSON `404` envelope. Public.
 
-## 7. VM power — contract (Phase 2)
+## 7. VM power — implemented (Phase 2)
 
 `VMStatus` object (extends the `vm` section of `/api/v1/status`):
 
@@ -300,18 +301,22 @@ Unknown `/api/...` paths return the JSON `404` envelope. Public.
 }
 ```
 
-`idleSince` is the time the lease count dropped to 0 (zero time while
-leases exist). `gpu` and `lastError` are omitted when empty.
+`idleSince` is the time the lease count dropped to 0, or the time the VM
+became `RUNNING` without leases (zero time while leases exist). `leases`
+always lists `pty` (running guest PTYs) and `desktop` (open desktop
+sockets). After `idleTimeoutSeconds` without leases the VM is synced and
+paused (`PAUSED`). `gpu` and `lastError` are omitted when empty;
+`lastError` holds the last failed boot or transition.
 
 | Route | Effect | Response |
 | :--- | :--- | :--- |
 | `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
 | `POST /api/v1/vm/wake` | `EnsureRunning`: boot from `STOPPED` or resume from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `504` after 120 s |
 | `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause | `200 VMStatus` (`PAUSED`) |
-| `POST /api/v1/vm/stop` | Graceful shutdown; body `{ "force": false }` (optional). `force` kills after 30 s | `200 VMStatus` (`STOPPED`) |
+| `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway | `200 VMStatus` (`STOPPED`) |
 
 `409 conflict` when the transition is not possible (for example hibernate
-while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM
+or stop while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM
 themselves; the UI does not need to call `wake` first.
 
 ## 8. Sessions and PTY — contract (Phase 2 PTY, Phase 3 bridge)
@@ -444,7 +449,7 @@ Response `200`:
 (`session` is a full `Session` object.) Errors: `404` unknown source,
 `400` same harness or unknown target, `503` VM not available.
 
-## 9. Desktop — contract (Phase 2 guest, Phase 5 UI)
+## 9. Desktop — implemented (Phase 2 guest and relay, Phase 5 UI)
 
 Modes: `OBSERVER` (agent controls, browser input ignored) and `TAKEOVER`
 (browser input injected, agent `computer_*` tools wait up to 30 s).
@@ -454,7 +459,9 @@ Screen coordinates are always in the guest frame, 1920 × 1080.
 
 `GET` response `200`: `{ "mode": "OBSERVER", "changedAt": "...", "changedBy": "user" }`.
 `PUT` request: `{ "mode": "TAKEOVER" }`; response `200` with the same shape.
-`changedBy` is `user`, `agent`, or `system`. `503` when the VM is stopped.
+`changedBy` is `user`, `agent`, or `system`. `503` when the VM is not
+`RUNNING` (these routes do not wake it). `400` for a mode other than
+`OBSERVER` or `TAKEOVER`.
 
 ### `GET /api/v1/desktop/ws` — WebSocket signaling
 
@@ -472,7 +479,7 @@ Server → client:
   "iceServers": [ { "urls": ["stun:stun.l.google.com:19302"] } ] }
 { "type": "answer", "sdp": "v=0..." }
 { "type": "ice", "candidate": { "candidate": "candidate:...", "sdpMid": "0", "sdpMLineIndex": 0 } }
-{ "type": "mode", "mode": "TAKEOVER", "changedBy": "user" }
+{ "type": "mode", "mode": "TAKEOVER", "changedBy": "user", "changedAt": "2026-11-10T06:30:00Z" }
 { "type": "viewers", "count": 2 }
 { "type": "agent_action", "action": "click", "x": 812, "y": 440, "button": "left", "double": false,
   "text": "", "keys": "", "dx": 0, "dy": 0, "tool": "computer_mouse_click", "timestamp": "2026-11-10T06:30:00.250Z" }
@@ -497,6 +504,21 @@ Client → server:
 ```
 
 `launch.app` is `chrome`, `blender`, or `terminal`.
+
+`mode` and `agent_action` messages go to every socket of the tenant; a
+`mode` change from one browser reaches all of them. `viewers` is sent on
+every join and leave. An invalid message gives an `error` message with
+`code` `bad_request`; the socket stays open. A socket without the
+subprotocol is closed with status `1008`. A failed wake or stream start
+gives an `error` message with `code` `unavailable`, then close `1011`.
+
+Media path: the guest sends all WebRTC media on one UDP port
+(`LYDIABOX_WEBRTC_UDP_PORT`, default `50000`), which the VMM driver
+forwards from the host (`chv`: nftables DNAT to `172.30.0.2`; `docker`:
+published port). The guest advertises the address of the host the browser
+connected to (the request `Host`) as its ICE host candidate, so the browser
+needs UDP access to that port. With `chv`, a browser on the host itself
+uses the guest address `172.30.0.2` directly.
 
 ### Data channel `input` (browser → guest, peer-to-peer)
 
