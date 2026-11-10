@@ -28,6 +28,15 @@ func TestGatewayCommand(t *testing.T) {
 	}
 }
 
+// The proxy forwards path-style requests verbatim, so the public path must be
+// "/" + the bucket, and the bucket must be a valid S3 name (3 to 63
+// characters; juicefs gateway refuses shorter ones such as "s3").
+func TestS3GatewayPathIsBucket(t *testing.T) {
+	if S3GatewayPrefix != "/"+S3GatewayBucket || len(S3GatewayBucket) < 3 || len(S3GatewayBucket) > 63 {
+		t.Fatalf("prefix %q, bucket %q", S3GatewayPrefix, S3GatewayBucket)
+	}
+}
+
 func TestDialAddr(t *testing.T) {
 	cases := map[string]string{
 		"0.0.0.0:8090":   "127.0.0.1:8090",
@@ -92,7 +101,7 @@ func TestS3GatewaySupervisor(t *testing.T) {
 	cmd := r.starts[0]
 	first := r.procs[0]
 	r.mu.Unlock()
-	if cmd.Args[0] != "gateway" || cmd.Args[2] != "0.0.0.0:8090" || !slices.Contains(cmd.Args, "--bucket-name=s3") ||
+	if cmd.Args[0] != "gateway" || cmd.Args[2] != "0.0.0.0:8090" || !slices.Contains(cmd.Args, "--bucket-name=lydiabox") ||
 		!slices.Contains(cmd.Env, "MINIO_ROOT_PASSWORD=admin-token-0123456789") ||
 		!slices.Contains(cmd.Args, "--log="+filepath.Join(cfg.DataDir, "logs", "juicefs-gateway.log")) {
 		t.Fatalf("command = %+v", cmd)

@@ -14,7 +14,7 @@ import (
 	"github.com/lydiabox/lydiabox/internal/storage"
 )
 
-// TestS3RouteForwardsVerbatim checks that /s3 reaches the gateway backend
+// TestS3RouteForwardsVerbatim checks that /lydiabox reaches the gateway backend
 // without API authentication and with every SigV4 input unchanged: method,
 // escaped path, query, Host, Authorization, and x-amz-* headers.
 func TestS3RouteForwardsVerbatim(t *testing.T) {
@@ -48,9 +48,9 @@ func TestS3RouteForwardsVerbatim(t *testing.T) {
 
 	const sig = "AWS4-HMAC-SHA256 Credential=lydiabox/20261110/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=00ff"
 	cases := []struct{ method, path, body string }{
-		{"PUT", "/s3/workspace/a%20b%2Bc.txt?x-id=PutObject", "hello"},
-		{"GET", "/s3?list-type=2&prefix=workspace%2F&delimiter=%2F", ""},
-		{"DELETE", "/s3/home/agent/notes.md", ""},
+		{"PUT", "/lydiabox/workspace/a%20b%2Bc.txt?x-id=PutObject", "hello"},
+		{"GET", "/lydiabox?list-type=2&prefix=workspace%2F&delimiter=%2F", ""},
+		{"DELETE", "/lydiabox/home/agent/notes.md", ""},
 	}
 	for _, c := range cases {
 		req, err := http.NewRequest(c.method, front.URL+c.path, strings.NewReader(c.body))
@@ -84,7 +84,7 @@ func TestS3RouteDisabledGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	g.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/s3/workspace/", nil))
+	g.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/lydiabox/workspace/", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("disabled gateway: %d", rec.Code)
 	}

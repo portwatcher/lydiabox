@@ -15,17 +15,19 @@ import (
 )
 
 // S3GatewayPrefix is the public URL path of the virtual S3 gateway on the
-// main listener. It is also the bucket name: clients send path-style
-// requests to the endpoint http://<host>:8080, so `/s3/<key>` addresses the
-// object <key> in the bucket "s3".
-const S3GatewayPrefix = "/s3"
+// main listener: "/" + the bucket name. Clients send path-style requests to
+// the endpoint http://<host>:8080, so `/lydiabox/<key>` addresses the object
+// <key> in the bucket "lydiabox". The design names `/s3`, but S3 bucket
+// names need at least 3 characters (juicefs gateway refuses "s3"), and a
+// verbatim proxy needs the path to start with the bucket name.
+const S3GatewayPrefix = "/" + S3GatewayBucket
 
 // S3GatewayBucket is the bucket name under which the virtual S3 gateway
 // serves the volume. Object keys are paths from the volume root, so the user
 // trees are `workspace/...` and `home/agent/...`. It equals the public path
-// prefix, so the proxy forwards path-style requests unchanged and SigV4
+// path, so the proxy forwards path-style requests unchanged and SigV4
 // signatures stay valid.
-const S3GatewayBucket = "s3"
+const S3GatewayBucket = "lydiabox"
 
 // S3GatewayAccessKey is the access key of the virtual S3 gateway; the
 // secret key is LYDIABOX_AUTH_TOKEN.
@@ -36,7 +38,7 @@ type S3GatewayStatus struct {
 	Enabled bool `json:"enabled"`
 	// Addr is the backend listen address (LYDIABOX_S3_GATEWAY_ADDR).
 	Addr string `json:"addr"`
-	// Path is the public path on the main listener ("/s3").
+	// Path is the public path on the main listener ("/lydiabox").
 	Path    string `json:"path"`
 	Bucket  string `json:"bucket"`
 	Running bool   `json:"running"`
@@ -54,10 +56,12 @@ type S3GatewayOptions struct {
 }
 
 // S3Gateway supervises `juicefs gateway` on LYDIABOX_S3_GATEWAY_ADDR
-// (loopback by default) and reverse-proxies /s3 on the main listener to it.
+// (loopback by default) and reverse-proxies /lydiabox on the main listener
+// to it.
 // S3 clients sign the request path and the Host header (SigV4), so the proxy
-// forwards both unchanged: the bucket is named "s3", and a path-style request
-// to http://<host>:8080/s3/<key> verifies at the backend without re-signing.
+// forwards both unchanged: the bucket is named "lydiabox", and a path-style
+// request to http://<host>:8080/lydiabox/<key> verifies at the backend
+// without re-signing.
 // Clients authenticate with access key "lydiabox" and LYDIABOX_AUTH_TOKEN as
 // the secret key. An empty address disables the gateway.
 type S3Gateway struct {
@@ -144,7 +148,7 @@ func (g *S3Gateway) Status(tenantID string) S3GatewayStatus {
 	return S3GatewayStatus{Enabled: true, Addr: g.addr, Path: S3GatewayPrefix, Bucket: S3GatewayBucket, Running: g.child.Addr() != ""}
 }
 
-// Handler returns the reverse proxy for /s3 and /s3/. It answers 503 while
+// Handler returns the reverse proxy for S3GatewayPrefix and below. It answers 503 while
 // the backend is down or the gateway is disabled. The backend does its own
 // SigV4 authentication, so the caller must not add API authentication.
 func (g *S3Gateway) Handler() http.Handler {

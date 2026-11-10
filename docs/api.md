@@ -17,7 +17,7 @@ Status legend:
 | Session auth | `/api/v1/auth/*` | Implemented (Phase 1) |
 | File Manager | `/api/v1/fs/*` | Implemented (Phase 1) |
 | WebDAV gateway | `/webdav/` | Implemented (Phase 1) |
-| Virtual S3 gateway | `/s3`, `/s3/` | Implemented (Phase 6) |
+| Virtual S3 gateway | `/lydiabox`, `/lydiabox/` | Implemented (Phase 6) |
 | Web UI | `/` | Implemented (Phase 1 placeholder, Phase 5 app) |
 | VM power | `/api/v1/vm/*` | Implemented (Phase 2) |
 | Sessions and PTY | `/api/v1/sessions*` | Implemented (Phase 3, guest PTYs from Phase 2) |
@@ -122,7 +122,7 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
     "lastSyncAt": "2026-11-10T06:29:41Z",
     "lastUploadAt": "2026-11-10T06:20:41Z",
     "lastSyncError": "",
-    "s3Gateway": { "enabled": true, "addr": "127.0.0.1:8090", "path": "/s3", "bucket": "s3", "running": true }
+    "s3Gateway": { "enabled": true, "addr": "127.0.0.1:8090", "path": "/lydiabox", "bucket": "lydiabox", "running": true }
   },
   "time": "2026-11-10T06:30:00Z"
 }
@@ -283,14 +283,17 @@ non-empty directory needs `recursive=true`. Response `204`.
 
 ## 5a. Virtual S3 gateway — implemented (Phase 6)
 
-`/s3` and `/s3/...` reverse-proxy a supervised `juicefs gateway` on
-`LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). The volume is one
-bucket named `s3`; object keys are paths from the volume root
+`/lydiabox` and `/lydiabox/...` reverse-proxy a supervised `juicefs gateway`
+on `LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). The volume is one
+bucket named `lydiabox`; object keys are paths from the volume root
 (`workspace/...`, `home/agent/...`), as in WebDAV.
 
-- Endpoint `http://host:8080`, bucket `s3`, path-style addressing. A request
-  to `/s3/workspace/a.txt` is the object `workspace/a.txt` in the bucket
-  `s3`.
+- Endpoint `http://host:8080`, bucket `lydiabox`, path-style addressing. A
+  request to `/lydiabox/workspace/a.txt` is the object `workspace/a.txt` in
+  the bucket `lydiabox`.
+- The design names `/s3`. A verbatim proxy needs the path to start with the
+  bucket name, and S3 bucket names need at least 3 characters
+  (`juicefs gateway` refuses `s3`), so the path is `/lydiabox`.
 - Credentials: access key `lydiabox`, secret key `LYDIABOX_AUTH_TOKEN`
   (AWS Signature Version 4). The routes are public on this server: the
   gateway verifies the signature itself. Bearer, cookie, and CSRF checks do
@@ -298,12 +301,12 @@ bucket named `s3`; object keys are paths from the volume root
 - The proxy forwards the request without changes: method, escaped path,
   query, `Host`, `Authorization`, and every `x-amz-*` header. SigV4 signs the
   path and the host, so the signature that the client made for
-  `host:8080/s3/...` verifies at the backend.
+  `host:8080/lydiabox/...` verifies at the backend.
 - `ListBuckets` (`GET /`) is not available, because `/` is the web UI. Name
   the bucket in every request.
 - `503` when the backend is restarting or the gateway is disabled.
 - Examples:
-  `aws --endpoint-url http://host:8080 s3 ls s3://s3/workspace/`;
+  `aws --endpoint-url http://host:8080 s3 ls s3://lydiabox/workspace/`;
   rclone with `provider = Minio`, `endpoint = http://host:8080`, and
   `force_path_style = true`.
 
