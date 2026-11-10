@@ -5,11 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -17,8 +15,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/config"
@@ -43,26 +39,16 @@ type WebDAVOptions struct {
 // credential that only this proxy knows; client authentication (Basic
 // lydiabox:<LYDIABOX_AUTH_TOKEN>) is enforced by the API auth middleware.
 type WebDAV struct {
-	opts   WebDAVOptions
-	jfs    JuiceFS
-	log    *slog.Logger
 	tenant string
 	user   string
 	pass   string
-
-	mu       sync.RWMutex
-	addr     string
-	started  bool
-	stopping chan struct{}
-	done     chan struct{}
-	proc     Process
-	watch    *procWatch
+	child  *childServer
 }
 
 // NewWebDAV validates options.
 func NewWebDAV(opts WebDAVOptions) (*WebDAV, error) {
 	if opts.Config == nil || opts.Runner == nil || opts.JuiceFSBinary == "" {
-		return nil, errors.New("storage: webdav needs Config, Runner, and JuiceFSBinary")
+		return nil, errNoBinary
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -71,142 +57,33 @@ func NewWebDAV(opts WebDAVOptions) (*WebDAV, error) {
 		opts.ReadyTimeout = 60 * time.Second
 	}
 	if opts.Dial == nil {
-		opts.Dial = func(ctx context.Context, addr string) error {
-			var d net.Dialer
-			c, err := d.DialContext(ctx, "tcp", addr)
-			if err == nil {
-				c.Close()
-			}
-			return err
-		}
+		opts.Dial = defaultDial
 	}
 	secret := make([]byte, 24)
 	if _, err := rand.Read(secret); err != nil {
 		return nil, err
 	}
 	c := opts.Config
-	return &WebDAV{
-		opts:   opts,
-		tenant: c.TenantID,
-		log:    opts.Logger.With("component", "webdav", "tenant", c.TenantID),
-		jfs:    JuiceFS{Binary: opts.JuiceFSBinary, MetaURL: c.JuiceFSMetaURL(), MountDir: c.MountDir()},
-		user:   "lydiabox-internal",
-		pass:   hex.EncodeToString(secret),
-	}, nil
+	w := &WebDAV{tenant: c.TenantID, user: "lydiabox-internal", pass: hex.EncodeToString(secret)}
+	jfs := JuiceFS{Binary: opts.JuiceFSBinary, MetaURL: c.JuiceFSMetaURL(), MountDir: c.MountDir()}
+	cacheDir := filepath.Join(c.DataDir, "cache", "jfs-webdav")
+	w.child = &childServer{
+		name: "juicefs webdav", log: opts.Logger.With("component", "webdav", "tenant", c.TenantID),
+		runner: opts.Runner, dial: opts.Dial, readyTimeout: opts.ReadyTimeout,
+		command: func(addr string) Command { return jfs.WebDAV(addr, cacheDir, w.user, w.pass) },
+	}
+	return w, nil
 }
 
 // Addr returns the backend address, or "" when the backend is not running.
-func (w *WebDAV) Addr() string {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	return w.addr
-}
+func (w *WebDAV) Addr() string { return w.child.Addr() }
 
 // Start launches the backend and its supervisor goroutine.
 func (w *WebDAV) Start(ctx context.Context, tenantID string) error {
 	if tenantID != w.tenant {
 		return fmt.Errorf("%w %q", ErrUnknownTenant, tenantID)
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.started {
-		return errors.New("storage: webdav already started")
-	}
-	if err := w.launch(ctx); err != nil {
-		return err
-	}
-	w.started = true
-	w.stopping = make(chan struct{})
-	w.done = make(chan struct{})
-	go w.supervise()
-	return nil
-}
-
-// launch must be called with w.mu held.
-func (w *WebDAV) launch(ctx context.Context) error {
-	port, err := freePort()
-	if err != nil {
-		return fmt.Errorf("storage: webdav port: %w", err)
-	}
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
-	cmd := w.jfs.WebDAV(addr, filepath.Join(w.opts.Config.DataDir, "cache", "jfs-webdav"), w.user, w.pass)
-	out := newLogWriter(w.log, "juicefs webdav")
-	cmd.Stdout, cmd.Stderr = out, out
-	proc, err := w.opts.Runner.Start(cmd)
-	if err != nil {
-		return fmt.Errorf("storage: %w", err)
-	}
-	watch := watchProcess(proc)
-	deadline := time.Now().Add(w.opts.ReadyTimeout)
-	for {
-		dctx, cancel := context.WithTimeout(ctx, time.Second)
-		err := w.opts.Dial(dctx, addr)
-		cancel()
-		if err == nil {
-			break
-		}
-		select {
-		case <-watch.done:
-			return fmt.Errorf("storage: juicefs webdav exited before ready: %v", watch.err)
-		case <-ctx.Done():
-			stopProcess(proc, watch)
-			return ctx.Err()
-		case <-time.After(100 * time.Millisecond):
-		}
-		if time.Now().After(deadline) {
-			stopProcess(proc, watch)
-			return fmt.Errorf("storage: juicefs webdav not ready on %s after %s", addr, w.opts.ReadyTimeout)
-		}
-	}
-	w.addr, w.proc, w.watch = addr, proc, watch
-	w.log.Info("WebDAV backend ready", "addr", addr, "pid", proc.Pid())
-	return nil
-}
-
-func (w *WebDAV) supervise() {
-	defer close(w.done)
-	backoff := time.Second
-	for {
-		w.mu.RLock()
-		watch := w.watch
-		w.mu.RUnlock()
-		select {
-		case <-w.stopping:
-			return
-		case <-watch.done:
-		}
-		w.mu.Lock()
-		w.addr = ""
-		w.mu.Unlock()
-		w.log.Error("juicefs webdav exited; restarting", "err", watch.err, "backoff", backoff)
-		select {
-		case <-w.stopping:
-			return
-		case <-time.After(backoff):
-		}
-		backoff = min(backoff*2, 30*time.Second)
-		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			select {
-			case <-w.stopping:
-				cancel()
-			case <-ctx.Done():
-			}
-		}()
-		w.mu.Lock()
-		err := w.launch(ctx)
-		w.mu.Unlock()
-		cancel()
-		if err != nil {
-			w.log.Error("WebDAV restart failed", "err", err)
-			// Keep a closed watch so the loop retries after the backoff.
-			w.mu.Lock()
-			w.watch = &procWatch{done: closedChan(), err: err}
-			w.mu.Unlock()
-			continue
-		}
-		backoff = time.Second
-	}
+	return w.child.start(ctx)
 }
 
 // Stop terminates the backend.
@@ -214,52 +91,7 @@ func (w *WebDAV) Stop(ctx context.Context, tenantID string) error {
 	if tenantID != w.tenant {
 		return fmt.Errorf("%w %q", ErrUnknownTenant, tenantID)
 	}
-	w.mu.Lock()
-	if !w.started {
-		w.mu.Unlock()
-		return nil
-	}
-	w.started = false
-	close(w.stopping)
-	w.mu.Unlock()
-	select {
-	case <-w.done:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	w.mu.Lock()
-	proc, watch := w.proc, w.watch
-	w.addr = ""
-	w.mu.Unlock()
-	if proc != nil {
-		stopProcess(proc, watch)
-	}
-	return nil
-}
-
-func stopProcess(proc Process, w *procWatch) {
-	_ = proc.Signal(syscall.SIGTERM)
-	select {
-	case <-w.done:
-	case <-time.After(15 * time.Second):
-		_ = proc.Kill()
-		<-w.done
-	}
-}
-
-func closedChan() chan struct{} {
-	c := make(chan struct{})
-	close(c)
-	return c
-}
-
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
+	return w.child.stop(ctx)
 }
 
 // Handler returns the reverse proxy for /webdav/. It answers 503 while the
