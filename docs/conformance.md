@@ -2,7 +2,7 @@
 
 This report compares the implementation on `main` with
 [design.md](design.md), section by section. It was written in Phase 6
-(2026-11-10).
+(2026-11-10) and updated after the gap-closure work of the same day.
 
 Status values:
 
@@ -19,14 +19,14 @@ the integration run at the end of this document (**E2E**), or `unverified`.
 
 | Section | done | partial | deviates | missing |
 | :--- | ---: | ---: | ---: | ---: |
-| 1. Vision and pillars | 13 | 1 | 1 | 0 |
+| 1. Vision and pillars | 15 | 0 | 0 | 0 |
 | 2. Non-negotiable rules | 9 | 0 | 0 | 0 |
-| 3. Repository structure | 14 | 0 | 2 | 0 |
-| 4.1 Configuration and bootstrap | 7 | 1 | 0 | 0 |
-| 4.2 Storage | 11 | 0 | 0 | 0 |
-| 4.3 VM engine | 10 | 0 | 2 | 0 |
-| 4.4 Magpie and session bridge | 10 | 2 | 2 | 0 |
-| 4.5 Desktop and computer use | 9 | 1 | 1 | 0 |
+| 3. Repository structure | 15 | 0 | 1 | 0 |
+| 4.1 Configuration and bootstrap | 8 | 0 | 0 | 0 |
+| 4.2 Storage | 12 | 0 | 1 | 0 |
+| 4.3 VM engine | 12 | 0 | 0 | 0 |
+| 4.4 Magpie and session bridge | 11 | 1 | 2 | 0 |
+| 4.5 Desktop and computer use | 10 | 0 | 1 | 0 |
 | 4.6 Connectors | 8 | 0 | 1 | 0 |
 | 5. Web UI | 6 | 0 | 0 | 0 |
 | 6. Phase gates | 6 | 0 | 0 | 0 |
@@ -35,19 +35,19 @@ Open items (not `done`):
 
 | Item | Status | Reason |
 | :--- | :--- | :--- |
-| Root persistence with the `docker` driver | deviates | The container is removed on stop, so changes outside `/home/agent` and `/workspace` are lost. The `chv` driver has the persistent OverlayFS root as designed. |
-| `virtiofsd` checksums | partial | `linux/amd64` is computed from a download (no upstream digest); `linux/arm64` has no pinned checksum, so bootstrap refuses it until `LYDIABOX_MIRROR_VIRTIOFSD_SHA256` is set. |
-| Antigravity formats | partial | Conversations are protobuf in SQLite without a public schema; decoding is schema-free and no native seed session is written (continuation prompt only). See [harness-formats.md](harness-formats.md). |
-| dsh and Antigravity CLIs in the image | partial | Installed only when `DSH_INSTALL` / `ANTIGRAVITY_INSTALL` build arguments are given; no official package source was confirmed. |
+| S3 gateway path | deviates | The design lists `/s3` on `LYDIABOX_LISTEN_ADDR`. The gateway is on that listener, at `/lydiabox` (bucket `lydiabox`). S3 clients sign the request path and host (SigV4), so a proxy that does not re-sign must forward the path unchanged, and the path must start with the bucket name. The bucket `s3` is not possible: S3 bucket names need at least 3 characters, and `juicefs gateway` stops with `invalid bucket name "s3"` (seen in the integration run). |
+| Antigravity wirer | partial | The MCP file shape is verified; the keys of `.antigravity/settings.json` (`endpoint`, `apiKey`, `model`, `env.*`) are inferred. See [harness-formats.md](harness-formats.md). |
 | `OPENAI_BASE_URL` ends in `/v1` | deviates | OpenAI-compatible SDKs append `/chat/completions` to the base URL, so the base must include `/v1`. `ANTHROPIC_BASE_URL` and the Gemini URL stay `http://127.0.0.1:3425`. Applies to `ptymanager.DefaultEnv`, dsh `OPENAI_BASE_URL` / `DEEPSEEK_BASE_URL`, codex, and opencode. |
 | magpie admin API | deviates | magpie has no supported admin API. LydiaBox drives the API of `magpie serve --web=127.0.0.1:3426` (loopback only, random key). |
 | Host connector MCP route | deviates | The design names `/mcp/connectors` on the host. The broker is served only to the guest (vsock port 9001 or `$DATA_DIR/run/host-9001.sock`), not on the public listener, so it needs no extra authentication. |
-| `chv` network for several tenants | deviates | Every tenant uses `172.30.0.0/24` on its own TAP device. Single-user mode is not affected; a multi-tenant deployment needs per-tenant subnets. |
 | WebRTC media port | deviates | All media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT` (default 50000), forwarded by the driver, because the guest is behind NAT. |
-| Web page file layout | deviates | Pages are in `web/src/pages/<area>/<Area>Page.tsx` with their components, not flat files in `pages/`. |
 | Extra packages | deviates | `internal/httpx`, `internal/tenant`, `internal/version`, `internal/webui`, `internal/vmm/guestclient`, `internal/magpie/wire`, `internal/harness/safefile`, `internal/connector/broker`, `internal/guest/cli`, `internal/guest/gitcred`. They keep files under 600 lines. |
-| S3 gateway address | deviates | The design lists `/s3` on `LYDIABOX_LISTEN_ADDR`. S3 clients sign the request path (SigV4), so a reverse proxy under `/s3/` breaks every signature. The gateway has its own listener, `LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). Counted as `done`: the function is complete. |
-| Real KVM boot | unverified | `chv` is tested against a mock Cloud Hypervisor API. The kernel build in `deploy/rootfs/Dockerfile` and the initramfs were not run on KVM. |
+| Real KVM boot | unverified | This macOS host has no `/dev/kvm`. The Phase 2 gate asks for payload generation and a mock lifecycle, which the tests cover: `TestBuildConfigPayload` and `TestTenantNetwork` (the `vm.create` JSON, per-tenant network and kernel command line), `TestLifecycleAgainstMockCloudHypervisor` (two `virtiofsd` processes, a fake `cloud-hypervisor` API socket: `vm.create`, `vm.boot`, `vm.pause`, `vm.resume`, `vm.shutdown`, adoption after a restart), `TestVsockHandshake` (`CONNECT <port>` / `OK` and the `vsock.sock_<port>` listeners), and `TestNetworkRules` (nftables and iptables rules). The kernel, initramfs, and squashfs build and a real boot were not run. |
+
+Closed in the gap-closure work: root persistence with the `docker` driver,
+host state database restore, `virtiofsd` on `linux/arm64`, the Antigravity
+seed session, the dsh and Antigravity CLIs in the image, the web page file
+layout, and per-tenant `chv` subnets.
 
 ## 1. Vision and architectural pillars
 
@@ -57,15 +57,15 @@ Open items (not `done`):
 | Runtime binaries bootstrapped into `$DATA_DIR/runtime/` and supervised | done | `internal/bootstrap`, `internal/storage`, `internal/magpie` | `TestEnsureInstallsRequiredBinaries`; E2E (juicefs and magpie downloaded for darwin/arm64 and linux/arm64) |
 | JuiceFS with `sqlite3://` metadata and background snapshot sync | done | `internal/storage` | `TestSyncUploadsOnlyChanges`; E2E |
 | File access while the VM is `STOPPED`: Web UI, WebDAV | done | `internal/storage/files`, `internal/storage/webdav.go` | `TestFileAPICRUD`; E2E |
-| Virtual S3 gateway | done (own listener) | `internal/storage/s3gateway.go` | `TestS3GatewaySupervisor`; E2E (`aws s3`) |
+| Virtual S3 gateway | done | `internal/storage/s3gateway.go`, `internal/api/routes_s3.go` | `TestS3GatewaySupervisor`, `TestS3RouteForwardsVerbatim`; E2E (`aws s3` through port 8080) |
 | Persistent root (squashfs + `root-upper.img` overlay) | done (`chv`) | `deploy/initramfs/init`, `internal/vmm/chv` | `TestBuildConfigPayload`; boot unverified |
-| Persistent root with the `docker` driver | deviates | `internal/vmm/docker` | see open items |
+| Persistent root with the `docker` driver: stop keeps the container; recreated only when the image, settings, or guest binary change, or on `resetRoot` | done | `internal/vmm/docker` | `TestStopKeepsContainer`, `TestBootStartsExistingContainer`, `TestRecreateOnChangedSpec`; E2E (a file in `/etc` survives stop and wake) |
 | Five harnesses | done | `internal/harness/adapters` | `TestDiscoverAndParse`, `TestHotSwitchPairs` |
 | magpie on the host, bridged into the VM, keys only on the host | done | `internal/magpie`, `internal/guest/credproxy` | `TestGatewayRoundTripOverUnixSockets`; E2E (`/api/hello` from the guest) |
 | Session discovery while the VM is off, usage, model rebinding, hot-switch | done | `internal/harness` | `TestListWhileVMStopped`, `TestHotSwitchPairs` |
 | Connectors with own OAuth clients, PATs, optional relay | done | `internal/connector` | `TestClientSources`, `TestPKCEAuthorizeCallback`, `TestBindToken` |
 | Tokens encrypted on the host; git helper and connector MCP over vsock | done | `internal/store`, `internal/connector/broker`, `internal/guest/gitcred` | `TestGitCredEndToEnd`; E2E (MCP bridge tool list) |
-| Antigravity session format | partial | `internal/harness/adapters` | see open items |
+| Antigravity session format | done (schema-free protobuf decoding; format inferred, see [harness-formats.md](harness-formats.md)) | `internal/harness/adapters` | `TestDiscoverAndParse` |
 | X11 desktop, Chrome (CDP), Blender in the guest | done | `deploy/rootfs/Dockerfile` | `TestLocalAppsStartsChromeForCDP`; full image not built here |
 | Computer-use MCP, WebRTC streaming, Observer and Takeover modes | done | `internal/guest/*`, `internal/desktop`, `web/src/pages/desktop` | `TestTakeoverBlocksAgentAndInjectsUserInput`, `TestViewerReceivesVideoAndSendsInput`; E2E |
 
@@ -87,7 +87,7 @@ Open items (not `done`):
 
 | Path | Status | Notes |
 | :--- | :--- | :--- |
-| `Makefile` | done | build, release, test, lint, `rootfs`, `guest-image`, `guest-image-slim` |
+| `Makefile` | done | build, release, test, lint, `rootfs`, `guest-image`, `guest-image-slim`, `virtiofsd` |
 | `go.mod` (`github.com/lydiabox/lydiabox`) | done | |
 | `.env.example` | done | every `LYDIABOX_*` variable the code reads |
 | `cmd/lydiabox`, `cmd/lydiabox-guest` (`git-cred` subcommand) | done | |
@@ -101,7 +101,7 @@ Open items (not `done`):
 | `internal/guest/{rpc,x11,webrtc,mcp,ptymanager,credproxy}` | done | plus `cli`, `gitcred` |
 | `deploy/initramfs/init`, `deploy/rootfs/{Dockerfile,supervisord.conf,build-artifacts.sh}` | done | plus `lydiabox-init`, `setup-guest.sh`, `install-harnesses.sh`, `kernel.config` |
 | `web/` (`package.json`, `vite.config.ts`, `src/App.tsx`, `src/api/`) | done | |
-| `web/src/pages/*Page.tsx` | deviates | in per-area folders |
+| `web/src/pages/{Studio,Desktop,Files,Models,Connectors}Page.tsx` | done | page entry modules that compose the components in the per-area folders (`studio/`, `desktop/`, `files/`, `models/`, `connectors/`) |
 | Extra packages | deviates | listed in the open items |
 
 ## 4.1 Configuration and single-binary startup
@@ -114,8 +114,8 @@ Open items (not `done`):
 | Generated master key, `0600`, `$DATA_DIR/state/master.key` | done | `internal/config/secrets.go` | `TestEnsureSecrets`; E2E log |
 | Bootstrap checks `runtime/bin` and downloads missing binaries per `GOARCH` | done | `internal/bootstrap` | `TestEnsureInstallsRequiredBinaries`, `TestDockerDriverSkipsVMMBinaries`; E2E |
 | Pinned URLs, SHA256, `+x`, `LYDIABOX_MIRROR_*` | done | `internal/bootstrap/manifest.json` | `TestChecksumMismatchKeepsExistingBinary`, `TestMirrorOverride` |
-| Pinned checksums for every binary | partial | `virtiofsd` | see open items |
-| `lydiabox runtime build-rootfs`, `LYDIABOX_ROOTFS_URL` | done | `internal/cli/runtime.go`, `deploy/rootfs/build-artifacts.sh` | `TestRuntimeStatusAndBuildRootfs`, `TestFetchImages`; E2E (slim image build) |
+| Pinned checksums for every binary | done (`virtiofsd`: amd64 uses the upstream zip; arm64 has no upstream binary and is built locally from the `v1.14.0` tag, manifest `checksumSource: "build"`) | `internal/bootstrap/manifest.json`, `internal/bootstrap/local.go`, `deploy/virtiofsd` | `TestLocallyBuiltBinary`, `TestLocallyBuiltBinaryMirror`, `TestBuildEntryValidation`; build run on this host (static aarch64 ELF in 59 s) |
+| `lydiabox runtime build-rootfs` (also builds and installs `virtiofsd` on arm64), `runtime install-local`, `LYDIABOX_ROOTFS_URL` | done | `internal/cli/runtime.go`, `deploy/rootfs/build-artifacts.sh` | `TestRuntimeStatusAndBuildRootfs`, `TestFetchImages`; E2E (slim image build) |
 
 ## 4.2 Persistent POSIX storage and disaster recovery
 
@@ -126,12 +126,14 @@ Open items (not `done`):
 | `juicefs format ... --storage=s3 --compress=lz4` | done | `internal/storage/juicefs.go` | `TestJuiceFSCommands`; E2E |
 | `juicefs mount ... --cache-size=10240 --writeback`, supervised | done | `internal/storage/supervisor.go` | `TestMountRestartsAfterCrash`; E2E |
 | Metadata `dump` + `VACUUM INTO` every 60 s when changed and on `SIGTERM` | done | `internal/storage/metasync.go` | `TestSyncUploadsOnlyChanges`; E2E (`lastUploadAt`) |
+| Host state restore: `lydiabox.db.gz` is restored before the store opens when `$DATA_DIR/state/lydiabox.db` is missing (same master key needed; warning when the key is new) | done | `internal/storage/staterestore.go`, `internal/cli/up.go` | `TestRestoreState`; E2E (disaster recovery, steps 39 to 41) |
 | `home/agent`, `workspace`, `system` with uid/gid 1000 | done | `internal/storage/provision.go` | `TestFreshStartFormatsMountsAndProvisions`; E2E (guest `id` and file owner) |
 | 40 GiB sparse `root-upper.img` + `mkfs.ext4 -F -q` | done | `internal/storage/provision.go` | `TestOptionalRootUpper`; E2E (`bytes=42949672960`) |
 | REST File API: list, text read/save, download, upload, rename, delete | done | `internal/storage/files` | `TestFileAPICRUD`, `TestMutations`; E2E |
 | Works identically with the VM `STOPPED` or `RUNNING` | done | | E2E (files written by the guest seen by the API, and the reverse) |
 | `juicefs webdav` on a loopback port, `/webdav/` with Basic Auth | done | `internal/storage/webdav.go` | `TestWebDAVProxyRewrites`, `TestWebDAVSupervisor`; E2E |
-| Virtual S3 gateway: supervised `juicefs gateway` on `LYDIABOX_S3_GATEWAY_ADDR`, bucket `lydiabox`, access key `lydiabox`, secret key = admin token | done | `internal/storage/s3gateway.go`, `internal/storage/child.go` | `TestGatewayCommand`, `TestS3GatewaySupervisor`, `TestS3GatewayDisabled`, `TestS3GatewayAddr`, `TestHealthAndStatus`; E2E (`aws s3`) |
+| Virtual S3 gateway: supervised `juicefs gateway` on the loopback `LYDIABOX_S3_GATEWAY_ADDR`, bucket `lydiabox`, access key `lydiabox`, secret key = admin token, reverse-proxied verbatim (public route, SigV4 checked by the gateway) | done | `internal/storage/s3gateway.go`, `internal/storage/child.go`, `internal/api/routes_s3.go` | `TestGatewayCommand`, `TestS3GatewaySupervisor`, `TestS3GatewayDisabled`, `TestS3GatewayPathIsBucket`, `TestS3RouteForwardsVerbatim`, `TestS3RouteDisabledGateway`, `TestHealthAndStatus`; E2E (steps 29 to 34) |
+| S3 gateway at `/s3` on `LYDIABOX_LISTEN_ADDR` | deviates (at `/lydiabox`) | `internal/api/routes_s3.go` | see open items |
 
 ## 4.3 Serverless agent VM engine
 
@@ -141,14 +143,14 @@ Open items (not `done`):
 | `cloud-hypervisor --api-socket`, `PUT vm.create` payload (CPUs, shared memory, payload, 3 disks, 2 fs, vsock, net, devices) | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload` |
 | Auto-built read-only `lydiabox-guest.ext4` | done | `internal/vmm/chv/driver.go` | `TestLifecycleAgainstMockCloudHypervisor` |
 | TAP `172.30.0.2/24`, NAT, no access to host private networks | done | `internal/vmm/chv/network.go` | `TestNetworkRules` |
-| Same subnet for every tenant | deviates | | see open items |
+| Per-tenant subnet: `default` keeps `172.30.0.0/24`; other tenants get `172.30.<n>.0/24` from a stable index in the store (`vm_networks`), passed to the initramfs as `lydiabox.ip` / `lydiabox.gw` | done | `internal/vmm/chv/payload.go`, `internal/store/vmnet.go`, `internal/cli/wire_vm.go` | `TestTenantNetwork`, `TestTenantSubnet` |
 | Optional VFIO GPU device | done | `internal/vmm/chv/payload.go` | `TestBuildConfigPayload` |
 | `vm.boot`, `vm.pause`, `vm.resume`, `vm.shutdown` | done | `internal/vmm/chv/client.go` | `TestLifecycleAgainstMockCloudHypervisor` |
 | vsock `CONNECT <port>` / `OK`, and `vsock.sock_<port>` listeners | done | `internal/vmm/chv/vsock.go` | `TestVsockHandshake` |
 | Initramfs: squashfs, ext4 upper, overlay, virtiofs, guest bind mount, `switch_root` | done | `deploy/initramfs/init` | shellcheck; boot unverified |
 | `EnsureRunning` singleflight wake from terminal, session, desktop, MCP | done | `internal/vmm/controller.go` | `TestEnsureRunningIsSingleflight`; E2E (`wake`, session start) |
 | Leases (PTY, desktop), idle timeout, `sync`, pause | done | `internal/vmm/controller.go` | `TestIdleTimerHibernatesWithoutLeases`; E2E (idle pause) |
-| `docker` driver: same image and protocol over a bind-mounted UNIX socket | deviates (root not persistent) | `internal/vmm/docker` | `TestDockerLifecycleAndSockets`; E2E |
+| `docker` driver: same image and protocol over a bind-mounted UNIX socket, persistent root | done | `internal/vmm/docker` | `TestDockerLifecycleAndSockets`, `TestStopKeepsContainer`; E2E (steps 35 to 38) |
 
 ## 4.4 Magpie integration and session bridge
 
@@ -167,14 +169,14 @@ Open items (not `done`):
 | Hot-switch: SIGINT, 3 s, SIGTERM | done | `internal/harness/bridge.go` | `TestHotSwitchPairs` |
 | Transcript extraction (goal, files, last 30 actions, last 10 messages, issues) and git state | done | `internal/harness/adapters`, `internal/harness/git.go` | `TestDiscoverAndParse`, `TestExecGitSandbox` |
 | `.agent/HANDOFF.md`, `.agent/state.json`, managed blocks, model binding | done | `internal/harness/handoff.go` | `TestUpsertManagedBlock`, `TestSwitchTwiceIsIdempotent` |
-| Native seed session and new PTY in the same terminal room | partial (no Antigravity seed) | `internal/harness/adapters` | `TestSynthesizeHandoffSeeds`, `TestSessionsWebSocketRoom` |
+| Native seed session and new PTY in the same terminal room | done (Antigravity uses the continuation invocation that the design allows, because its native format is undocumented) | `internal/harness/adapters` | `TestSynthesizeHandoffSeeds`, `TestSessionsWebSocketRoom` |
 
 ## 4.5 Computer use, desktop streaming, and takeover
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
 | Ubuntu 24.04 desktop image with the listed packages | done | `deploy/rootfs/Dockerfile` (`desktop`) | not built here (size); `desktop-slim` built and run |
-| Five harness CLIs in the image | partial | `deploy/rootfs/install-harnesses.sh` | see open items |
+| Five harness CLIs in the image | done (dsh: npm `@deepseek-ai/dsh`, the package of `github.com/deepseek-ai/deepseek-harness`, Node.js 24; agy: Google's installer `https://antigravity.google/cli/install.sh`, SHA512-checked native binary) | `deploy/rootfs/install-harnesses.sh`, `deploy/rootfs/Dockerfile` | installers run in an `ubuntu:24.04` container with Node.js 24.22: `claude`, `codex`, `opencode`, `dsh` 0.2.2-rc.1, `agy` 1.5.4 on PATH; the full `desktop` image was not built here |
 | `Xvfb :0 1920x1080x24` + Xfce as `agent` (uid 1000) | done | `deploy/rootfs/supervisord.conf` | E2E (`xdpyinfo`: 1920x1080) |
 | `xgb` + `xtest`: capture, mouse, keys, text | done | `internal/guest/x11` | `TestAgentActionsInjectAndEmitEvents`; E2E (`computer_screenshot`) |
 | Observer / Takeover, `agent_action` events, 30 s wait or takeover message | done | `internal/guest/x11`, `internal/desktop` | `TestTakeoverBlocksAgentAndInjectsUserInput`; E2E (mode `PUT`) |
@@ -215,7 +217,7 @@ Open items (not `done`):
 | Gate | Status | Verified by |
 | :--- | :--- | :--- |
 | Phase 1: traversal rejection, AES-256-GCM, File API CRUD without a VM | done | `TestTraversalRejected`, `TestCipherRoundTrip`, `TestFileAPICRUD`; E2E |
-| Phase 2: `linux/amd64` and `linux/arm64` builds; `chv` payload and mock lifecycle; RPC PTY + MCP over UNIX sockets | done | `make release`; `TestBuildConfigPayload`, `TestVsockHandshake`, `TestPTYRoundTripOverUnixSocket` |
+| Phase 2: `linux/amd64` and `linux/arm64` builds; `chv` payload and mock lifecycle; RPC PTY + MCP over UNIX sockets | done | `make release`; `TestBuildConfigPayload`, `TestLifecycleAgainstMockCloudHypervisor`, `TestVsockHandshake`, `TestPTYRoundTripOverUnixSocket` |
 | Phase 3: realistic logs for 5 harnesses, wiring, hot-switch between pairs | done | `TestDiscoverAndParse`, `TestHotSwitchPairs` |
 | Phase 4: `git-cred get` over simulated vsock without secrets on guest disk | done | `TestGitCredEndToEnd` |
 | Phase 5: web UI built and embedded | done | `make build`; E2E |
@@ -300,6 +302,54 @@ AWS CLI 2 on macOS):
 | 27 | Files page, "Mount locally": WebDAV and S3 sections (endpoint, bucket, access key, secret key note, AWS CLI command) | pass |
 | 28 | `SIGTERM`: the gateway stops with the other processes | pass |
 
+Steps 23 to 28 used the earlier layout (gateway on its own port). The
+gap-closure run below replaces them.
+
+### Gap-closure run
+
+Same host and setup, recreated from the description above: network
+`lydiabox-e2e`, MinIO (`ghcr.io/coollabsio/minio`) as
+`lydiabox-e2e-minio`, a privileged `docker:28-dind` container with `fuse`,
+`fuse3`, and `e2fsprogs`, the `lydiabox/guest:slim` image rebuilt with
+`make guest-image-slim` and loaded into it, and the `linux/arm64` binary from
+`make release`. The settings are those of the first run plus
+`LYDIABOX_META_SYNC_INTERVAL=10s`; the S3 gateway backend stays on the
+default `127.0.0.1:8090` inside the container, and only port 18080 is
+published. The AWS CLI 2.36 on macOS used `--endpoint-url
+http://127.0.0.1:18080`, access key `lydiabox`, and the admin token as the
+secret key.
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| 29 | First start with the bucket `s3`: `juicefs gateway` stopped with `invalid bucket name "s3": Bucket name cannot be shorter than 3 characters`, and `lydiabox up` exited. The bucket is now `lydiabox` at `/lydiabox` (open items) | finding, fixed |
+| 30 | Start: `GET /api/v1/status` gives `"s3Gateway":{"enabled":true,"addr":"127.0.0.1:8090","path":"/lydiabox","bucket":"lydiabox","running":true}` | pass |
+| 31 | A file written with the File API (`PUT /fs/workspace/text`): `aws s3 ls s3://lydiabox/workspace/s3check/` lists it; `aws s3 cp s3://lydiabox/workspace/s3check/api.txt -` prints its content | pass |
+| 32 | `aws s3 cp` upload of a small file; the File API reads it. A 20 MiB random file (multipart upload) uploaded and downloaded again is byte-identical (`cmp`) | pass |
+| 33 | `aws s3 rm`; the File API then gives 404 | pass |
+| 34 | A wrong secret key gives `SignatureDoesNotMatch`; unsigned `GET /lydiabox?list-type=2` and `PUT /lydiabox/...` without credentials give 403 from the gateway | pass |
+| 35 | `POST /vm/wake`: the container is created with the label `lydiabox.spec=<hash>`. As root in the guest, `/etc/lydiabox-persist.txt` is written; `/tmp/should-vanish` is created | pass |
+| 36 | `POST /vm/stop`: the container is `Exited (0)` and kept (same ID). `POST /vm/wake`: the same container starts (log "reusing the guest container"); `/etc/lydiabox-persist.txt` has the same content; `/tmp` is a new tmpfs without `should-vanish`; `Xvfb` runs; `GET /desktop/mode` 200; `POST /sessions` (`shell`) 201 | pass |
+| 37 | `POST /vm/stop` with `{"force":true,"resetRoot":true}`: the container is removed; the next wake creates a new one without `/etc/lydiabox-persist.txt` | pass |
+| 38 | After the restore in step 39, with `LYDIABOX_VM_CPUS=2`: wake logs "the image, VM settings, or guest binary changed; recreating the guest container" and the VM has 2 CPUs | pass |
+| 39 | Disaster recovery: `vm/stop`, wait for the 10 s backup, `SIGTERM` (final snapshots of `jfs-meta.json.gz` and `lydiabox.db.gz`). `/data` moved away; a new `/data` holds only `state/master.key` | pass |
+| 40 | New start: bootstrap downloads `juicefs` and `magpie` again; the log shows "restored the host state database from S3; stored connector tokens decrypt only with the master key that wrote them" (`lydiabox.db.gz`, 81920 bytes) and "restoring JuiceFS metadata from backup" | pass |
+| 41 | After the restore: `GET /sessions` lists the shell session of step 36 (`exited`); `s3check/` with `api.txt` and `big.bin` is present; magpie starts with the restored gateway secrets (`/models/gateway` `running`) | pass |
+| 42 | Shutdown: `vm/stop`, `SIGTERM` ("shutdown complete"); the dind and MinIO containers and the network removed | pass |
+
+Other checks on this host:
+
+- `make virtiofsd` path (`deploy/virtiofsd/build.sh`): virtiofsd `v1.14.0`
+  built in 59 s; `file` reports a static, stripped aarch64 ELF; `virtiofsd
+  --version` prints `virtiofsd 1.14.0` in the build stage.
+- Harness installers (`deploy/rootfs/install-harnesses.sh` with the default
+  build arguments) in `ubuntu:24.04` with Node.js 24.22.2: `claude`,
+  `codex`, `opencode`, `dsh` (0.2.2-rc.1), and `agy` (1.5.4) are on PATH.
+  Research for the two installers: the npm registry entry of
+  `@deepseek-ai/dsh` names the repository `deepseek-ai/deepseek-harness`
+  and a maintainer address at `deepseek.com`; `https://antigravity.google/cli/install.sh`
+  is served by Google's Antigravity site, downloads the native build from
+  Google's release service, and checks its SHA512 before it installs `agy`.
+
 Not run on this host: the `chv` driver (no KVM), the full `desktop` image
 (Chrome, Blender, and harness CLIs; too large for this Docker VM), a hot
 switch between real harness CLIs, and OAuth against real providers.
@@ -334,8 +384,9 @@ paste) does not reach the guest; typed keys do.
 
 ## Final validation
 
-Run from a clean state (`make clean`, `go clean -testcache`, fresh
-`npm ci`) on macOS arm64 with Go 1.24.1 and Node.js 24:
+Run again after the gap-closure work, from a clean state (`make clean`,
+`go clean -testcache`, fresh `npm ci`) on macOS arm64 with Go 1.24.1 and
+Node.js 24:
 
 | Command | Result |
 | :--- | :--- |
@@ -346,8 +397,7 @@ Run from a clean state (`make clean`, `go clean -testcache`, fresh
 | `make lint` (vet, gofmt, staticcheck, shellcheck) | pass, no findings |
 | `make build` | pass; `dist/lydiabox-guest` is a static, stripped ELF |
 | `make release` | pass; four static, stripped ELF binaries |
-| `make test` | pass |
-| `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 47 tests, no lint warnings |
+| `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 45 tests (the two `s3Endpoint` tests were removed with that module), no lint warnings |
 
 No Go, TypeScript, script, HTML, or CSS source file has more than 600
 lines (largest: `internal/vmm/controller.go`, 477 lines).

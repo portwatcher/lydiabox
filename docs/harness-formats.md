@@ -86,7 +86,7 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Step types | 14 user input, 15 planner response, 5 code action, 8 view file, 21 run command; status 3 is a failed step | Inferred |
 | Payload decoding | Schema-free protobuf walk; the longest string of a user or planner step is its text; paths are strings that look like file paths | Inferred |
 | CLI | `agy [--model m] [--conversation <id>] [-i/--prompt-interactive <text>]` | Inferred (third-party cheat sheet) |
-| Seed session | None: native conversations cannot be written safely. The target gets `agy --prompt-interactive "<continue prompt>"`, and the managed blocks in `GEMINI.md`/`AGENTS.md` point at `.agent/HANDOFF.md`. The conversation ID is assigned at runtime | Design decision |
+| Seed session | None: native conversations cannot be written safely. The target gets `agy --prompt-interactive "<continue prompt>"`, and the managed blocks in `GEMINI.md`/`AGENTS.md` point at `.agent/HANDOFF.md`. The conversation ID is assigned at runtime. Design section 4.4 allows this path ("or construct an initial continuation invocation") | Design decision |
 | Config | `.antigravity/settings.json` (`endpoint`, `apiKey`, `model`, `env.GOOGLE_GEMINI_BASE_URL`, `env.GEMINI_API_KEY`) is the design path; the MCP servers are written to `.gemini/antigravity/mcp_config.json` (design path) and `.gemini/config/mcp_config.json` (documented global path) as `mcpServers.<name>.serverUrl` | MCP shape Verified; settings keys Inferred |
 
 ## opencode (`sst/opencode`)
