@@ -38,8 +38,12 @@ func DefaultEnv(hostAddr string) map[string]string {
 		rpc.EnvHostAddr:      hostAddr,
 		"ANTHROPIC_BASE_URL": GatewayURL,
 		"OPENAI_BASE_URL":    GatewayURL,
-		"TERM":               "xterm-256color",
-		"COLORTERM":          "truecolor",
+		// Gemini SDKs (and agy with "modelProvider": "gemini") use these;
+		// the host side of the tunnel replaces the placeholder key.
+		"GOOGLE_GEMINI_BASE_URL": GatewayURL,
+		"GEMINI_API_KEY":         "lydiabox-local",
+		"TERM":                   "xterm-256color",
+		"COLORTERM":              "truecolor",
 	}
 }
 

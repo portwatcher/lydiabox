@@ -55,11 +55,26 @@ func (dshWirer) CurrentModel(homeDir string) (string, error) {
 
 func (dshWirer) Env(Binding) map[string]string { return nil }
 
-// antigravityWirer edits ~/.antigravity/settings.json and registers the MCP
-// servers in the Antigravity mcp_config.json files.
+// antigravityWirer edits ~/.antigravity/settings.json (the design path:
+// gateway endpoint and model), the Antigravity CLI settings
+// ~/.gemini/antigravity-cli/settings.json, and registers the MCP servers in
+// the Antigravity mcp_config.json files.
+//
+// The CLI keys are from the published schema
+// https://antigravity.google/schemas/v1/settings.json and were checked with
+// agy 1.5.4 against a capture server: with "modelProvider": "gemini",
+// GEMINI_API_KEY, and GOOGLE_GEMINI_BASE_URL (see Env), `agy --model <m>`
+// with the custom model {"modelName": "gemini-api://<m>"} sends
+// POST <base>/v1beta/models/<m>:streamGenerateContent. The wirer does not
+// write the CLI "model" key: agy 1.5.4 resolves a saved custom-model label
+// to an empty model ("tModel: model is empty"); the launcher passes
+// --model instead.
 type antigravityWirer struct{}
 
-const antigravitySettings = ".antigravity/settings.json"
+const (
+	antigravitySettings    = ".antigravity/settings.json"
+	antigravityCLISettings = ".gemini/antigravity-cli/settings.json"
+)
 
 // antigravityMCPConfigs are the design path and the documented global path.
 var antigravityMCPConfigs = []string{".gemini/antigravity/mcp_config.json", ".gemini/config/mcp_config.json"}
@@ -96,6 +111,11 @@ func (w antigravityWirer) Apply(homeDir string, b Binding) error {
 	if err != nil {
 		return err
 	}
+	if err := editJSONFile(homeDir, antigravityCLISettings, 0o644, func(o *object) error {
+		return applyAntigravityCLI(o, b.Model)
+	}); err != nil {
+		return err
+	}
 	for _, rel := range antigravityMCPConfigs {
 		err := editJSONFile(homeDir, rel, 0o644, func(o *object) error {
 			servers, err := o.child("mcpServers")
@@ -115,6 +135,43 @@ func (w antigravityWirer) Apply(homeDir string, b Binding) error {
 		}
 	}
 	return nil
+}
+
+// applyAntigravityCLI sets the Gemini API provider and, when a model is
+// bound, a custom model entry keyed by the model name, so that
+// `agy --model <model>` reaches the gateway with that model.
+func applyAntigravityCLI(o *object, model string) error {
+	if err := o.set("modelProvider", "gemini"); err != nil {
+		return err
+	}
+	if model == "" {
+		return nil
+	}
+	cfg, err := o.child("customModelsConfig")
+	if err != nil {
+		return err
+	}
+	models, err := cfg.child("customModels")
+	if err != nil {
+		return err
+	}
+	entry, err := models.child(model)
+	if err != nil {
+		return err
+	}
+	if err := entry.set("modelName", "gemini-api://"+model); err != nil {
+		return err
+	}
+	if err := entry.set("label", model); err != nil {
+		return err
+	}
+	if err := models.setChild(model, entry); err != nil {
+		return err
+	}
+	if err := cfg.setChild("customModels", models); err != nil {
+		return err
+	}
+	return o.setChild("customModelsConfig", cfg)
 }
 
 func (antigravityWirer) CurrentModel(homeDir string) (string, error) {

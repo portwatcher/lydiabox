@@ -57,8 +57,9 @@ func TestWirersPreserveUserContent(t *testing.T) {
 		{"dsh", []string{".dsh/.env"}, "kimi/kimi-k3",
 			[]string{"# dsh environment, edited by hand", "export DEEPSEEK_API_KEY=lydiabox-local # personal key",
 				"DSH_THEME=dark", "# trailing comment block"}},
-		{"antigravity", []string{".antigravity/settings.json", ".gemini/antigravity/mcp_config.json", ".gemini/config/mcp_config.json"}, "kimi/kimi-k3",
-			[]string{`"theme": "solarized"`, `"telemetry": false`, `"HTTP_PROXY": "http://proxy.local:3128"`, `"@modelcontextprotocol/server-filesystem"`}},
+		{"antigravity", []string{".antigravity/settings.json", ".gemini/antigravity-cli/settings.json", ".gemini/antigravity/mcp_config.json", ".gemini/config/mcp_config.json"}, "kimi/kimi-k3",
+			[]string{`"theme": "solarized"`, `"telemetry": false`, `"HTTP_PROXY": "http://proxy.local:3128"`, `"@modelcontextprotocol/server-filesystem"`,
+				`"colorScheme": "dark"`, `"trustedWorkspaces": [`, `"modelName": "gemini-api://gemini-3.1-pro-preview"`}},
 		{"opencode", []string{".config/opencode/opencode.json"}, "kimi/kimi-k3",
 			[]string{`"theme": "tokyonight"`, `"timeout": 600000`, `"db-mcp"`, `"leader": "ctrl+x"`}},
 	}

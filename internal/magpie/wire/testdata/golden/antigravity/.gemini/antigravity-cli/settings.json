@@ -1,0 +1,20 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/settings.json",
+  "colorScheme": "dark",
+  "trustedWorkspaces": [
+    "/workspace/lydiabox"
+  ],
+  "customModelsConfig": {
+    "customModels": {
+      "pro": {
+        "modelName": "gemini-api://gemini-3.1-pro-preview",
+        "label": "Pro"
+      },
+      "kimi/kimi-k3": {
+        "modelName": "gemini-api://kimi/kimi-k3",
+        "label": "kimi/kimi-k3"
+      }
+    }
+  },
+  "modelProvider": "gemini"
+}
