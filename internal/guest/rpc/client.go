@@ -50,9 +50,8 @@ func (s *Session) Open(ctx context.Context, method string, params any) (*Stream,
 		return nil, nil, fmt.Errorf("rpc: open stream: %w", err)
 	}
 	st := NewStream(c)
-	if dl, ok := ctx.Deadline(); ok {
-		_ = st.SetDeadline(dl)
-	}
+	// Only the AfterFunc sets the deadline, so a timeout always comes after
+	// ctx is done and the caller gets ctx.Err() instead of a socket timeout.
 	stop := context.AfterFunc(ctx, func() { _ = st.SetDeadline(time.Unix(1, 0)) })
 	res, err := st.exchange(method, raw)
 	if !stop() || err != nil {
@@ -96,9 +95,8 @@ func (s *Session) Call(ctx context.Context, method string, params, out any) erro
 	}
 	st := NewStream(c)
 	defer st.Close()
-	if dl, ok := ctx.Deadline(); ok {
-		_ = st.SetDeadline(dl)
-	}
+	// Only the AfterFunc sets the deadline, so a timeout always comes after
+	// ctx is done and the caller gets ctx.Err() instead of a socket timeout.
 	stop := context.AfterFunc(ctx, func() { _ = st.SetDeadline(time.Unix(1, 0)) })
 	defer stop()
 	res, err := st.exchange(method, raw)
