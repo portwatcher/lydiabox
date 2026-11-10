@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -87,49 +86,28 @@ func (l *vsockListener) Accept() (net.Conn, error) {
 func (l *vsockListener) Close() error   { return l.f.Close() }
 func (l *vsockListener) Addr() net.Addr { return l.addr }
 
+// dialVsock connects to cid:port with a blocking connect and then makes the
+// socket non-blocking. A non-blocking AF_VSOCK connect can report the
+// socket writable with SO_ERROR 0 before the connection is established
+// (seen under Cloud Hypervisor: most guest-to-host tunnel requests then
+// failed with an empty reply). The kernel bounds the connect with
+// SO_VM_SOCKETS_CONNECT_TIMEOUT (2 s by default); ctx is checked before and
+// after.
 func dialVsock(ctx context.Context, cid, port uint32) (net.Conn, error) {
-	fd, err := vsockSocket()
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err = unix.Connect(fd, &unix.SockaddrVM{CID: cid, Port: port})
-	if err != nil && !errors.Is(err, unix.EINPROGRESS) {
+	fd, err := unix.Socket(unix.AF_VSOCK, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return nil, fmt.Errorf("rpc: vsock socket: %w", err)
+	}
+	if err := unix.Connect(fd, &unix.SockaddrVM{CID: cid, Port: port}); err != nil {
 		unix.Close(fd)
 		return nil, fmt.Errorf("rpc: vsock connect %d:%d: %w", cid, port, err)
 	}
-	f := os.NewFile(uintptr(fd), fmt.Sprintf("vsock:%d:%d", cid, port))
-	if errors.Is(err, unix.EINPROGRESS) {
-		if dl, ok := ctx.Deadline(); ok {
-			_ = f.SetWriteDeadline(dl)
-		}
-		stop := context.AfterFunc(ctx, func() { _ = f.SetWriteDeadline(time.Unix(1, 0)) })
-		rc, rerr := f.SyscallConn()
-		if rerr != nil {
-			stop()
-			f.Close()
-			return nil, rerr
-		}
-		var soErr error
-		werr := rc.Write(func(fd uintptr) bool {
-			v, gerr := unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_ERROR)
-			if gerr != nil {
-				soErr = gerr
-				return true
-			}
-			if v != 0 {
-				soErr = syscall.Errno(v)
-			}
-			return true
-		})
-		stop()
-		_ = f.SetWriteDeadline(time.Time{})
-		if werr != nil || soErr != nil {
-			f.Close()
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			return nil, fmt.Errorf("rpc: vsock connect %d:%d: %w", cid, port, errors.Join(werr, soErr))
-		}
+	if err := unix.SetNonblock(fd, true); err != nil {
+		unix.Close(fd)
+		return nil, fmt.Errorf("rpc: vsock nonblock: %w", err)
 	}
 	local := VsockAddr{}
 	if sa, err := unix.Getsockname(fd); err == nil {
@@ -137,7 +115,12 @@ func dialVsock(ctx context.Context, cid, port uint32) (net.Conn, error) {
 			local = VsockAddr{CID: vm.CID, Port: vm.Port}
 		}
 	}
-	return &vsockConn{f: f, local: local, remote: VsockAddr{CID: cid, Port: port}}, nil
+	conn := newVsockConn(fd, local, VsockAddr{CID: cid, Port: port})
+	if err := ctx.Err(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
 }
 
 func newVsockConn(fd int, local, remote VsockAddr) *vsockConn {
