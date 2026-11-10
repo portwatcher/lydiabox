@@ -76,7 +76,7 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_S3_SECRET_KEY` | required | Secret access key |
 | `LYDIABOX_S3_REGION` | `auto` | Region (AWS needs the bucket region) |
 | `LYDIABOX_S3_BUCKET_URL` | derived | JuiceFS `--bucket` URL override |
-| `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` | Web UI, API, WebSocket, `/webdav`, and the S3 gateway (`/lydiabox`) |
+| `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` | Web UI, API, WebSocket, `/webdav`, and the S3 gateway (`/s3`) |
 | `LYDIABOX_S3_GATEWAY_ADDR` | `127.0.0.1:8090` | Backend of the S3 gateway (empty or `off` disables it) |
 | `LYDIABOX_AUTH_TOKEN` | generated | Admin password (16 characters or more) |
 | `LYDIABOX_MASTER_KEY` | generated | 64 hex characters; encrypts connector tokens |
@@ -203,25 +203,25 @@ rclone mount :webdav: ~/lydiabox --webdav-url=http://<host>:8080/webdav/ \
 ```
 
 The virtual S3 gateway serves the same files on the main port. Use the
-endpoint `http://<host>:8080`, the bucket `lydiabox`, and path-style
-addressing (requests go to `/lydiabox/...`). The access key is `lydiabox` and the secret key is the admin
-token. Object keys are `workspace/...` and `home/agent/...`. Name the
-bucket in each command; `aws s3 ls` without a bucket does not work,
-because `/` is the web UI.
+endpoint `http://<host>:8080/s3`, the bucket `lydiabox`, and path-style
+addressing. The access key is `lydiabox` and the secret key is the admin
+token. Object keys are `workspace/...` and `home/agent/...`.
 
 ```sh
 export AWS_ACCESS_KEY_ID=lydiabox AWS_SECRET_ACCESS_KEY="$LYDIABOX_AUTH_TOKEN"
-aws --endpoint-url http://<host>:8080 s3 ls s3://lydiabox/workspace/
-aws --endpoint-url http://<host>:8080 s3 cp report.pdf s3://lydiabox/workspace/
+aws --endpoint-url http://<host>:8080/s3 s3 ls
+aws --endpoint-url http://<host>:8080/s3 s3 ls s3://lydiabox/workspace/
+aws --endpoint-url http://<host>:8080/s3 s3 cp report.pdf s3://lydiabox/workspace/
 rclone lsd :s3:lydiabox/workspace --s3-provider=Minio --s3-force-path-style \
-  --s3-endpoint=http://<host>:8080 \
+  --s3-endpoint=http://<host>:8080/s3 \
   --s3-access-key-id=lydiabox --s3-secret-access-key="$LYDIABOX_AUTH_TOKEN"
 ```
 
-In an rclone configuration file, set `force_path_style = true`. The gateway
-process (`juicefs gateway`) listens on `LYDIABOX_S3_GATEWAY_ADDR` (default
-`127.0.0.1:8090`); LydiaBox forwards `/lydiabox` to it without changes, so the
-SigV4 signature stays valid.
+In an rclone configuration file, set `endpoint = http://<host>:8080/s3` and
+`force_path_style = true`. The gateway process (`juicefs gateway`) listens
+on `LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). LydiaBox verifies
+the SigV4 signature of each request at `/s3`, removes the prefix, and signs
+the request again for the gateway.
 
 Put LydiaBox behind TLS before you expose it to a network you do not
 trust.
@@ -258,8 +258,9 @@ curl -H "Authorization: Bearer $TOKEN" -d '{"token":"ghp_..."}' \
 Tokens are AES-256-GCM encrypted in the host database and refresh
 automatically. In the VM, `git` gets a fresh GitHub token from
 `lydiabox-guest git-cred` for each push or pull, and the harnesses use the
-connector MCP server at `http://127.0.0.1:8911/mcp`. Every token issue and
-tool call is in the audit log.
+connector MCP server at `http://127.0.0.1:8911/mcp`. The same server is on
+the host at `http://<host>:8080/mcp/connectors` (admin token as a Bearer
+token). Every token issue and tool call is in the audit log.
 
 ## Development
 
@@ -295,7 +296,7 @@ npm run typecheck && npm run lint && npm run test
 | Cloud Hypervisor driver | Done; tested against a mock API, not on real KVM |
 | magpie gateway, harness bridge | Done; harness formats partly inferred |
 | Connectors | Done; tested against fake provider APIs |
-| Virtual S3 gateway | Done, on the main port (`/lydiabox`); tested end to end |
+| Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).
 
@@ -307,7 +308,7 @@ cmd/lydiabox-guest      guest daemon (internal/guest/cli)
 internal/config         configuration, validation, secrets, data directory layout
 internal/store          SQLite state database, AES-256-GCM secrets
 internal/bootstrap      runtime binary downloader, guest image fetcher
-internal/storage        JuiceFS supervisor, S3 metadata backup, WebDAV proxy, File API
+internal/storage        JuiceFS supervisor, S3 metadata backup, WebDAV and S3 proxies, File API
 internal/vmm            VM driver interface, auto-wake and idle controller (chv, docker)
 internal/magpie         magpie supervisor, admin client, harness config wirers
 internal/harness        session manager, terminal rooms, hot-switch bridge, adapters

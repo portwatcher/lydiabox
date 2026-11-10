@@ -2,7 +2,8 @@
 
 This report compares the implementation on `main` with
 [design.md](design.md), section by section. It was written in Phase 6
-(2026-11-10) and updated after the gap-closure work of the same day.
+(2026-11-10) and updated after the gap-closure work and the literal-conformance
+work of the same day.
 
 Status values:
 
@@ -21,13 +22,13 @@ the integration run at the end of this document (**E2E**), or `unverified`.
 | :--- | ---: | ---: | ---: | ---: |
 | 1. Vision and pillars | 15 | 0 | 0 | 0 |
 | 2. Non-negotiable rules | 9 | 0 | 0 | 0 |
-| 3. Repository structure | 15 | 0 | 1 | 0 |
+| 3. Repository structure | 16 | 0 | 0 | 0 |
 | 4.1 Configuration and bootstrap | 8 | 0 | 0 | 0 |
-| 4.2 Storage | 12 | 0 | 1 | 0 |
+| 4.2 Storage | 13 | 0 | 0 | 0 |
 | 4.3 VM engine | 12 | 0 | 0 | 0 |
-| 4.4 Magpie and session bridge | 11 | 1 | 2 | 0 |
-| 4.5 Desktop and computer use | 10 | 0 | 1 | 0 |
-| 4.6 Connectors | 8 | 0 | 1 | 0 |
+| 4.4 Magpie and session bridge | 14 | 0 | 0 | 0 |
+| 4.5 Desktop and computer use | 11 | 0 | 0 | 0 |
+| 4.6 Connectors | 9 | 0 | 0 | 0 |
 | 5. Web UI | 6 | 0 | 0 | 0 |
 | 6. Phase gates | 6 | 0 | 0 | 0 |
 
@@ -35,19 +36,20 @@ Open items (not `done`):
 
 | Item | Status | Reason |
 | :--- | :--- | :--- |
-| S3 gateway path | deviates | The design lists `/s3` on `LYDIABOX_LISTEN_ADDR`. The gateway is on that listener, at `/lydiabox` (bucket `lydiabox`). S3 clients sign the request path and host (SigV4), so a proxy that does not re-sign must forward the path unchanged, and the path must start with the bucket name. The bucket `s3` is not possible: S3 bucket names need at least 3 characters, and `juicefs gateway` stops with `invalid bucket name "s3"` (seen in the integration run). |
-| Antigravity wirer | partial | The MCP file shape is verified; the keys of `.antigravity/settings.json` (`endpoint`, `apiKey`, `model`, `env.*`) are inferred. See [harness-formats.md](harness-formats.md). |
-| `OPENAI_BASE_URL` ends in `/v1` | deviates | OpenAI-compatible SDKs append `/chat/completions` to the base URL, so the base must include `/v1`. `ANTHROPIC_BASE_URL` and the Gemini URL stay `http://127.0.0.1:3425`. Applies to `ptymanager.DefaultEnv`, dsh `OPENAI_BASE_URL` / `DEEPSEEK_BASE_URL`, codex, and opencode. |
-| magpie admin API | deviates | magpie has no supported admin API. LydiaBox drives the API of `magpie serve --web=127.0.0.1:3426` (loopback only, random key). |
-| Host connector MCP route | deviates | The design names `/mcp/connectors` on the host. The broker is served only to the guest (vsock port 9001 or `$DATA_DIR/run/host-9001.sock`), not on the public listener, so it needs no extra authentication. |
-| WebRTC media port | deviates | All media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT` (default 50000), forwarded by the driver, because the guest is behind NAT. |
-| Extra packages | deviates | `internal/httpx`, `internal/tenant`, `internal/version`, `internal/webui`, `internal/vmm/guestclient`, `internal/magpie/wire`, `internal/harness/safefile`, `internal/connector/broker`, `internal/guest/cli`, `internal/guest/gitcred`. They keep files under 600 lines. |
 | Real KVM boot | unverified | This macOS host has no `/dev/kvm`. The Phase 2 gate asks for payload generation and a mock lifecycle, which the tests cover: `TestBuildConfigPayload` and `TestTenantNetwork` (the `vm.create` JSON, per-tenant network and kernel command line), `TestLifecycleAgainstMockCloudHypervisor` (two `virtiofsd` processes, a fake `cloud-hypervisor` API socket: `vm.create`, `vm.boot`, `vm.pause`, `vm.resume`, `vm.shutdown`, adoption after a restart), `TestVsockHandshake` (`CONNECT <port>` / `OK` and the `vsock.sock_<port>` listeners), and `TestNetworkRules` (nftables and iptables rules). The kernel, initramfs, and squashfs build and a real boot were not run. |
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
 host state database restore, `virtiofsd` on `linux/arm64`, the Antigravity
 seed session, the dsh and Antigravity CLIs in the image, the web page file
 layout, and per-tenant `chv` subnets.
+
+Closed in the literal-conformance work: the S3 gateway at `/s3` (SigV4
+verify-and-re-sign proxy), the literal gateway base URLs
+(`http://127.0.0.1:3425` for dsh and the PTY environment, with `/v1` added
+by the gateway for OpenAI-style paths), the host route `/mcp/connectors`,
+the Antigravity CLI settings (checked against agy 1.5.4), and a
+reclassification against the literal design text: the magpie web API, the
+single WebRTC UDP port, and the extra packages.
 
 ## 1. Vision and architectural pillars
 
@@ -57,7 +59,7 @@ layout, and per-tenant `chv` subnets.
 | Runtime binaries bootstrapped into `$DATA_DIR/runtime/` and supervised | done | `internal/bootstrap`, `internal/storage`, `internal/magpie` | `TestEnsureInstallsRequiredBinaries`; E2E (juicefs and magpie downloaded for darwin/arm64 and linux/arm64) |
 | JuiceFS with `sqlite3://` metadata and background snapshot sync | done | `internal/storage` | `TestSyncUploadsOnlyChanges`; E2E |
 | File access while the VM is `STOPPED`: Web UI, WebDAV | done | `internal/storage/files`, `internal/storage/webdav.go` | `TestFileAPICRUD`; E2E |
-| Virtual S3 gateway | done | `internal/storage/s3gateway.go`, `internal/api/routes_s3.go` | `TestS3GatewaySupervisor`, `TestS3RouteForwardsVerbatim`; E2E (`aws s3` through port 8080) |
+| Virtual S3 gateway | done | `internal/storage/s3gateway.go`, `internal/storage/s3proxy`, `internal/api/routes_s3.go` | `TestS3GatewaySupervisor`, `TestS3RouteVerifiesAndResigns`, `TestRoundTrip`; E2E (`aws s3` through port 8080 at `/s3`, steps 43 to 52) |
 | Persistent root (squashfs + `root-upper.img` overlay) | done (`chv`) | `deploy/initramfs/init`, `internal/vmm/chv` | `TestBuildConfigPayload`; boot unverified |
 | Persistent root with the `docker` driver: stop keeps the container; recreated only when the image, settings, or guest binary change, or on `resetRoot` | done | `internal/vmm/docker` | `TestStopKeepsContainer`, `TestBootStartsExistingContainer`, `TestRecreateOnChangedSpec`; E2E (a file in `/etc` survives stop and wake) |
 | Five harnesses | done | `internal/harness/adapters` | `TestDiscoverAndParse`, `TestHotSwitchPairs` |
@@ -102,7 +104,7 @@ layout, and per-tenant `chv` subnets.
 | `deploy/initramfs/init`, `deploy/rootfs/{Dockerfile,supervisord.conf,build-artifacts.sh}` | done | plus `lydiabox-init`, `setup-guest.sh`, `install-harnesses.sh`, `kernel.config` |
 | `web/` (`package.json`, `vite.config.ts`, `src/App.tsx`, `src/api/`) | done | |
 | `web/src/pages/{Studio,Desktop,Files,Models,Connectors}Page.tsx` | done | page entry modules that compose the components in the per-area folders (`studio/`, `desktop/`, `files/`, `models/`, `connectors/`) |
-| Extra packages | deviates | listed in the open items |
+| Extra packages | done | The design says "create the following layout", and the tree contains it. The packages outside the listed layout (`internal/httpx`, `internal/tenant`, `internal/version`, `internal/webui`, `internal/vmm/guestclient`, `internal/magpie/wire`, `internal/harness/safefile`, `internal/connector/broker`, `internal/guest/cli`, `internal/guest/gitcred`, `internal/storage/s3proxy`) are additions that keep files under 600 lines; the design does not forbid them |
 
 ## 4.1 Configuration and single-binary startup
 
@@ -132,8 +134,8 @@ layout, and per-tenant `chv` subnets.
 | REST File API: list, text read/save, download, upload, rename, delete | done | `internal/storage/files` | `TestFileAPICRUD`, `TestMutations`; E2E |
 | Works identically with the VM `STOPPED` or `RUNNING` | done | | E2E (files written by the guest seen by the API, and the reverse) |
 | `juicefs webdav` on a loopback port, `/webdav/` with Basic Auth | done | `internal/storage/webdav.go` | `TestWebDAVProxyRewrites`, `TestWebDAVSupervisor`; E2E |
-| Virtual S3 gateway: supervised `juicefs gateway` on the loopback `LYDIABOX_S3_GATEWAY_ADDR`, bucket `lydiabox`, access key `lydiabox`, secret key = admin token, reverse-proxied verbatim (public route, SigV4 checked by the gateway) | done | `internal/storage/s3gateway.go`, `internal/storage/child.go`, `internal/api/routes_s3.go` | `TestGatewayCommand`, `TestS3GatewaySupervisor`, `TestS3GatewayDisabled`, `TestS3GatewayPathIsBucket`, `TestS3RouteForwardsVerbatim`, `TestS3RouteDisabledGateway`, `TestHealthAndStatus`; E2E (steps 29 to 34) |
-| S3 gateway at `/s3` on `LYDIABOX_LISTEN_ADDR` | deviates (at `/lydiabox`) | `internal/api/routes_s3.go` | see open items |
+| Virtual S3 gateway: supervised `juicefs gateway` on the loopback `LYDIABOX_S3_GATEWAY_ADDR`, bucket `lydiabox`, access key `lydiabox`, secret key = admin token (public route, SigV4 checked by the proxy) | done | `internal/storage/s3gateway.go`, `internal/storage/child.go`, `internal/api/routes_s3.go` | `TestGatewayCommand`, `TestS3GatewaySupervisor`, `TestS3GatewayDisabled`, `TestS3GatewayPathAndBucket`, `TestS3RouteDisabledGateway`, `TestHealthAndStatus`; E2E (steps 43 to 52) |
+| S3 gateway at `/s3` on `LYDIABOX_LISTEN_ADDR`: the proxy verifies SigV4 (header and presigned URLs, 15-minute skew, expiry), removes `/s3`, keeps `Host` and the query, and re-signs for the backend with the same scope; signed chunk chains (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD[-TRAILER]`) are verified and rewritten; S3 XML errors | done | `internal/storage/s3proxy`, `internal/api/routes_s3.go` | `TestVerifyHeaderAuth`, `TestVerifyRejections`, `TestVerifyPresigned`, `TestErrorDocument`, `TestRoundTrip`, `TestResignMatchesBackend`, `TestChunkSignatureAWSExample`, `TestChunkedChainRewrite`, `TestS3RouteVerifiesAndResigns`; E2E (steps 43 to 52) |
 
 ## 4.3 Serverless agent VM engine
 
@@ -157,13 +159,13 @@ layout, and per-tenant `chv` subnets.
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
 | magpie on `127.0.0.1:3425`, data in `$DATA_DIR/state/magpie` | done | `internal/magpie/supervisor.go` | `TestSupervisorLifecycleAndGatewayKey`; E2E (`/api/v1/models/gateway`) |
-| magpie admin through its web API | deviates | `internal/magpie/admin_http.go` | `TestHTTPAdmin` |
+| Providers and routing managed "via Magpie API" (design sections 4.4 and 5) | done (LydiaBox drives the web API of `magpie serve --web=127.0.0.1:3426`, loopback only, random key. This API is not a versioned public interface, so a new magpie release can need changes in `internal/magpie/admin_http.go`; the pinned version in `internal/bootstrap/manifest.json` keeps them in step) | `internal/magpie/admin_http.go` | `TestHTTPAdmin` |
 | Named gateway key for the VM, injected on the host side of the tunnel | done | `internal/magpie/gatewaykey.go`, `internal/guest/credproxy` | `TestGatewayKeyReplacesForeignKey`; E2E |
-| Guest `127.0.0.1:3425` forwards Chat, Responses, Messages, Gemini | done | `internal/guest/credproxy` | `TestGatewayRoundTripOverUnixSockets`; E2E (`/api/hello`) |
+| Guest `127.0.0.1:3425` forwards Chat, Responses, Messages, Gemini; OpenAI and DeepSeek paths without `/v1` (`/chat/completions`, `/completions`, `/responses`, `/embeddings`, `/models`, `/models/...`) are forwarded as `/v1/...` (host side of the tunnel, where the listener's requests are parsed) | done | `internal/guest/credproxy` | `TestGatewayRoundTripOverUnixSockets`, `TestNormalizeOpenAIPath`, `TestGatewayAddsV1ForOpenAIPaths`; E2E (`/api/hello`) |
 | claude-code wirer (`settings.json` env and model, MCP in `.claude.json`) | done | `internal/magpie/wire` | `TestWirersPreserveUserContent` |
 | codex wirer (`base_url = .../v1`, model, `[mcp_servers.lydiabox]`) | done | `internal/magpie/wire` | `TestWirersPreserveUserContent` |
-| dsh wirer | deviates (`/v1` on OpenAI-style URLs) | `internal/magpie/wire/others.go` | `TestEnvEdit` |
-| antigravity wirer | partial (settings keys inferred) | `internal/magpie/wire/others.go` | `TestWirersCreateMissingFiles` |
+| dsh wirer (`OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `DEEPSEEK_BASE_URL` = `http://127.0.0.1:3425`); PTY `OPENAI_BASE_URL=http://127.0.0.1:3425` (`ptymanager.DefaultEnv`) | done | `internal/magpie/wire/others.go`, `internal/guest/ptymanager` | `TestEnvEdit`, `TestWirersPreserveUserContent`, `TestMultiAttachReplayAndInput` |
+| antigravity wirer: `~/.antigravity/settings.json` (design path: endpoint, model), `~/.gemini/antigravity/mcp_config.json`, plus the CLI's own `~/.gemini/antigravity-cli/settings.json` (`modelProvider: "gemini"`, `customModelsConfig.customModels.<model>.modelName = "gemini-api://<model>"`), `~/.gemini/config/mcp_config.json`, and `GOOGLE_GEMINI_BASE_URL` / `GEMINI_API_KEY` | done (CLI keys from the published schema and docs, and checked with agy 1.5.4: `agy --model <m>` posted `/v1beta/models/<m>:streamGenerateContent` to a capture server on `127.0.0.1:3425`, and `agy mcp list` showed both servers; see [harness-formats.md](harness-formats.md)) | `internal/magpie/wire/others.go` | `TestWirersCreateMissingFiles`, `TestWirersPreserveUserContent` |
 | opencode wirer (`/v1`, model, `mcp`) | done | `internal/magpie/wire/others.go` | `TestWirersPreserveUserContent` |
 | `HarnessAdapter` interface as specified | done | `internal/harness/types.go` | build |
 | Hot-switch: SIGINT, 3 s, SIGTERM | done | `internal/harness/bridge.go` | `TestHotSwitchPairs` |
@@ -182,7 +184,7 @@ layout, and per-tenant `chv` subnets.
 | Observer / Takeover, `agent_action` events, 30 s wait or takeover message | done | `internal/guest/x11`, `internal/desktop` | `TestTakeoverBlocksAgentAndInjectsUserInput`; E2E (mode `PUT`) |
 | `ffmpeg x11grab` with the given flags on first viewer, stopped at 0 viewers | done | `internal/guest/webrtc` | `TestFFmpegArgsMatchDesign` |
 | RTP to `TrackLocalStaticRTP` (H.264), signaling over `/api/v1/desktop/ws` | done | `internal/guest/webrtc`, `internal/desktop` | `TestViewerReceivesVideoAndSendsInput`, `TestSignalingRelayAndBroadcast`; E2E (live video and takeover keyboard input in a browser) |
-| Single WebRTC UDP port | deviates | `internal/guest/webrtc`, drivers | see open items |
+| WebRTC media transport | done (the design sets no port scheme; all media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT`, default 50000, forwarded by the driver because the guest is behind NAT) | `internal/guest/webrtc`, drivers | `TestViewerReceivesVideoAndSendsInput`; E2E (step 19) |
 | MCP on `127.0.0.1:8910/mcp` with the 9 tools | done | `internal/guest/mcp` | `TestProtocolHandshakeAndToolList`; E2E (tool list) |
 | `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP` |
 | `blender_run_script` | done | `internal/guest/mcp` | `TestToolsDriveTheDesktop` (fake Blender); real Blender unverified |
@@ -199,7 +201,7 @@ layout, and per-tenant `chv` subnets.
 | Upstream revoke on disconnect (Notion added in Phase 6) | done | `internal/connector/providers_builtin.go` | `TestDisconnectRevokes` |
 | `credential.helper = lydiabox-guest git-cred`, token over port 9001 | done | `deploy/rootfs/setup-guest.sh`, `internal/guest/gitcred` | `TestGitCredEndToEnd`; E2E (helper runs in the guest; no account was bound, so no token was issued) |
 | Connector MCP proxied to guest `127.0.0.1:8911/mcp` with `github_*`, `gdrive_*`, `notion_*`, `slack_*` | done | `internal/connector/broker`, `internal/guest/credproxy` | `TestMCPProtocol`, `TestGitHubTools`, `TestGDriveTools`; E2E (tool list in the guest) |
-| Host route `/mcp/connectors` | deviates | | see open items |
+| Host Connector MCP Server at `/mcp/connectors` on the main listener (authenticated; `POST` JSON-RPC, `GET` 405), the same broker handler that the guest reaches at `127.0.0.1:8911/mcp` | done | `internal/api/routes_connectors.go`, `internal/cli/wire_connector.go` | `TestHostConnectorMCPRoute` |
 
 ## 5. Web UI
 
@@ -303,7 +305,8 @@ AWS CLI 2 on macOS):
 | 28 | `SIGTERM`: the gateway stops with the other processes | pass |
 
 Steps 23 to 28 used the earlier layout (gateway on its own port). The
-gap-closure run below replaces them.
+gap-closure run below replaces them, and the `/s3` run replaces the S3
+steps 29 to 34 of the gap-closure run.
 
 ### Gap-closure run
 
@@ -335,6 +338,34 @@ secret key.
 | 40 | New start: bootstrap downloads `juicefs` and `magpie` again; the log shows "restored the host state database from S3; stored connector tokens decrypt only with the master key that wrote them" (`lydiabox.db.gz`, 81920 bytes) and "restoring JuiceFS metadata from backup" | pass |
 | 41 | After the restore: `GET /sessions` lists the shell session of step 36 (`exited`); `s3check/` with `api.txt` and `big.bin` is present; magpie starts with the restored gateway secrets (`/models/gateway` `running`) | pass |
 | 42 | Shutdown: `vm/stop`, `SIGTERM` ("shutdown complete"); the dind and MinIO containers and the network removed | pass |
+
+### `/s3` gateway run
+
+Same kind of host, recreated for this check: network `lydiabox-s3v`, MinIO
+(`ghcr.io/coollabsio/minio`) as `lydiabox-s3v-minio`, a privileged
+`docker:28-dind` container with `fuse`, `fuse3`, and `e2fsprogs`, and the
+`linux/arm64` binary from `make release`, with the settings of the first run
+(bucket `lydiabox-s3v`). The VM was not started (the S3 checks do not need
+it). Only port 18080 was published (as `127.0.0.1:28080`). The AWS CLI
+2.36.34 on macOS used `--endpoint-url http://127.0.0.1:28080/s3`, access key
+`lydiabox`, and the admin token as the secret key.
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| 43 | Start: the log prints `S3 gateway: endpoint http://[::]:18080/s3`; `GET /api/v1/status` gives `"s3Gateway":{"enabled":true,"addr":"127.0.0.1:8090","path":"/s3","bucket":"lydiabox","running":true}` | pass |
+| 44 | `aws s3 ls` (ListBuckets, `GET /s3/`) lists `lydiabox`; `aws s3api list-buckets` gives `lydiabox` | pass |
+| 45 | A file written with the File API (`PUT /api/v1/fs/workspace/text?path=s3check/api.txt`): `aws s3 ls s3://lydiabox/workspace/s3check/` lists it; `aws s3 cp s3://lydiabox/workspace/s3check/api.txt -` prints its content | pass |
+| 46 | `aws s3 cp` up and down of `a b+c!.txt` (a key that needs escaping): byte-identical (`cmp`); the File API reads the same content | pass |
+| 47 | A 20 MiB random file: multipart upload (3 `UploadPart` requests, SHA-256 payload hashes) and download are byte-identical (`cmp`); `head-object` gives 20971520 bytes | pass |
+| 48 | `aws s3 rm`; the File API then gives 404 | pass |
+| 49 | A wrong secret key gives `SignatureDoesNotMatch` (403, `application/xml`); an unsigned `GET /s3/lydiabox?list-type=2` gives 403 `AccessDenied` from the proxy | pass |
+| 50 | `aws s3 presign` (300 s): `curl` downloads the object (200). The same URL with another key gives `SignatureDoesNotMatch`; a URL presigned for 1 s and used after 3 s gives `AccessDenied` "Request has expired" | pass |
+| 51 | `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` upload of 3 MiB in four chunks, signed with the aws-sdk-go-v2 signer and stream signer (`.scratch` program): 200, and the download is byte-identical; the same body with one changed byte gives 403 `SignatureDoesNotMatch` from the proxy. The `-TRAILER` variant is refused by the backend with `XAmzContentSHA256Mismatch` also when sent directly to `juicefs gateway` on `127.0.0.1:8090` without the proxy, so `juicefs gateway` 1.4.2 does not accept signed trailers; the proxy's trailer rewrite is covered by `TestChunkedChainRewrite` | pass (signed trailer: backend limitation) |
+| 52 | `/lydiabox/...` is no longer an S3 route (the web UI answers). `SIGTERM`: the gateway stops with the other processes ("shutdown complete"); the containers and the network removed | pass |
+
+`rclone` is not installed on this host and was not run; its configuration
+(`endpoint = http://<host>:8080/s3`, `force_path_style = true`) uses the same
+path-style requests as the AWS CLI.
 
 Other checks on this host:
 
@@ -384,7 +415,7 @@ paste) does not reach the guest; typed keys do.
 
 ## Final validation
 
-Run again after the gap-closure work, from a clean state (`make clean`,
+Run again after the literal-conformance work, from a clean state (`make clean`,
 `go clean -testcache`, fresh `npm ci`) on macOS arm64 with Go 1.24.1 and
 Node.js 24:
 
@@ -392,12 +423,12 @@ Node.js 24:
 | :--- | :--- |
 | `CGO_ENABLED=0 go build ./...` | pass |
 | `CGO_ENABLED=0 go vet ./...` | pass, no findings |
-| `CGO_ENABLED=0 go test -race -count=1 ./...` | pass, 29 packages |
+| `CGO_ENABLED=0 go test -race -count=1 ./...` | pass, 30 packages (new: `internal/storage/s3proxy`) |
 | `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...` and `arm64` | pass |
 | `make lint` (vet, gofmt, staticcheck, shellcheck) | pass, no findings |
 | `make build` | pass; `dist/lydiabox-guest` is a static, stripped ELF |
 | `make release` | pass; four static, stripped ELF binaries |
-| `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 45 tests (the two `s3Endpoint` tests were removed with that module), no lint warnings |
+| `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 45 tests, no lint warnings |
 
 No Go, TypeScript, script, HTML, or CSS source file has more than 600
 lines (largest: `internal/vmm/controller.go`, 477 lines).

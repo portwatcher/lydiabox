@@ -17,7 +17,8 @@ Status legend:
 | Session auth | `/api/v1/auth/*` | Implemented (Phase 1) |
 | File Manager | `/api/v1/fs/*` | Implemented (Phase 1) |
 | WebDAV gateway | `/webdav/` | Implemented (Phase 1) |
-| Virtual S3 gateway | `/lydiabox`, `/lydiabox/` | Implemented (Phase 6) |
+| Virtual S3 gateway | `/s3`, `/s3/` | Implemented (Phase 6) |
+| Host connector MCP server | `/mcp/connectors` | Implemented (Phase 4 broker, Phase 6 host route) |
 | Web UI | `/` | Implemented (Phase 1 placeholder, Phase 5 app) |
 | VM power | `/api/v1/vm/*` | Implemented (Phase 2) |
 | Sessions and PTY | `/api/v1/sessions*` | Implemented (Phase 3, guest PTYs from Phase 2) |
@@ -122,7 +123,7 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
     "lastSyncAt": "2026-11-10T06:29:41Z",
     "lastUploadAt": "2026-11-10T06:20:41Z",
     "lastSyncError": "",
-    "s3Gateway": { "enabled": true, "addr": "127.0.0.1:8090", "path": "/lydiabox", "bucket": "lydiabox", "running": true }
+    "s3Gateway": { "enabled": true, "addr": "127.0.0.1:8090", "path": "/s3", "bucket": "lydiabox", "running": true }
   },
   "time": "2026-11-10T06:30:00Z"
 }
@@ -283,36 +284,68 @@ non-empty directory needs `recursive=true`. Response `204`.
 
 ## 5a. Virtual S3 gateway — implemented (Phase 6)
 
-`/lydiabox` and `/lydiabox/...` reverse-proxy a supervised `juicefs gateway`
-on `LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). The volume is one
+`/s3` and `/s3/...` serve a supervised `juicefs gateway` on
+`LYDIABOX_S3_GATEWAY_ADDR` (default `127.0.0.1:8090`). The volume is one
 bucket named `lydiabox`; object keys are paths from the volume root
 (`workspace/...`, `home/agent/...`), as in WebDAV.
 
-- Endpoint `http://host:8080`, bucket `lydiabox`, path-style addressing. A
-  request to `/lydiabox/workspace/a.txt` is the object `workspace/a.txt` in
-  the bucket `lydiabox`.
-- The design names `/s3`. A verbatim proxy needs the path to start with the
-  bucket name, and S3 bucket names need at least 3 characters
-  (`juicefs gateway` refuses `s3`), so the path is `/lydiabox`.
+- Endpoint `http://host:8080/s3`, bucket `lydiabox`, path-style addressing.
+  A request to `/s3/lydiabox/workspace/a.txt` is the object
+  `workspace/a.txt` in the bucket `lydiabox`. `GET /s3/` is `ListBuckets`.
 - Credentials: access key `lydiabox`, secret key `LYDIABOX_AUTH_TOKEN`
   (AWS Signature Version 4). The routes are public on this server: the
-  gateway verifies the signature itself. Bearer, cookie, and CSRF checks do
+  proxy verifies the signature itself. Bearer, cookie, and CSRF checks do
   not apply.
-- The proxy forwards the request without changes: method, escaped path,
-  query, `Host`, `Authorization`, and every `x-amz-*` header. SigV4 signs the
-  path and the host, so the signature that the client made for
-  `host:8080/lydiabox/...` verifies at the backend.
-- `ListBuckets` (`GET /`) is not available, because `/` is the web UI. Name
-  the bucket in every request.
+- The proxy (`internal/storage/s3proxy`) verifies the client signature:
+  the `Authorization: AWS4-HMAC-SHA256 ...` header, or a presigned URL
+  (`X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires`,
+  `X-Amz-SignedHeaders`, `X-Amz-Signature`). It rebuilds the canonical
+  request from the incoming request (method, path as sent, canonical query,
+  signed headers, and `x-amz-content-sha256` or `UNSIGNED-PAYLOAD`) and
+  compares the signatures in constant time. `X-Amz-Date` must be within 15
+  minutes of the server clock; a presigned URL must not be expired
+  (`X-Amz-Expires` up to 7 days).
+- Then it removes `/s3` from the path, keeps the `Host` header and the
+  query, and signs the request again for the backend with the same
+  credential scope (date, region, service). It replaces the
+  `Authorization` header or the `X-Amz-Signature` value.
+- Bodies: `UNSIGNED-PAYLOAD`, a SHA-256 payload hash, and
+  `STREAMING-UNSIGNED-PAYLOAD-TRAILER` pass through unchanged. For
+  `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` and
+  `STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER`, the proxy verifies the
+  client's chunk signature chain and writes the chain for the new seed
+  signature. Chunks are limited to 16 MiB.
+- Errors are S3 XML documents (`Content-Type: application/xml`):
+  `AccessDenied` 403 (no signature, expired or not yet valid presigned
+  URL), `SignatureDoesNotMatch` 403, `InvalidAccessKeyId` 403,
+  `RequestTimeTooSkewed` 403, and `InvalidRequest` 400 (malformed or
+  unsupported authorization).
 - `503` when the backend is restarting or the gateway is disabled.
 - Examples:
-  `aws --endpoint-url http://host:8080 s3 ls s3://lydiabox/workspace/`;
-  rclone with `provider = Minio`, `endpoint = http://host:8080`, and
+  `aws --endpoint-url http://host:8080/s3 s3 ls s3://lydiabox/workspace/`;
+  rclone with `provider = Minio`, `endpoint = http://host:8080/s3`, and
   `force_path_style = true`.
+
+## 5b. Host connector MCP server — implemented (Phase 6)
+
+`POST /mcp/connectors` serves the connector MCP server (JSON-RPC 2.0:
+`initialize`, `tools/list`, `tools/call`) on the main listener. It is the
+same handler that the guest reaches at `127.0.0.1:8911/mcp` (proxied over
+vsock port 9001), with the `github_*`, `gdrive_*`, `notion_*`, and
+`slack_*` tools of the tenant. The route needs authentication (Bearer
+token or session cookie, as other API routes); tool calls use the stored
+connector tokens and are recorded in the connector audit log.
+`GET /mcp/connectors` returns `405` with `Allow: POST`: the server has no
+SSE stream.
+
+```sh
+curl -H "Authorization: Bearer $LYDIABOX_AUTH_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' http://host:8080/mcp/connectors
+```
 
 ## 6. Web UI — implemented (Phase 5; a placeholder page when `web/` is not built)
 
-`GET /` and every path that is not an API, WebDAV, S3, or asset path returns the
+`GET /` and every path that is not an API, WebDAV, S3, MCP, or asset path returns the
 SPA `index.html` (client-side routes `/studio`, `/desktop`, `/files`,
 `/models`, `/connectors`). Files under `/assets/` are cached for one year.
 Unknown `/api/...` paths return the JSON `404` envelope. Public.
@@ -757,9 +790,11 @@ Audit kinds: `connector.connected`, `connector.disconnected`,
 `connector.token.refresh_failed`, `connector.mcp.call`. `detail` is a JSON
 string and never contains token material.
 
-The connector MCP server (`github_*`, `gdrive_*`, `notion_*`, `slack_*`
-tools) and the `git-cred` broker are reached by the guest over vsock port
-9001 only. They are not routes on the public listener.
+The guest reaches the connector MCP server (`github_*`, `gdrive_*`,
+`notion_*`, `slack_*` tools) and the `git-cred` broker over vsock port
+9001. The `git-cred` broker is not a route on the public listener. The MCP
+server is also on the public listener at `/mcp/connectors`, with API
+authentication (section 5b).
 
 ### Guest broker (vsock port 9001)
 
