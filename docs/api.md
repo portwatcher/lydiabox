@@ -22,7 +22,7 @@ Status legend:
 | Sessions and PTY | `/api/v1/sessions*` | Contract (Phase 2 PTY, Phase 3 bridge) |
 | Desktop | `/api/v1/desktop/*` | Contract (Phase 2 guest, Phase 5 UI) |
 | Models | `/api/v1/models/*` | Contract (Phase 3) |
-| Connectors | `/api/v1/connectors/*` | Contract (Phase 4) |
+| Connectors | `/api/v1/connectors/*` | Implemented (Phase 4) |
 
 ## 1. Conventions
 
@@ -544,7 +544,7 @@ Binding:      { "harness": "codex", "model": "deepseek/deepseek-v4-pro", "config
 
 `strategy` is `fallback` or `round-robin`. Model IDs are `provider/model`.
 
-## 11. Connectors — contract (Phase 4)
+## 11. Connectors — implemented (Phase 4)
 
 Providers: `github`, `gdrive`, `notion`, `slack`. Tokens are AES-256-GCM
 encrypted in the host `connector_accounts` table and are never returned by
@@ -588,6 +588,42 @@ bound to the session cookie, and expires after 10 minutes. The redirect URI
 is `<origin>/api/v1/connectors/<provider>/callback`. `limit` defaults to
 100 (maximum 1000); `nextBefore` is omitted on the last page.
 
+Details:
+
+- OAuth client precedence: `env`, then `stored`, then `relay`. A `PUT
+  .../client` with an empty `clientId` and `clientSecret` removes the stored
+  client. `authorize` answers `409 conflict` when `oauthSource` is `none`.
+- Session binding: when `authorize` is cookie-authenticated, the callback
+  must carry the same session cookie. A bearer-authenticated `authorize`
+  creates a state without a binding. The PKCE verifier and the state stay in
+  memory only; a restart invalidates pending authorizations.
+- `returnTo` must be a same-origin path (`/...`, not `//...`); otherwise
+  `400`. Callback `error` codes: `invalid_state`, `invalid_request`,
+  `not_configured`, `exchange_failed`, `identity_failed`, `server_error`, or
+  the provider's own code (for example `access_denied`).
+- Default scopes: GitHub `repo read:org workflow`; Google Drive
+  `drive.file drive.readonly` (with `access_type=offline`); Slack user
+  scopes `channels:read groups:read chat:write search:read users:read`;
+  Notion has no scopes.
+- `token` validates the token against the provider identity endpoint
+  (GitHub `/user`, Drive `about`, Notion `users/me`, Slack `auth.test`) and
+  answers `400` when the provider rejects it. A pasted token has `authKind`
+  `pat` and never expires.
+- An expired `access_token` is refreshed with the stored `refresh_token`
+  60 seconds before `expiresAt`; concurrent requests share one refresh. A
+  failed refresh sets `status` to `expired`. A `401` from the provider during
+  a tool call sets `status` to `revoked`. Connecting again resets `status`.
+- `DELETE` without `account` removes the only account of the provider, and
+  answers `400` when there are several. GitHub (OAuth client required),
+  Google, and Slack tokens are revoked upstream; Notion tokens are only
+  deleted. The audit `detail` records `"revoked": true|false`.
+- `audit` lists only `connector.*` kinds. `provider` filters on the
+  `provider` field of `detail`.
+- Relay mode (`LYDIABOX_OAUTH_RELAY_URL`): the authorize URL is
+  `<relay>/v1/<provider>/authorize` with the same query (no `client_id`), and
+  code and refresh grants are posted as forms to `<relay>/v1/<provider>/token`.
+  The relay adds the client credentials and answers like the provider.
+
 `AuditEntry`:
 
 ```json
@@ -603,6 +639,49 @@ string and never contains token material.
 The connector MCP server (`github_*`, `gdrive_*`, `notion_*`, `slack_*`
 tools) and the `git-cred` broker are reached by the guest over vsock port
 9001 only. They are not routes on the public listener.
+
+### Guest broker (vsock port 9001)
+
+The host broker (`internal/connector/broker`) serves plain HTTP/1.1 on the
+guest's vsock port 9001 and, for the docker driver and for development, on
+the `0600` UNIX socket `$LYDIABOX_DATA_DIR/run/host-9001.sock`. It has no
+authentication: only the tenant's guest can reach these listeners. Inside the
+guest, `LYDIABOX_HOST_ADDR` is `vsock://2:9001` or
+`unix:///run/lydiabox/host-9001.sock`.
+
+| Endpoint | Request | Response |
+| :--- | :--- | :--- |
+| `POST /git-cred` | `{ "protocol": "https", "host": "github.com", "path": "", "username": "" }` | `200 { "username": "x-access-token", "password": "<fresh token>" }`, `404` when no account serves the host or its refresh failed |
+| `POST /mcp` | MCP JSON-RPC 2.0: `initialize`, `ping`, `tools/list`, `tools/call` | JSON-RPC response; notifications get `202` without a body |
+
+`username`, when it names an account label, selects that account; otherwise
+the first account with `status` `ok` is used. Every `/git-cred` answer writes
+`connector.token.issued` (`consumer` `git-cred`, `host`), and every
+`tools/call` writes `connector.mcp.call` (`tool`, `ok`, `error`).
+
+Tools (each also takes an optional `account`):
+
+| Tool | Arguments |
+| :--- | :--- |
+| `github_list_repos` | `visibility`, `per_page`, `page` |
+| `github_list_issues` | `owner`, `repo`, `state`, `labels`, `per_page`, `page` |
+| `github_create_issue` | `owner`, `repo`, `title`, `body`, `labels`, `assignees` |
+| `github_list_pull_requests` | `owner`, `repo`, `state`, `per_page`, `page` |
+| `github_create_pull_request` | `owner`, `repo`, `title`, `head`, `base`, `body`, `draft` |
+| `github_get_file_contents` | `owner`, `repo`, `path`, `ref` |
+| `gdrive_search` | `query`, `mime_type`, `page_size` |
+| `gdrive_download_to_workspace` | `file_id`, `path` (relative to `/workspace`; a trailing `/` keeps the Drive name), `overwrite`, `export_mime_type` |
+| `gdrive_upload_from_workspace` | `path`, `name`, `parent_id`, `file_id` (update), `mime_type` |
+| `notion_search` | `query`, `filter` (`page` or `database`), `page_size` |
+| `notion_read_page` | `page_id`, `max_blocks` |
+| `notion_append_to_page` | `page_id`, `text` |
+| `slack_list_channels` | `types`, `limit`, `cursor` |
+| `slack_post_message` | `channel`, `text`, `thread_ts` |
+| `slack_search_messages` | `query`, `count` |
+
+Workspace paths of the Drive tools go through the File Manager sandbox
+(`os.Root` on the tenant workspace): absolute paths, `..`, and symlinks that
+leave `/workspace` are rejected.
 
 ## 12. Adding routes (for implementers)
 

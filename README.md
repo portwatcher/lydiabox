@@ -14,7 +14,7 @@ workstation. See [docs/design.md](docs/design.md) for the architecture and
 | 1 | Config, encrypted store, runtime bootstrap, JuiceFS storage, File API, WebDAV | Done |
 | 2 | Guest daemon, VMM drivers (`chv`, `docker`) | Planned |
 | 3 | magpie gateway, harness session bridge | Planned |
-| 4 | Connectors and credential broker | Planned |
+| 4 | Connectors and credential broker | Done |
 | 5 | Web UI | Planned (a placeholder page is embedded) |
 
 ## Quick start
@@ -44,6 +44,28 @@ Files are available while the VM is off: in the web UI, through the REST
 API (`/api/v1/fs`), and over WebDAV at `http://<host>:8080/webdav/` (user
 `lydiabox`, password = admin token).
 
+## Connectors
+
+GitHub, Google Drive, Notion, and Slack connect through OAuth (Authorization
+Code with PKCE) or a pasted token. Set `LYDIABOX_<PROVIDER>_CLIENT_ID` and
+`_CLIENT_SECRET`, save a client through `PUT /api/v1/connectors/<provider>/client`,
+or set `LYDIABOX_OAUTH_RELAY_URL`. Register the callback URL
+`http(s)://<host>/api/v1/connectors/<provider>/callback` with the provider.
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" -d '{"token":"ghp_..."}' \
+  http://localhost:8080/api/v1/connectors/github/token
+```
+
+Tokens are AES-256-GCM encrypted in the host state database and refresh
+automatically. The guest never stores them: `git` inside the VM uses
+`lydiabox-guest git-cred` (set it up with `lydiabox-guest git-cred install`),
+which asks the host broker for a fresh token on each `git push` or `pull`.
+The same broker serves the connector MCP server (`github_*`, `gdrive_*`,
+`notion_*`, `slack_*`). The guest reaches it over vsock port 9001, or the
+UNIX socket `$LYDIABOX_DATA_DIR/run/host-9001.sock`. Every token issue and
+tool call is in the audit log (`GET /api/v1/connectors/audit`).
+
 ## Development
 
 ```sh
@@ -68,6 +90,9 @@ internal/store          SQLite state DB, migrations, AES-256-GCM secret encrypti
 internal/bootstrap      pinned runtime binary downloader and guest image fetcher
 internal/storage        JuiceFS supervisor, S3 metadata backup and restore, WebDAV proxy
 internal/storage/files  sandboxed File Manager service and HTTP handlers
+internal/connector      OAuth2 PKCE and token binding, refresh, revoke, audit
+internal/connector/broker  guest broker: git credentials and connector MCP server
+internal/guest/gitcred  guest git credential helper (vsock or UNIX socket)
 internal/api            HTTP server, auth, route registration contract
 internal/webui          embedded web UI (placeholder until Phase 5)
 internal/httpx          JSON response and error conventions
