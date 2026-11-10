@@ -8,10 +8,15 @@
 #   SHA256SUMS          checksums of the three files (sha256sum format)
 #
 # Usage: deploy/rootfs/build-artifacts.sh [--out DIR] [--arch amd64|arm64]
+#                                         [--docker-image TAG] [--no-vm-images]
 #
-#   --out DIR    destination (default: $LYDIABOX_DATA_DIR/runtime/images,
-#                or ~/.lydiabox/runtime/images)
-#   --arch ARCH  guest architecture (default: the Docker host architecture)
+#   --out DIR           destination (default: $LYDIABOX_DATA_DIR/runtime/images,
+#                       or ~/.lydiabox/runtime/images)
+#   --arch ARCH         guest architecture (default: the Docker host architecture)
+#   --docker-image TAG  also load the desktop image for the docker VM driver
+#                       (LYDIABOX_DOCKER_IMAGE, default lydiabox/guest:latest)
+#   --no-vm-images      skip vmlinux, initramfs.cpio.gz, and rootfs.squashfs
+#                       (enough for the docker driver)
 #
 # `lydiabox runtime build-rootfs` runs this script from the repository root.
 # The same directory layout can be published on a web server and used through
@@ -38,6 +43,8 @@ dockerfile="$script_dir/Dockerfile"
 data_dir=${LYDIABOX_DATA_DIR:-"$HOME/.lydiabox"}
 out_dir="$data_dir/runtime/images"
 arch=""
+docker_image=""
+vm_images=1
 
 die() {
 	echo "build-artifacts: $*" >&2
@@ -56,8 +63,17 @@ while [ $# -gt 0 ]; do
 		arch=$2
 		shift 2
 		;;
+	--docker-image)
+		[ $# -ge 2 ] || die "--docker-image needs an image tag"
+		docker_image=$2
+		shift 2
+		;;
+	--no-vm-images)
+		vm_images=0
+		shift
+		;;
 	-h | --help)
-		sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*)
@@ -81,6 +97,21 @@ case "$arch" in
 amd64 | arm64) ;;
 *) die "--arch must be amd64 or arm64, got $arch" ;;
 esac
+
+if [ -n "$docker_image" ]; then
+	echo "build-artifacts: building the linux/$arch desktop image $docker_image"
+	docker buildx build \
+		--platform "linux/$arch" \
+		--file "$dockerfile" \
+		--target desktop \
+		--load \
+		--tag "$docker_image" \
+		"$repo_root"
+fi
+if [ "$vm_images" = 0 ]; then
+	[ -n "$docker_image" ] || die "--no-vm-images without --docker-image builds nothing"
+	exit 0
+fi
 
 mkdir -p "$out_dir"
 stage=$(mktemp -d "$out_dir/.build-XXXXXX")

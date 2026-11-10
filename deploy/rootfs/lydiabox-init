@@ -1,0 +1,31 @@
+#!/bin/sh
+# PID 1 of the LydiaBox guest, in the Cloud Hypervisor VM (after the
+# initramfs switch_root) and in the docker fallback container. It completes
+# the kernel file systems and runs supervisord, which starts dbus, Xvfb,
+# Xfce, and `lydiabox-guest serve` (deploy/rootfs/supervisord.conf).
+set -eu
+
+mounted() { grep -qs " $1 " /proc/mounts; }
+
+[ -e /proc/self ] || mount -t proc proc /proc
+mounted /sys || mount -t sysfs sysfs /sys 2>/dev/null || true
+mounted /dev || mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mkdir -p /dev/pts /dev/shm
+mounted /dev/pts || mount -t devpts -o gid=5,mode=620,ptmxmode=666 devpts /dev/pts 2>/dev/null || true
+mounted /dev/shm || mount -t tmpfs -o mode=1777 tmpfs /dev/shm 2>/dev/null || true
+
+if [ ! -f /.dockerenv ]; then
+	# VM: fresh tmpfs for /run and /tmp on every boot.
+	mounted /run || mount -t tmpfs -o mode=755,nosuid,nodev tmpfs /run
+	mounted /tmp || mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /tmp
+	hostname lydiabox 2>/dev/null || true
+	grep -qs lydiabox /etc/hosts || printf '127.0.1.1\tlydiabox\n' >>/etc/hosts
+fi
+
+mkdir -p /tmp/.X11-unix /run/dbus /run/user/1000 /var/log/supervisor
+chmod 1777 /tmp /tmp/.X11-unix
+chown 1000:1000 /run/user/1000
+chmod 700 /run/user/1000
+rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 /run/dbus/pid
+
+exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf

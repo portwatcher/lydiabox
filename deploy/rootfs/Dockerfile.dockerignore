@@ -1,0 +1,12 @@
+*
+!go.mod
+!go.sum
+!cmd/**
+!internal/**
+!deploy/initramfs/init
+!deploy/rootfs/kernel.config
+!deploy/rootfs/install-harnesses.sh
+!deploy/rootfs/supervisord.conf
+!deploy/rootfs/lydiabox-init
+internal/webui/dist/assets
+**/*_test.go

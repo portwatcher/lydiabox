@@ -1,0 +1,94 @@
+#!/bin/sh
+# LydiaBox guest initramfs (/init, run by the kernel under busybox).
+#
+# Disks attached by the chv driver (docs/design.md section 4.3):
+#   /dev/vda  rootfs.squashfs       read-only Ubuntu desktop root
+#   /dev/vdb  lydiabox-guest.ext4   read-only image holding the guest daemon
+#   /dev/vdc  root-upper.img        persistent OverlayFS upper layer (JuiceFS)
+# virtio-fs tags: lydia_home -> /home/agent, lydia_workspace -> /workspace.
+#
+# Kernel parameters (optional):
+#   lydiabox.ip=172.30.0.2/24  lydiabox.gw=172.30.0.1  lydiabox.dns=1.1.1.1
+#   lydiabox.init=/usr/local/sbin/lydiabox-init  lydiabox.shell=1 (debug shell)
+set -eu
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+
+ip_addr=172.30.0.2/24
+gateway=172.30.0.1
+dns=1.1.1.1
+next_init=/usr/local/sbin/lydiabox-init
+debug_shell=0
+read -r cmdline </proc/cmdline || true
+for arg in $cmdline; do
+	case "$arg" in
+	lydiabox.ip=*) ip_addr=${arg#lydiabox.ip=} ;;
+	lydiabox.gw=*) gateway=${arg#lydiabox.gw=} ;;
+	lydiabox.dns=*) dns=${arg#lydiabox.dns=} ;;
+	lydiabox.init=*) next_init=${arg#lydiabox.init=} ;;
+	lydiabox.shell=1) debug_shell=1 ;;
+	esac
+done
+
+fail() {
+	echo "lydiabox initramfs: $*" >&2
+	echo "lydiabox initramfs: dropping to a shell on the console" >&2
+	exec /bin/sh
+}
+
+wait_dev() {
+	n=0
+	while [ ! -b "$1" ]; do
+		n=$((n + 1))
+		[ "$n" -le 50 ] || fail "$1 did not appear"
+		sleep 0.1
+	done
+}
+
+wait_dev /dev/vda
+wait_dev /dev/vdb
+wait_dev /dev/vdc
+
+# OverlayFS root: squashfs lower layer, persistent ext4 upper layer.
+mkdir -p /mnt/ro /mnt/rw /mnt/guest
+mount -t squashfs -o ro /dev/vda /mnt/ro || fail "cannot mount rootfs.squashfs (/dev/vda)"
+mount -t ext4 /dev/vdc /mnt/rw || fail "cannot mount root-upper.img (/dev/vdc)"
+mkdir -p /mnt/rw/upper /mnt/rw/work /mnt/merged
+mount -t overlay overlay -o lowerdir=/mnt/ro,upperdir=/mnt/rw/upper,workdir=/mnt/rw/work /mnt/merged ||
+	fail "cannot mount the OverlayFS root"
+
+# Persistent user data over virtio-fs (JuiceFS on the host).
+mkdir -p /mnt/merged/home/agent /mnt/merged/workspace
+mount -t virtiofs lydia_home /mnt/merged/home/agent || fail "cannot mount virtio-fs lydia_home"
+mount -t virtiofs lydia_workspace /mnt/merged/workspace || fail "cannot mount virtio-fs lydia_workspace"
+
+# The guest daemon comes from the injected image, so upgrading lydiabox
+# upgrades it without rebuilding the root filesystem.
+mount -t ext4 -o ro /dev/vdb /mnt/guest || fail "cannot mount lydiabox-guest.ext4 (/dev/vdb)"
+mkdir -p /mnt/merged/usr/local/bin
+[ -e /mnt/merged/usr/local/bin/lydiabox-guest ] || : >/mnt/merged/usr/local/bin/lydiabox-guest
+mount --bind /mnt/guest/lydiabox-guest /mnt/merged/usr/local/bin/lydiabox-guest ||
+	fail "cannot bind-mount lydiabox-guest"
+
+# Guest network: 172.30.0.2/24 behind the host NAT at 172.30.0.1.
+ip link set lo up
+if ip link show eth0 >/dev/null 2>&1; then
+	ip link set eth0 up
+	ip addr add "$ip_addr" dev eth0
+	ip route add default via "$gateway" dev eth0
+fi
+rm -f /mnt/merged/etc/resolv.conf
+printf 'nameserver %s\nnameserver 8.8.8.8\n' "$dns" >/mnt/merged/etc/resolv.conf
+
+[ "$debug_shell" = 1 ] && /bin/sh
+
+# Hand the kernel file systems to the new root and switch to it.
+mkdir -p /mnt/merged/proc /mnt/merged/sys /mnt/merged/dev
+mount --move /proc /mnt/merged/proc
+mount --move /sys /mnt/merged/sys
+mount --move /dev /mnt/merged/dev 2>/dev/null || true
+[ -x "/mnt/merged$next_init" ] || next_init=/sbin/init
+exec switch_root /mnt/merged "$next_init"
