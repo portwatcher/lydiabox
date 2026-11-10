@@ -8,5 +8,6 @@
 !deploy/rootfs/install-harnesses.sh
 !deploy/rootfs/supervisord.conf
 !deploy/rootfs/lydiabox-init
+!deploy/rootfs/setup-guest.sh
 internal/webui/dist/assets
 **/*_test.go

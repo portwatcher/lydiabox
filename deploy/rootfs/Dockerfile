@@ -5,6 +5,9 @@
 # Build from the repository root with deploy/rootfs/build-artifacts.sh:
 #   target "artifacts"  /vmlinux, /initramfs.cpio.gz, /rootfs.squashfs (chv driver)
 #   target "desktop"    the guest desktop image run by the docker driver
+#   target "desktop-slim"  a small desktop image (Xvfb, Xfce, terminal, no
+#                       Chrome, Blender, ffmpeg, or harness CLIs) for the
+#                       docker driver on small hosts and in tests
 #
 # Build arguments:
 #   CH_LINUX_REF         branch of github.com/cloud-hypervisor/linux (kernel)
@@ -81,7 +84,7 @@ ARG DSH_INSTALL=""
 ARG ANTIGRAVITY_INSTALL=""
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=Etc/UTC
 RUN apt-get update && apt-get install -y --no-install-recommends \
-	xvfb xorg xfce4 xfce4-terminal dbus-x11 fonts-noto-cjk ffmpeg blender \
+	xvfb xorg xfce4 xfce4-terminal dbus dbus-x11 fonts-noto-cjk ffmpeg blender \
 	git gh curl jq ripgrep python3 python3-pip python3-venv \
 	supervisor sudo ca-certificates gnupg wget xdg-utils iproute2 iputils-ping procps less \
 	vim-tiny unzip zip openssh-client build-essential software-properties-common \
@@ -107,16 +110,30 @@ COPY deploy/rootfs/install-harnesses.sh /tmp/install-harnesses.sh
 RUN CLAUDE_CODE_PACKAGE="$CLAUDE_CODE_PACKAGE" CODEX_PACKAGE="$CODEX_PACKAGE" OPENCODE_PACKAGE="$OPENCODE_PACKAGE" \
 	DSH_INSTALL="$DSH_INSTALL" ANTIGRAVITY_INSTALL="$ANTIGRAVITY_INSTALL" sh /tmp/install-harnesses.sh \
 	&& rm /tmp/install-harnesses.sh
-# The agent user owns uid 1000 (the ubuntu image's default user is removed).
-RUN set -eux; \
-	if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu; fi; \
-	useradd --create-home --uid 1000 --user-group --shell /bin/bash agent; \
-	echo 'agent ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/agent; \
-	chmod 0440 /etc/sudoers.d/agent; \
-	mkdir -p /workspace; chown agent:agent /workspace; \
-	git config --system credential.helper "/usr/local/bin/lydiabox-guest git-cred"; \
-	git config --system init.defaultBranch main; \
-	ln -sf /usr/local/bin/lydiabox-guest /usr/local/bin/git-credential-lydiabox
+COPY deploy/rootfs/setup-guest.sh /tmp/setup-guest.sh
+RUN sh /tmp/setup-guest.sh && rm /tmp/setup-guest.sh
+COPY --from=guestbin /out/lydiabox-guest /usr/local/bin/lydiabox-guest
+COPY deploy/rootfs/supervisord.conf /etc/supervisor/supervisord.conf
+COPY deploy/rootfs/lydiabox-init /usr/local/sbin/lydiabox-init
+RUN chmod 0755 /usr/local/sbin/lydiabox-init /usr/local/bin/lydiabox-guest
+ENV HOME=/home/agent
+WORKDIR /home/agent
+CMD ["/usr/local/sbin/lydiabox-init"]
+
+# --- Slim desktop image (docker driver on small hosts, CI, and tests) --------
+# The same init, supervisor layout, agent user, and guest daemon as
+# "desktop", with only Xvfb, a minimal Xfce session, xfce4-terminal, and
+# ffmpeg for the WebRTC stream. It has no Chrome, Blender, Node.js, or
+# harness CLIs:
+#   deploy/rootfs/build-artifacts.sh --slim --docker-image lydiabox/guest:slim --no-vm-images
+FROM ${UBUNTU_IMAGE} AS desktop-slim
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=Etc/UTC
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	xvfb xfce4-session xfwm4 xfce4-terminal dbus dbus-x11 x11-utils ffmpeg \
+	git curl ca-certificates supervisor sudo iproute2 procps less \
+	&& rm -rf /var/lib/apt/lists/*
+COPY deploy/rootfs/setup-guest.sh /tmp/setup-guest.sh
+RUN sh /tmp/setup-guest.sh && rm /tmp/setup-guest.sh
 COPY --from=guestbin /out/lydiabox-guest /usr/local/bin/lydiabox-guest
 COPY deploy/rootfs/supervisord.conf /etc/supervisor/supervisord.conf
 COPY deploy/rootfs/lydiabox-init /usr/local/sbin/lydiabox-init

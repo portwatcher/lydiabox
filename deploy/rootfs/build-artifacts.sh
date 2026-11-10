@@ -8,13 +8,16 @@
 #   SHA256SUMS          checksums of the three files (sha256sum format)
 #
 # Usage: deploy/rootfs/build-artifacts.sh [--out DIR] [--arch amd64|arm64]
-#                                         [--docker-image TAG] [--no-vm-images]
+#                                         [--docker-image TAG] [--slim]
+#                                         [--no-vm-images]
 #
 #   --out DIR           destination (default: $LYDIABOX_DATA_DIR/runtime/images,
 #                       or ~/.lydiabox/runtime/images)
 #   --arch ARCH         guest architecture (default: the Docker host architecture)
 #   --docker-image TAG  also load the desktop image for the docker VM driver
 #                       (LYDIABOX_DOCKER_IMAGE, default lydiabox/guest:latest)
+#   --slim              build the desktop-slim stage for --docker-image (Xvfb,
+#                       Xfce, terminal; no Chrome, Blender, ffmpeg, harnesses)
 #   --no-vm-images      skip vmlinux, initramfs.cpio.gz, and rootfs.squashfs
 #                       (enough for the docker driver)
 #
@@ -45,6 +48,7 @@ out_dir="$data_dir/runtime/images"
 arch=""
 docker_image=""
 vm_images=1
+desktop_target=desktop
 
 die() {
 	echo "build-artifacts: $*" >&2
@@ -72,8 +76,12 @@ while [ $# -gt 0 ]; do
 		vm_images=0
 		shift
 		;;
+	--slim)
+		desktop_target=desktop-slim
+		shift
+		;;
 	-h | --help)
-		sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*)
@@ -99,11 +107,11 @@ amd64 | arm64) ;;
 esac
 
 if [ -n "$docker_image" ]; then
-	echo "build-artifacts: building the linux/$arch desktop image $docker_image"
+	echo "build-artifacts: building the linux/$arch $desktop_target image $docker_image"
 	docker buildx build \
 		--platform "linux/$arch" \
 		--file "$dockerfile" \
-		--target desktop \
+		--target "$desktop_target" \
 		--load \
 		--tag "$docker_image" \
 		"$repo_root"
