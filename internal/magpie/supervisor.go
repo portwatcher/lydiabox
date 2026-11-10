@@ -187,10 +187,10 @@ func (s *Supervisor) InjectHeaders(h http.Header) {
 	if key == "" {
 		return
 	}
+	// The tunnel strips guest credentials first, so set both forms magpie
+	// accepts: OpenAI/Anthropic bearer and the Anthropic x-api-key.
 	h.Set("Authorization", "Bearer "+key)
-	if h.Get("X-Api-Key") != "" {
-		h.Set("X-Api-Key", key)
-	}
+	h.Set("X-Api-Key", key)
 	if h.Get("X-Goog-Api-Key") != "" {
 		h.Set("X-Goog-Api-Key", key)
 	}

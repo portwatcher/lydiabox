@@ -11,6 +11,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/hashicorp/yamux v0.1.2
 	github.com/jezek/xgb v1.3.1
+	github.com/klauspost/compress v1.18.0
 	github.com/pion/ice/v4 v4.0.10
 	github.com/pion/interceptor v0.1.41
 	github.com/pion/rtp v1.8.23
@@ -31,7 +32,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.11 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
