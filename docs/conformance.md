@@ -41,10 +41,13 @@ harness CLIs) and WebRTC video and Takeover from a browser over the
 forwarded UDP port were then checked on chv (the Chrome CDP check was
 repeated on an idle host on 2026-11-11 and passed): see
 [Integration run (chv on KVM), full desktop image](#integration-run-chv-on-kvm-full-desktop-image).
-Not tested on real hardware, because this host does not have it: GPU
-passthrough and an amd64 KVM host (checklists in
-[kvm-test.md](kvm-test.md#9-amd64-kvm-host)), and the OAuth connectors
-against the real providers (checklist in
+On 2026-11-11 the same checks (all 16 API checks, F1 to F9, and WebRTC)
+passed on an amd64 KVM host (Google Cloud `n2-standard-8`, nested
+virtualization, wake in 3.7 s) after two amd64 fixes: see
+[Integration run (chv on KVM, amd64)](#integration-run-chv-on-kvm-amd64).
+Not tested on real hardware, because no host had it: GPU passthrough
+(checklist in [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)), and
+the OAuth connectors against the real providers (checklist in
 [connectors-manual-test.md](connectors-manual-test.md)).
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
@@ -171,7 +174,7 @@ makes these changes; the row above is `done` with them.
 
 | Design text | What Cloud Hypervisor 54 and virtiofsd 1.14 require | What the code does | Test |
 | :--- | :--- | :--- | :--- |
-| `cmdline`: `console=ttyS0 root=/dev/vda ro quiet` | On arm64, the Cloud Hypervisor serial port is a PL011 UART, `ttyAMA0`. With `ttyS0`, the guest has no console output. | `console=ttyS0` on amd64, as written; `console=ttyAMA0` on arm64 (`BaseCmdline` in `internal/vmm/chv/payload.go`) | `TestBuildConfigPayload`, `TestTenantNetwork`; KVM run (arm64) |
+| `cmdline`: `console=ttyS0 root=/dev/vda ro quiet` | On arm64, the Cloud Hypervisor serial port is a PL011 UART, `ttyAMA0`. With `ttyS0`, the guest has no console output. | `console=ttyS0` on amd64, as written; `console=ttyAMA0` on arm64 (`BaseCmdline` in `internal/vmm/chv/payload.go`) | `TestBuildConfigPayload`, `TestTenantNetwork`; KVM runs (arm64, amd64) |
 | `disks`: `{"path": ..., "readonly": ...}` | Cloud Hypervisor 54 refuses `vm.boot` with "Image type required for disk" when `image_type` is not set. | Adds `"image_type": "Raw"` to the three disks | `TestBuildConfigPayload`; KVM run |
 | `fs`: `"num_queues": 2` | virtiofsd serves one request queue. With 2, Cloud Hypervisor refuses the device with "Queue number is not correct". | `"num_queues": 1` for `lydia_home` and `lydia_workspace` (`FSQueues`) | `TestBuildConfigPayload`; KVM run |
 
@@ -207,7 +210,7 @@ makes these changes; the row above is `done` with them.
 | RTP to `TrackLocalStaticRTP` (H.264), signaling over `/api/v1/desktop/ws` | done | `internal/guest/webrtc`, `internal/desktop` | `TestViewerReceivesVideoAndSendsInput`, `TestSignalingRelayAndBroadcast`; E2E (live video and takeover keyboard input in a browser) |
 | WebRTC media transport | done (the design sets no port scheme; all media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT`, default 50000, forwarded by the driver because the guest is behind NAT) | `internal/guest/webrtc`, drivers | `TestViewerReceivesVideoAndSendsInput`; E2E (step 19); KVM full-image run (W1 to W5: video and Takeover from a browser through the DNAT rule on chv) |
 | MCP on `127.0.0.1:8910/mcp` with the 9 tools | done | `internal/guest/mcp` | `TestProtocolHandshakeAndToolList`; E2E (tool list) |
-| `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP`, `TestCDPEndpointWaitsForStartingChrome`; KVM full-image run (F5: Chromium on arm64 starts with the CDP flags; F6: the tool returns the endpoint of that Chromium, repeated on an idle host) |
+| `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP`, `TestCDPEndpointWaitsForStartingChrome`; KVM full-image runs (F5: Chromium on arm64 and Google Chrome on amd64 start with the CDP flags; F6: the tool returns the endpoint of that browser, on arm64 repeated on an idle host; on amd64 after the `CHROME_CONFIG_HOME` fix, because Google Chrome refuses CDP on its default profile directory) |
 | `blender_run_script` | done | `internal/guest/mcp` | `TestToolsDriveTheDesktop` (fake Blender); KVM full-image run (F7: Blender 4.0.2) |
 
 ## 4.6 Zero-trust connectors
@@ -484,6 +487,8 @@ Not tested in this run: GPU passthrough (the Lima VM has no PCI GPU to
 pass through), WebRTC video in a browser over the forwarded UDP port, and
 an amd64 KVM host. WebRTC on chv was tested later with the full image:
 see [Integration run (chv on KVM), full desktop image](#integration-run-chv-on-kvm-full-desktop-image).
+The amd64 KVM host was tested later: see
+[Integration run (chv on KVM, amd64)](#integration-run-chv-on-kvm-amd64).
 
 ### Bugs found and fixed (chv on KVM)
 
@@ -616,8 +621,8 @@ Open items:
   same Chrome.
 - The fixed 120 s boot limit (see the open items above) also stopped
   wakes on this loaded host.
-- Not tested here: GPU passthrough and an amd64 KVM host (checklists in
-  [kvm-test.md](kvm-test.md#9-amd64-kvm-host)), and the connectors
+- Not tested here: GPU passthrough (checklist in
+  [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)), and the connectors
   against the real OAuth providers
   ([connectors-manual-test.md](connectors-manual-test.md)). The VFIO
   `devices` payload is covered by `TestBuildConfigPayload`, and the OAuth
@@ -626,6 +631,129 @@ Open items:
   `TestRefreshOnExpirySingleFlight`, `TestDisconnectRevokes`,
   `TestGitAccount`, `TestGitCred`, `TestMCPProtocol`, `TestGitHubTools`,
   `TestGDriveTools`, `TestNotionTools`, and `TestSlackTools`.
+
+## Integration run (chv on KVM, amd64)
+
+Date: 2026-11-11. Host: Google Cloud `n2-standard-8` (8 vCPUs, 32 GiB,
+100 GiB `pd-balanced`) in `us-central1-a` with nested virtualization and
+the minimum CPU platform Intel Cascade Lake (`Intel(R) Xeon(R) CPU @
+2.80GHz`, model 85, VT-x). Ubuntu 24.04.5, kernel `7.0.0-1017-gcp`.
+`/dev/kvm` is present, and `/proc/cpuinfo` shows `vmx` for each CPU. The
+guest ran with Cloud Hypervisor 54.0 and virtiofsd 1.14.0 (both downloaded
+by `lydiabox up`, the upstream amd64 binaries), the `ch-6.12.8` kernel,
+and the full `desktop` image, with `LYDIABOX_VM_CPUS=4`,
+`LYDIABOX_VM_MEM_MB=4096`, and `LYDIABOX_IDLE_TIMEOUT=60s`. The binaries
+came from `make release` on the Mac (`linux/amd64`). `lydiabox up`
+listened on `127.0.0.1:8080` only, with a random token; MinIO ran in
+Docker on the host. The procedure is
+[kvm-test.md](kvm-test.md#9-amd64-kvm-host) (steps 2 to 8).
+
+Build on the host (`build-artifacts.sh` without `--slim` and without
+`--virtiofsd`, no build cache): 667 s in total. Kernel compile
+(`bzImage`) 429 s, `desktop` packages 144 s, Node.js 30 s, Google Chrome
+30 s, the five harness installers 116 s, copy of the root 45 s,
+`mksquashfs` 230 s (the stages run in parallel). The kernel rebuild after
+fix 1 took 373 s (the root came from the cache). Sizes: `vmlinux`
+(`arch/x86/boot/compressed/vmlinux.bin`) 46 MiB, `initramfs.cpio.gz`
+1 MiB, `rootfs.squashfs` 1,377,427,456 bytes (1314 MiB).
+
+Wake time (`POST /vm/wake` from `STOPPED` to `RUNNING`): 3.7 s with an
+empty root overlay, then 3.7 s, 4.1 s, and 3.7 s, all with 4 vCPUs. This
+is well inside the 120 s boot limit. Resume from `PAUSED`: 4 ms.
+
+| # | Check | Result |
+| :--- | :--- | :--- |
+| 1 | `POST /vm/wake`: `RUNNING` in 3.7 s, `"driver":"chv"`, 4 CPUs, 4096 MiB | pass (after fix 1; before it, the initramfs could not mount `rootfs.squashfs` and the wake stopped at the 120 s limit) |
+| 2 | `uname -a`: `Linux lydiabox 6.12.8+ ... x86_64 GNU/Linux`; `id`: `uid=1000(agent)` | pass |
+| 3 | `overlay on /` (lower `/mnt/ro`, upper `/mnt/rw/upper`), `lydia_home on /home/agent type virtiofs`, `lydia_workspace on /workspace type virtiofs` | pass |
+| 4 | `grep -c processor /proc/cpuinfo`: 4; the guest shows the host CPU model; 3929 MiB total memory | pass |
+| 5 | `echo hi >/workspace/a.txt` in the guest; `GET /fs/workspace/text?path=a.txt` gives `hi` | pass |
+| 6 | `PUT /fs/workspace/text?path=b.txt`; `cat /workspace/b.txt` in the guest gives `x` | pass |
+| 7 | `curl -sI https://example.com`: `HTTP/2 200` | pass |
+| 8 | The host VPC address `10.128.0.2:8080`, `172.30.0.1:8080`, `172.17.0.1:9000`, the VPC gateway `10.128.0.1`, and the GCP metadata server `169.254.169.254` time out (curl exit 28 after 5 s) | pass |
+| 9 | `curl http://127.0.0.1:3425/v1/models` (vsock 9002 to magpie): 20 of 20 requests give 200, `{"data":[],...,"object":"list"}` | pass |
+| 10 | `lydiabox-guest git-cred get`: no output, exit 0 (broker 404). With `LYDIABOX_HOST_ADDR=vsock://2:9555`: `connection reset by peer`, exit 1 | pass |
+| 11 | `sudo tee /etc/lydiabox-kvm.txt`, `POST /vm/stop` (0.2 s), `POST /vm/wake` (3.65 s): the file has `x` | pass |
+| 12 | `POST /vm/hibernate`: `PAUSED`; `vm.info` gives `"state":"Paused"` | pass |
+| 13 | `POST /vm/wake`: `RUNNING` in 4 ms; the same shell session still has its variable | pass |
+| 14 | `PUT /desktop/mode` `TAKEOVER` and `OBSERVER`: 200; `Xvfb :0 -screen 0 1920x1080x24` runs | pass |
+| 15 | `DELETE /sessions/{id}` for the live session (5 s); `PAUSED` 60 s after the last lease | pass |
+| 16 | `POST /vm/stop`: `STOPPED` in 0.4 s; no `cloud-hypervisor` or `virtiofsd` process, no `lydiabox_*` nftables table, no `lbx*` TAP device, no `lbx*` iptables `FORWARD` rule. `SIGTERM` to `lydiabox up`: "shutdown complete", JuiceFS unmounted | pass |
+
+amd64 differences, as expected: check 2 shows `x86_64`; `serial.log` has
+the kernel and supervisord output on `ttyS0`; `vm.info` shows the same
+`vm.create` payload as on arm64 except `cmdline`, which is
+`console=ttyS0 root=/dev/vda ro quiet` (the design text): three `Raw`
+disks (`rootfs.squashfs` and the guest binary disk read-only,
+`root-upper.img` writable), two virtio-fs devices with `num_queues` 1 and
+`queue_size` 1024, the TAP device with `172.30.0.1/24`, vsock CID 3, the
+serial port to a file, and the console off.
+
+Full desktop image (step 7):
+
+| # | Check | Result |
+| :--- | :--- | :--- |
+| F1 | First `POST /vm/wake` with an empty root overlay: `RUNNING` in 3.7 s, `"driver":"chv"` | pass |
+| F2 | `Xvfb :0 -screen 0 1920x1080x24`, `dbus-run-session -- /usr/bin/startxfce4`, `xfwm4`, `xfce4-panel`, `xfdesktop`, `lydiabox-guest serve` run about 20 s after the wake; `xdpyinfo`: `1920x1080` | pass |
+| F3 | `tools/list`: 9 tools | pass |
+| F4 | `computer_screenshot`: `image/png`, 1920x1080; the image shows the Xfce desktop with the panel | pass |
+| F5 | `desktop_launch_app` `chrome`: `Launched chrome`; `/usr/bin/google-chrome-stable --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --user-data-dir=/home/agent/.config/google-chrome ...` runs (Google Chrome 157.0.8103.50) | pass |
+| F6 | `browser_cdp_endpoint`: `ws://127.0.0.1:9222/devtools/browser/...` on the first call, 6.3 s after the launch (1 tool call). `/json/version`: `Chrome/157.0.8103.50` with the same URL; `chrome` listens on `127.0.0.1:9222` only; `Target.createTarget` `about:blank` returned a `targetId` | pass (after fix 2; before it, Chrome ran but never opened port 9222, and 10 calls returned the 30 s timeout error) |
+| F7 | `blender_run_script`: `BLENDER 4.0.2`, `Blender quit`, 5.1 s | pass |
+| F8 | `desktop_launch_app` `terminal`, `computer_mouse_click` (400, 300), `computer_keyboard` `echo LYDIA$((6*7))KVM` + `Return`: the screenshot shows `LYDIA42KVM` | pass |
+| F9 | `claude` 2.1.322 (0.4 s), `codex-cli` 0.167.1 (0.5 s), `dsh` 0.2.2-rc.1 (0.4 s), `agy` 1.5.5 (2.5 s), `opencode` 1.19.5 (1.7 s) | pass |
+
+WebRTC from a browser on the Mac (step 8). The GCP VM has the external
+address `203.0.113.10` behind 1:1 NAT. A firewall rule let UDP 50000 in
+from the public address of the Mac only (`/32`); no TCP port was opened.
+The browser (headless Chrome 157 on macOS, driven over CDP as in the
+arm64 run) reached the API through `gcloud compute ssh -L
+8080:127.0.0.1:8080`. The guest takes its ICE host candidate from the
+host name of the page URL (`desktop.RequestIP`), so the page URL was
+`http://lydiabox-gcp.test:8080`: Chrome mapped that name to `127.0.0.1`
+(`--host-resolver-rules`, the tunnel), and `/etc/hosts` on the GCP VM
+mapped it to the external address. The guest then advertised
+`203.0.113.10:50000`.
+
+| # | Check | Result |
+| :--- | :--- | :--- |
+| W1 | Table `lydiabox_lbx37a8eec1`: `iifname != "lbx37a8eec1" udp dport 50000 dnat to 172.30.0.2`; iptables `FORWARD` (policy `DROP`, Docker): `-o lbx37a8eec1 -p udp --dport 50000 -j ACCEPT` | pass |
+| W2 | `videoWidth` 1920, `videoHeight` 1080; first frame 10 s after the page opened (`currentTime` 2.89 s, 72 frames); 60 s later `currentTime` 62.9 s and 1512 frames (about 24 frames per second) | pass |
+| W3 | `conntrack`: `src=172.30.0.2 dst=<Mac public IP> sport=50000 dport=53090 src=<Mac public IP> dst=10.128.0.2 sport=53090 dport=50000 [ASSURED]`. The media used host UDP port 50000. The first packet of this flow came from the guest (an ICE check to the address of the browser behind its NAT), so masquerade made the entry, not the DNAT rule. A separate probe (`nc -u 203.0.113.10 50000` from the Mac while the guest ran) showed the inbound path: `src=<Mac public IP> dst=10.128.0.2 dport=50000 ... src=172.30.0.2 sport=50000` | pass |
+| W4 | Takeover button: mode `TAKEOVER`; a click at guest (400, 300) in the `xfce4-terminal` window, then `uname -n` + Enter: the guest screenshot shows `uname -n` and `lydiabox`, each character once | pass |
+| W5 | `POST /vm/stop`: no `lydiabox_*` table (no DNAT rule), no `lbx*` iptables rule, no TAP device | pass |
+
+The VM ran for about 52 minutes (created 05:07 UTC, deleted 05:59 UTC);
+it and the firewall rule were deleted after the run.
+
+### Bugs found and fixed (chv on KVM, amd64)
+
+1. The guest kernel had no SquashFS. The amd64 `ch_defconfig` of the
+   Cloud Hypervisor kernel fork sets `# CONFIG_MISC_FILESYSTEMS is not
+   set`, and SquashFS is in that menu, so `merge_config.sh` dropped
+   `CONFIG_SQUASHFS=y` from `kernel.config` without an error. The
+   initramfs stopped with "mounting /dev/vda on /mnt/ro failed: No such
+   device", and the wake stopped at the 120 s limit. The arm64
+   `ch_defconfig` turns the menu on. `kernel.config` now sets
+   `CONFIG_MISC_FILESYSTEMS=y`, and the kernel stage of the Dockerfile
+   stops when an option of `kernel.config` is not in the final `.config`
+   (checked for `x86_64` and `arm64`).
+2. Chrome did not open its CDP port. Google Chrome 136 and later ignore
+   `--remote-debugging-port` when `--user-data-dir` is the default profile
+   directory ("DevTools remote debugging requires a non-default data
+   directory"), and `/home/agent/.config/google-chrome` (the design text)
+   is the default of Google Chrome. Chromium on arm64 uses
+   `~/.config/chromium`, so the arm64 runs did not show this. The guest
+   now starts Chrome with `CHROME_CONFIG_HOME=/home/agent/.config/lydiabox-chrome`,
+   which moves the default directory away; the profile keeps its path
+   (`TestLocalAppsStartsChromeForCDP`).
+
+Open items:
+
+- Chrome shows "Restore pages? Chrome didn't shut down correctly" after a
+  VM stop, because `vm.shutdown` stops the guest without a guest
+  power-off (see the open items of the arm64 run).
+- GPU passthrough is still not tested: the GCP VM has no GPU.
 
 ## Final validation
 
@@ -646,7 +774,7 @@ Node.js 24:
 
 The Go gates (build, vet, `go test -race` with 30 packages, both Linux
 cross builds, `make lint`, `make build`) were run again after the fixes of
-the full-image run: all pass.
+the full-image run, and again after the fixes of the amd64 run: all pass.
 
 No Go, TypeScript, script, HTML, or CSS source file has more than 600
 lines (largest: `internal/vmm/controller.go`, 477 lines).

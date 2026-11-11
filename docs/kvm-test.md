@@ -4,7 +4,9 @@ This procedure boots the LydiaBox guest with the `chv` driver on a real KVM
 host and checks it through the API. It works on any Linux host with
 `/dev/kvm`. On a Mac with Apple silicon (M3 or later, macOS 15 or later),
 use a Lima VM with nested virtualization (step 1). The results of the run
-on 2026-11-10 are in [conformance.md](conformance.md#integration-run-chv-on-kvm).
+on 2026-11-10 are in [conformance.md](conformance.md#integration-run-chv-on-kvm);
+the amd64 results (step 9) are in
+[conformance.md](conformance.md#integration-run-chv-on-kvm-amd64).
 
 ## 1. KVM host
 
@@ -193,9 +195,12 @@ on the Mac: add `networks: [{vzNAT: true}]` to the Lima configuration
 
 ## 9. amd64 KVM host
 
-The runs on 2026-11-10 used an arm64 host. To check an amd64 (x86_64)
-host, do these steps on a Linux amd64 host with `/dev/kvm` (bare metal,
-or a cloud VM with nested virtualization):
+The runs on 2026-11-10 used an arm64 host. The run on 2026-11-11 used an
+amd64 Google Cloud `n2-standard-8` VM with nested virtualization; all
+checks passed, with a wake in 3.7 s (results in
+[conformance.md](conformance.md#integration-run-chv-on-kvm-amd64)). To
+check an amd64 (x86_64) host, do these steps on a Linux amd64 host with
+`/dev/kvm` (bare metal, or a cloud VM with nested virtualization):
 
 1. Skip step 1. Do step 2.
 2. Step 3: run `build-artifacts.sh` without `--virtiofsd` (on amd64,
@@ -213,6 +218,14 @@ or a cloud VM with nested virtualization):
    `ws://127.0.0.1:9222/devtools/browser/...` URL.
 5. With 4 or more vCPUs on bare metal, `POST /vm/wake` must finish well
    inside the 120 s boot limit. Record the time.
+6. On a cloud VM behind 1:1 NAT, keep `lydiabox up` on `127.0.0.1:8080`
+   and use an SSH tunnel for TCP 8080. The guest advertises the address of
+   the host name in the page URL, so use a name that the browser maps to
+   the tunnel and the host maps to its external address: for example
+   `http://lydiabox-gcp.test:8080`, Chrome with
+   `--host-resolver-rules="MAP lydiabox-gcp.test 127.0.0.1"`, and
+   `<external IP> lydiabox-gcp.test` in `/etc/hosts` of the host. Allow
+   UDP 50000 in the cloud firewall from the browser address only.
 
 ## 10. GPU passthrough (VFIO)
 
