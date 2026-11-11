@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -201,6 +202,7 @@ func TestLocalAppsStartsChromeForCDP(t *testing.T) {
 	var (
 		mu      sync.Mutex
 		started [][]string
+		envs    [][]string
 		up      bool
 	)
 	cdp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +224,7 @@ func TestLocalAppsStartsChromeForCDP(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			started = append(started, append([]string{path}, args...))
+			envs = append(envs, env)
 			up = true
 			return nil
 		},
@@ -233,6 +236,11 @@ func TestLocalAppsStartsChromeForCDP(t *testing.T) {
 	if len(started) != 1 || started[0][0] != "/usr/bin/google-chrome-stable" ||
 		!strings.Contains(strings.Join(started[0], " "), "--user-data-dir=/home/agent/.config/google-chrome") {
 		t.Fatalf("started %v", started)
+	}
+	// Chrome refuses CDP on its default profile directory, so the default
+	// must move away from the profile.
+	if !slices.Contains(envs[0], "CHROME_CONFIG_HOME=/home/agent/.config/lydiabox-chrome") {
+		t.Fatalf("chrome env has no CHROME_CONFIG_HOME: %v", envs[0])
 	}
 	if _, err := apps.CDPEndpoint(context.Background()); err != nil || len(started) != 1 {
 		t.Fatalf("second call restarted chrome: %v %v", started, err)

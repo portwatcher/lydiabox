@@ -108,6 +108,17 @@ func (a *LocalApps) env() []string {
 	return append(env, "DISPLAY="+a.opts.Display)
 }
 
+// chromeEnv returns the Chrome environment. Chrome 136 and later ignore
+// --remote-debugging-port when --user-data-dir is the default profile
+// directory ("DevTools remote debugging requires a non-default data
+// directory"), and /home/agent/.config/google-chrome is the default of
+// Google Chrome. CHROME_CONFIG_HOME moves the default directory elsewhere,
+// so the profile keeps its path and CDP stays on.
+func (a *LocalApps) chromeEnv() []string {
+	home := filepath.Join(filepath.Dir(filepath.Clean(a.opts.ChromeUserDataDir)), "lydiabox-chrome")
+	return append(a.env(), "CHROME_CONFIG_HOME="+home)
+}
+
 // ChromeArgs returns the Chrome command line used for every launch.
 func (a *LocalApps) ChromeArgs() []string {
 	args := []string{
@@ -145,7 +156,7 @@ func (a *LocalApps) startChrome() error {
 	if err != nil {
 		return err
 	}
-	if err := a.opts.Start(p, a.ChromeArgs(), a.env(), a.opts.WorkDir); err != nil {
+	if err := a.opts.Start(p, a.ChromeArgs(), a.chromeEnv(), a.opts.WorkDir); err != nil {
 		return err
 	}
 	a.chromeStart.Store(time.Now().UnixNano())
