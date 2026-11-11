@@ -38,8 +38,8 @@ Open items (not `done`): none. The last one, the real KVM boot, passed:
 see [Integration run (chv on KVM)](#integration-run-chv-on-kvm) and
 [kvm-test.md](kvm-test.md). The full `desktop` image (Chrome, Blender, the
 harness CLIs) and WebRTC video and Takeover from a browser over the
-forwarded UDP port were then checked on chv (the Chrome CDP answer was
-too slow on that loaded host to confirm through the tool): see
+forwarded UDP port were then checked on chv (the Chrome CDP check was
+repeated on an idle host on 2026-11-11 and passed): see
 [Integration run (chv on KVM), full desktop image](#integration-run-chv-on-kvm-full-desktop-image).
 Not tested on real hardware, because this host does not have it: GPU
 passthrough and an amd64 KVM host (checklists in
@@ -77,7 +77,7 @@ single WebRTC UDP port, and the extra packages.
 | Connectors with own OAuth clients, PATs, optional relay | done | `internal/connector` | `TestClientSources`, `TestPKCEAuthorizeCallback`, `TestBindToken` |
 | Tokens encrypted on the host; git helper and connector MCP over vsock | done | `internal/store`, `internal/connector/broker`, `internal/guest/gitcred` | `TestGitCredEndToEnd`; E2E (MCP bridge tool list) |
 | Antigravity session format | done (schema-free protobuf decoding; format inferred, see [harness-formats.md](harness-formats.md)) | `internal/harness/adapters` | `TestDiscoverAndParse` |
-| X11 desktop, Chrome (CDP), Blender in the guest | done | `deploy/rootfs/Dockerfile` | `TestLocalAppsStartsChromeForCDP`; full image not built here |
+| X11 desktop, Chrome (CDP), Blender in the guest | done | `deploy/rootfs/Dockerfile` | `TestLocalAppsStartsChromeForCDP`; KVM full-image run (F5 to F7) |
 | Computer-use MCP, WebRTC streaming, Observer and Takeover modes | done | `internal/guest/*`, `internal/desktop`, `web/src/pages/desktop` | `TestTakeoverBlocksAgentAndInjectsUserInput`, `TestViewerReceivesVideoAndSendsInput`; E2E |
 
 ## 2. Non-negotiable engineering rules
@@ -207,7 +207,7 @@ makes these changes; the row above is `done` with them.
 | RTP to `TrackLocalStaticRTP` (H.264), signaling over `/api/v1/desktop/ws` | done | `internal/guest/webrtc`, `internal/desktop` | `TestViewerReceivesVideoAndSendsInput`, `TestSignalingRelayAndBroadcast`; E2E (live video and takeover keyboard input in a browser) |
 | WebRTC media transport | done (the design sets no port scheme; all media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT`, default 50000, forwarded by the driver because the guest is behind NAT) | `internal/guest/webrtc`, drivers | `TestViewerReceivesVideoAndSendsInput`; E2E (step 19); KVM full-image run (W1 to W5: video and Takeover from a browser through the DNAT rule on chv) |
 | MCP on `127.0.0.1:8910/mcp` with the 9 tools | done | `internal/guest/mcp` | `TestProtocolHandshakeAndToolList`; E2E (tool list) |
-| `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP`, `TestCDPEndpointWaitsForStartingChrome`; KVM full-image run (F5: Chromium on arm64 starts with the CDP flags; F6 partial: the CDP answer was too slow on this loaded host) |
+| `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP`, `TestCDPEndpointWaitsForStartingChrome`; KVM full-image run (F5: Chromium on arm64 starts with the CDP flags; F6: the tool returns the endpoint of that Chromium, repeated on an idle host) |
 | `blender_run_script` | done | `internal/guest/mcp` | `TestToolsDriveTheDesktop` (fake Blender); KVM full-image run (F7: Blender 4.0.2) |
 
 ## 4.6 Zero-trust connectors
@@ -566,7 +566,7 @@ after a restart of the Lima VM, the wake took 34 s.
 | F3 | `initialize` and `tools/list` on `http://127.0.0.1:8910/mcp` in the guest: 9 tools (`computer_screenshot`, `computer_mouse_click`, `computer_mouse_move`, `computer_mouse_drag`, `computer_scroll`, `computer_keyboard`, `desktop_launch_app`, `browser_cdp_endpoint`, `blender_run_script`) | pass |
 | F4 | `computer_screenshot`: `image/png`, 1920x1080, all 256 byte values in the decoded pixels; the image shows the Xfce desktop with the panel | pass (after fix 1; before it, the image showed only "Unable to contact settings server") |
 | F5 | `desktop_launch_app` `chrome`: `Launched chrome`; `/usr/lib/chromium/chromium ... --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --user-data-dir=/home/agent/.config/google-chrome` runs; its window shows in the panel | pass |
-| F6 | `browser_cdp_endpoint`, then `curl http://127.0.0.1:9222/json/version` | partial: not confirmed through the tool on this host. Chromium binds `127.0.0.1:9222`, but on this starved guest its DevTools server did not answer in the 30 s of a tool call, nor in 25 minutes of repeated calls (one browser process, after fix 3). A separate Chromium from the same image (`--disable-gpu`, new profile, port 9301) answered `/json/version` 834 s after its start, so CDP works in the image; the tool path is covered by `TestLocalAppsStartsChromeForCDP` and `TestCDPEndpointWaitsForStartingChrome`. Repeat F6 on a host with free CPU ([kvm-test.md](kvm-test.md#7-full-desktop-image)) |
+| F6 | `browser_cdp_endpoint`, then `curl http://127.0.0.1:9222/json/version` | pass (repeated on 2026-11-11 on an idle host, with binaries from `929fa65`; Mac load average 6 to 8 at the wake and the Chrome start, about 20 to 25 at the first answer because of other processes). Wake 18 s; `xfwm4` and `xfce4-panel` 16 s after the wake. After `desktop_launch_app` `chrome`, one `chromium` process with `--remote-debugging-port=9222`; `browser_cdp_endpoint` calls 1 to 4 returned the 30 s timeout error, call 5 returned `ws://127.0.0.1:9222/devtools/browser/...` 173 s after the launch. `/json/version`: `Chrome/156.0.8078.73` with the same `webSocketDebuggerUrl`; `ss -ltnp`: `chromium` listens on `127.0.0.1:9222` only; `Target.createTarget` `about:blank` over that WebSocket (Node 24 in the guest) returned a `targetId`. First run (2026-11-10): partial. Other processes kept the Mac load average between 180 and 290, and the starved guest did not answer CDP in 25 minutes of calls |
 | F7 | `blender_run_script` with `import bpy; print("BLENDER", bpy.app.version_string)`: output `BLENDER 4.0.2` ... `Blender quit` | pass |
 | F8 | `desktop_launch_app` `terminal`, `computer_mouse_click` (400, 300) in the `xfce4-terminal` window, `computer_keyboard` `echo LYDIA$((6*7))KVM` + `Return`: the next screenshot shows `LYDIA42KVM` | pass |
 | F9 | `claude --version` 2.1.322 (Claude Code), `codex --version` codex-cli 0.167.0, `dsh --version` 0.2.2-rc.1, `agy --version` 1.5.4, `opencode --version` 1.19.5; all on `PATH` (`/usr/bin`, `agy` in `/usr/local/bin`). On this slow guest they took 16 s to 426 s | pass |
@@ -608,10 +608,12 @@ URL is `http://192.168.64.2:8080`, so the guest advertises
 
 Open items:
 
-- On this host, Chromium took minutes to start (14 minutes to the first CDP answer in the best case; the guest CPU was fully used by Chromium, Xvfb, and the Xfce processes). On a
-  usual host it starts in seconds. `browser_cdp_endpoint` waits 30 s for a
-  Chrome; when Chrome is slower, the call returns an error, and a later
-  call returns the endpoint of the same Chrome.
+- Under nested virtualization with 2 vCPUs, Chromium takes minutes to
+  open its CDP port: 173 s on an idle Mac (2026-11-11), 14 minutes on the
+  loaded Mac of the first run. On a usual host it starts in seconds.
+  `browser_cdp_endpoint` waits 30 s for a Chrome; when Chrome is slower,
+  the call returns an error, and a later call returns the endpoint of the
+  same Chrome.
 - The fixed 120 s boot limit (see the open items above) also stopped
   wakes on this loaded host.
 - Not tested here: GPU passthrough and an amd64 KVM host (checklists in
