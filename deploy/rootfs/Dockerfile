@@ -51,6 +51,8 @@ RUN set -eux; \
 	make ARCH="$karch" ch_defconfig; \
 	scripts/kconfig/merge_config.sh -m .config /src/kernel.config; \
 	make ARCH="$karch" olddefconfig; \
+	missing=$(grep -E '^CONFIG_[A-Z0-9_]+=' /src/kernel.config | while read -r opt; do grep -qx "$opt" .config || echo "$opt"; done); \
+	if [ -n "$missing" ]; then echo "kernel.config options not in the final .config: $missing" >&2; exit 1; fi; \
 	mkdir -p /out; \
 	if [ "$karch" = x86_64 ]; then \
 	KCFLAGS="-Wa,-mx86-used-note=no" make ARCH=x86_64 -j"$(nproc)" bzImage; \
