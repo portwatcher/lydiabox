@@ -46,9 +46,12 @@ passed on an amd64 KVM host (Google Cloud `n2-standard-8`, nested
 virtualization, wake in 3.7 s) after two amd64 fixes: see
 [Integration run (chv on KVM, amd64)](#integration-run-chv-on-kvm-amd64).
 Not tested on real hardware, because no host had it: GPU passthrough
-(checklist in [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)), and
-the OAuth connectors against the real providers (checklist in
-[connectors-manual-test.md](connectors-manual-test.md)).
+(checklist in [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)). The
+user decided to skip it. The GitHub connector ran against the real
+provider up to the consent page: the authorize request, Cancel, and the
+expired-state refusal pass. The user decided on 2026-11-14 to skip the
+grant and the steps after it, and the Google Drive, Notion, and Slack
+providers. See [Connector run (GitHub, real provider)](#connector-run-github-real-provider).
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
 host state database restore, `virtiofsd` on `linux/arm64`, the dsh and
@@ -213,7 +216,7 @@ makes these changes; the row above is `done` with them.
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
-| OAuth2 Authorization Code + PKCE (`authorize`, `callback`) | done | `internal/connector/oauth.go` | `TestPKCEAuthorizeCallback` (fake provider); real providers: not available here, checklist in [connectors-manual-test.md](connectors-manual-test.md) |
+| OAuth2 Authorization Code + PKCE (`authorize`, `callback`) | done | `internal/connector/oauth.go` | `TestPKCEAuthorizeCallback` (fake provider); real GitHub: authorize request, Cancel, and expired state pass, grant skipped by the user ([connector run](#connector-run-github-real-provider)) |
 | Token / PAT binding (`POST .../token`) | done | `internal/connector/token.go` | `TestBindToken` |
 | GitHub (`repo`, `read:org`, `workflow`), Drive (`drive.file`, `drive.readonly`), Notion, Slack | done | `internal/connector/providers_builtin.go` | `TestAuthorizeValidation`; tools against fake provider APIs: `TestGitHubTools`, `TestGDriveTools`, `TestNotionTools`, `TestSlackTools`; real providers: [connectors-manual-test.md](connectors-manual-test.md) |
 | Encrypted `connector_accounts` | done | `internal/store/connectors.go` | `TestConnectorAccounts` |
@@ -619,8 +622,8 @@ Open items:
   wakes on this loaded host.
 - Not tested here: GPU passthrough (checklist in
   [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)), and the connectors
-  against the real OAuth providers
-  ([connectors-manual-test.md](connectors-manual-test.md)). The VFIO
+  against the real OAuth providers past the GitHub consent page
+  ([connector run](#connector-run-github-real-provider)). The VFIO
   `devices` payload is covered by `TestBuildConfigPayload`, and the OAuth
   code paths by the fake-provider tests `TestPKCEAuthorizeCallback`,
   `TestAuthorizeValidation`, `TestClientSources`, `TestBindToken`,
@@ -750,6 +753,36 @@ Open items:
   VM stop, because `vm.shutdown` stops the guest without a guest
   power-off (see the open items of the arm64 run).
 - GPU passthrough is still not tested: the GCP VM has no GPU.
+
+## Connector run (GitHub, real provider)
+
+On 2026-11-11, with [connectors-manual-test.md](connectors-manual-test.md)
+on the KVM test VM (`chv` driver, binaries from `929fa65`). The web UI was
+at `http://localhost:8080` through the Lima port forward. The OAuth app
+"LydiaBox local test" (owner `portwatcher`, "Expire user access tokens"
+on) had the callback `http://localhost:8080/api/v1/connectors/github/callback`.
+Its client ID and secret came from `LYDIABOX_GITHUB_CLIENT_ID` and
+`LYDIABOX_GITHUB_CLIENT_SECRET`.
+
+| Step | Result |
+| :--- | :--- |
+| `GET /api/v1/connectors` | pass: GitHub `"oauthConfigured": true`, `"oauthSource": "env"` |
+| Connect | pass: the browser goes to `github.com/login/oauth/authorize` with `code_challenge_method=S256`, a `code_challenge`, a `state`, the registered redirect URI, and `scope=repo read:org workflow` |
+| Cancel on the consent page | pass: back to `/connectors` with "access was denied on the provider's page"; host log `connector authorization failed` `error=access_denied` |
+| Authorize 50 minutes after Connect | pass (negative check): the state lives 10 minutes, so the callback answers `invalid_state` and the page shows "the sign-in link expired"; no account and no audit entry |
+| Authorize inside 10 minutes, account `ok`, `connector.connected` audit entry, no token in the API | not run |
+| `git-cred` and `git ls-remote` in the guest, connector MCP tools, Disconnect and revoke | not run |
+
+On 2026-11-14 the user decided to skip the steps that were not run, and
+the Google Drive, Notion, and Slack providers. The fake-provider tests
+listed in the open items of the full-image run cover these code paths.
+
+Finding: step 1 of the checklist told the tester to set a new random
+`LYDIABOX_MASTER_KEY`. On a data directory with stored secrets, the new
+key overrides `state/master.key`, and `lydiabox up` stopped with
+`store: decrypt magpie secret web-key: ... decryption failed`. The
+checklist now says to keep the key that `lydiabox up` writes on its first
+start.
 
 ## Final validation
 

@@ -11,13 +11,12 @@ Do the steps in the order given. Record pass or fail for each line.
 
 ## 1. Host
 
-1. Run `lydiabox up` with any VM driver (`docker` is sufficient). Set a
-   fixed master key, so that the stored tokens stay readable after a
-   restart:
-
-   ```sh
-   export LYDIABOX_MASTER_KEY=$(openssl rand -hex 32)   # keep this value
-   ```
+1. Run `lydiabox up` with any VM driver (`docker` is sufficient). Do not
+   set a new `LYDIABOX_MASTER_KEY`. On the first start `lydiabox up` writes
+   a key to `$LYDIABOX_DATA_DIR/state/master.key` and uses it after each
+   restart, so the stored tokens stay readable. A different key in the
+   environment overrides the file, and on a data directory with stored
+   secrets `lydiabox up` then stops with `decryption failed`.
 
 2. Select the origin that the browser uses. The redirect URI of each
    provider is `<origin>/api/v1/connectors/<provider>/callback`. The

@@ -298,7 +298,7 @@ npm run typecheck && npm run lint && npm run test
 | Docker VM driver, guest daemon, sessions | Done; tested end to end |
 | Cloud Hypervisor driver | Done; verified on real KVM (arm64, nested KVM in Lima; amd64, nested KVM on Google Cloud; see [docs/kvm-test.md](docs/kvm-test.md)); GPU passthrough untested |
 | magpie gateway, harness sessions | Done; harness formats partly inferred |
-| Connectors | Done; tested against fake provider APIs; real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
+| Connectors | Done; tested against fake provider APIs; real GitHub checked up to the consent page ([results](docs/conformance.md#connector-run-github-real-provider)); real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).
