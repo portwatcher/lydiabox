@@ -57,10 +57,3 @@ func hostRoot(d Dirs, tenantID, guestDir string) (string, string, error) {
 	}
 	return host, rel, nil
 }
-
-func joinRel(rel, name string) string {
-	if rel == "" {
-		return name
-	}
-	return rel + "/" + name
-}

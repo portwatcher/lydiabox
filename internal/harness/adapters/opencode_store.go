@@ -68,20 +68,11 @@ type ocMessage struct {
 }
 
 type ocPart struct {
-	ID        string   `json:"id"`
-	MessageID string   `json:"messageID"`
-	Type      string   `json:"type"`
-	Text      string   `json:"text"`
-	Synthetic bool     `json:"synthetic"`
-	Tool      string   `json:"tool"`
-	CallID    string   `json:"callID"`
-	Files     []string `json:"files"`
-	State     struct {
-		Status string          `json:"status"`
-		Input  json.RawMessage `json:"input"`
-		Output string          `json:"output"`
-		Error  string          `json:"error"`
-	} `json:"state"`
+	ID        string `json:"id"`
+	MessageID string `json:"messageID"`
+	Type      string `json:"type"`
+	Text      string `json:"text"`
+	Synthetic bool   `json:"synthetic"`
 }
 
 // openOCDB opens the opencode database read-only, or returns nil when it

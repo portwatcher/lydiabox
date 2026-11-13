@@ -30,10 +30,6 @@ type sessionsEnv struct {
 	ws     string
 }
 
-type noGit struct{}
-
-func (noGit) Inspect(context.Context, string) (string, string, error) { return "", "", nil }
-
 func newSessionsEnv(t *testing.T) *sessionsEnv {
 	t.Helper()
 	home := adapterstest.Home(t)
@@ -51,7 +47,7 @@ func newSessionsEnv(t *testing.T) *sessionsEnv {
 	}
 	auth := api.NewAuthenticator(token)
 	s, err := api.NewServer(api.Options{Addr: "127.0.0.1:0", Auth: auth, TenantID: "default", Logger: log},
-		api.SessionsRoutes{Manager: mgr, Bridge: &harness.Bridge{Manager: mgr, Git: noGit{}, Logger: log}})
+		api.SessionsRoutes{Manager: mgr})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,18 +144,11 @@ func TestSessionsHTTP(t *testing.T) {
 		{http.MethodPost, "/api/v1/sessions", map[string]any{"harness": "codex", "bogus": 1}, 400},
 		{http.MethodDelete, "/api/v1/sessions/codex:nope", nil, 404},
 		{http.MethodDelete, "/api/v1/sessions/" + url.PathEscape("codex:"+adapterstest.CodexID) + "?purge=maybe", nil, 400},
-		{http.MethodPost, "/api/v1/sessions/switch", map[string]any{"sourceSessionId": "codex:" + adapterstest.CodexID, "targetHarness": "codex"}, 400},
-		{http.MethodPost, "/api/v1/sessions/switch", map[string]any{"sourceSessionId": "codex:missing", "targetHarness": "dsh"}, 404},
+		{http.MethodPost, "/api/v1/sessions/switch", map[string]any{"sourceSessionId": "codex:" + adapterstest.CodexID, "targetHarness": "dsh"}, 405},
 	} {
 		if resp, body := e.do(t, tc.method, tc.path, tc.body); resp.StatusCode != tc.code {
 			t.Errorf("%s %s = %d %s, want %d", tc.method, tc.path, resp.StatusCode, body, tc.code)
 		}
-	}
-	resp, body = e.do(t, http.MethodPost, "/api/v1/sessions/switch",
-		map[string]any{"sourceSessionId": "dsh:" + adapterstest.DSHID, "targetHarness": "opencode", "dryRun": true})
-	if resp.StatusCode != 200 || !strings.Contains(string(body), `"dryRun":true`) || !strings.Contains(string(body), `"handoffMarkdown":"# Handoff`) ||
-		!strings.Contains(string(body), `"originalGoal":"Add retry`) {
-		t.Fatalf("dry run = %d %s", resp.StatusCode, body)
 	}
 	resp, _ = e.do(t, http.MethodDelete, "/api/v1/sessions/"+url.PathEscape("dsh:"+adapterstest.DSHID)+"?purge=true", nil)
 	if resp.StatusCode != 204 {
@@ -225,28 +214,7 @@ func TestSessionsWebSocketRoom(t *testing.T) {
 		t.Fatalf("sizes = %v", sz)
 	}
 
-	// Hot-switch: both clients see `switched` and the new session output.
-	resp, body = e.do(t, http.MethodPost, "/api/v1/sessions/switch",
-		map[string]any{"sourceSessionId": s.ID, "targetHarness": "dsh"})
-	var res harness.SwitchResult
-	if resp.StatusCode != 200 || json.Unmarshal(body, &res) != nil || res.Session == nil {
-		t.Fatalf("switch = %d %s", resp.StatusCode, body)
-	}
-	for _, c := range []*websocket.Conn{a, b} {
-		m := readUntil(t, ctx, c, "switched")
-		if m["fromSessionId"] != s.ID || m["toSessionId"] != res.Session.ID || m["handoffPath"] != "/workspace/lydiabox/.agent/HANDOFF.md" {
-			t.Fatalf("switched = %v", m)
-		}
-	}
-	target := e.runner.Last()
-	target.Emit([]byte("dsh ready"))
-	readUntil(t, ctx, a, "dsh ready")
-	readUntil(t, ctx, b, "dsh ready")
-	if _, err := os.Stat(filepath.Join(e.ws, "lydiabox/.agent/HANDOFF.md")); err != nil {
-		t.Fatal(err)
-	}
-
-	// A signal from a client ends the target; clients get exit and 1000.
+	// A signal from a client ends the session; clients get exit and 1000.
 	ctl(b, map[string]any{"type": "signal", "signal": "SIGINT"})
 	if m := readUntil(t, ctx, a, "exit"); m["code"] != float64(130) {
 		t.Fatalf("exit = %v", m)
@@ -256,7 +224,7 @@ func TestSessionsWebSocketRoom(t *testing.T) {
 	}
 
 	// The exited session cannot be attached.
-	c := e.dial(t, ctx, res.Session.ID)
+	c := e.dial(t, ctx, s.ID)
 	defer c.CloseNow()
 	if m := readJSON(t, ctx, c); m["type"] != "error" || m["code"] != "conflict" {
 		t.Fatalf("attach to exited = %v", m)

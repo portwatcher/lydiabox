@@ -204,7 +204,7 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	}
 	ls := &liveSession{tenantID: tenantID, harness: req.Harness, nativeID: nativeID, workspace: ws, model: req.Model,
 		title: req.Title, provisional: provisional}
-	if err := m.start(ctx, ls, cmd, req.Cols, req.Rows, nil, nil); err != nil {
+	if err := m.start(ctx, ls, cmd, req.Cols, req.Rows); err != nil {
 		return Session{}, err
 	}
 	return m.sessionOf(ls), nil
@@ -221,15 +221,10 @@ func (m *Manager) ensureWorkspace(tenantID, guestDir string) error {
 	return nil
 }
 
-// start wakes the VM, starts the PTY, and registers the live session. With
-// room set, the new PTY replaces the one shown in that room and switched is
-// announced.
-func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols, rows uint16, room *Room, switched *CtlSwitched) error {
+// start wakes the VM, starts the PTY, and registers the live session.
+func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols, rows uint16) error {
 	if cols == 0 || rows == 0 {
 		cols, rows = 160, 48
-		if room != nil {
-			cols, rows = room.size()
-		}
 	}
 	if ls.harness != Shell && m.opts.Wiring != nil {
 		if err := m.opts.Wiring.EnsureWired(ctx, ls.tenantID, ls.harness); err != nil {
@@ -265,13 +260,7 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 	}
 	ls.pty = pty
 	ls.startedAt = time.Now().UTC()
-	onExit := func(code int) { m.exited(ls, code) }
-	if room == nil {
-		ls.room = newRoom(id, pty, cols, rows, onExit)
-	} else {
-		ls.room = room
-		room.swap(pty, id, *switched, onExit)
-	}
+	ls.room = newRoom(id, pty, cols, rows, func(code int) { m.exited(ls, code) })
 	m.mu.Lock()
 	m.live[liveKey(ls.tenantID, id)] = ls
 	m.mu.Unlock()
@@ -320,12 +309,9 @@ func (m *Manager) lookupLive(tenantID, id string) *liveSession {
 }
 
 // stop interrupts a live session: SIGINT, KillGrace, SIGTERM, TermGrace,
-// SIGHUP, TermGrace, then detach. With keepRoom the room survives for a hot-switch.
-func (m *Manager) stop(ctx context.Context, ls *liveSession, keepRoom bool) {
+// SIGHUP, TermGrace, then detach.
+func (m *Manager) stop(ctx context.Context, ls *liveSession) {
 	pty := ls.pty
-	if keepRoom {
-		ls.room.detach()
-	}
 	_ = pty.Signal("SIGINT")
 	if !waitExit(ctx, pty, m.opts.KillGrace) {
 		_ = pty.Signal("SIGTERM")
@@ -337,10 +323,6 @@ func (m *Manager) stop(ctx context.Context, ls *liveSession, keepRoom bool) {
 				m.log.Warn("harness did not exit after SIGHUP; detaching", "session", SessionID(ls.harness, ls.nativeID))
 			}
 		}
-	}
-	if keepRoom {
-		// The pump of a detached room no longer reports the exit.
-		m.exited(ls, 0)
 	}
 	_ = pty.Close()
 }
@@ -369,7 +351,7 @@ func (m *Manager) Delete(ctx context.Context, tenantID, id string, purge bool) e
 		m.mu.Lock()
 		ls.deleted = true
 		m.mu.Unlock()
-		m.stop(ctx, ls, false)
+		m.stop(ctx, ls)
 		m.mu.Lock()
 		delete(m.live, liveKey(tenantID, SessionID(harness, nativeID)))
 		m.mu.Unlock()

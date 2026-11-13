@@ -1,9 +1,9 @@
-import { ArrowLeft, ArrowRightLeft, Play, SquareTerminal } from "lucide-react";
+import { ArrowLeft, Play, SquareTerminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { describeError } from "../api/errors";
 import { sessions } from "../api/domains";
-import type { HarnessID, Session, SwitchResult } from "../api/types";
+import type { HarnessID, Session } from "../api/types";
 import { ConfirmDialog } from "../components/Dialog";
 import { StateView } from "../components/StateView";
 import { useToast } from "../components/Toast";
@@ -14,7 +14,6 @@ import { harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { SessionList } from "./studio/SessionList";
 import type { SessionFilter } from "./studio/SessionList";
-import { SwitchDialog } from "./studio/SwitchDialog";
 import { TerminalView } from "./studio/TerminalView";
 
 const CELL = { width: 7.8, height: 17 };
@@ -28,7 +27,6 @@ export default function StudioPage() {
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [room, setRoom] = useState<{ key: number; id: string } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
-  const [switchOpen, setSwitchOpen] = useState(false);
   const [deleting, setDeleting] = useState<Session | null>(null);
   const [purge, setPurge] = useState(false);
   const termSize = useRef<{ cols: number; rows: number } | null>(null);
@@ -42,7 +40,6 @@ export default function StudioPage() {
 
   const loader = useCallback((signal: AbortSignal) => sessions.list(filter, signal).then((r) => r.sessions), [filter]);
   const list = useResource(loader, { pollMs: 10_000 });
-  const reloadList = list.reload;
 
   useEffect(() => {
     if (!list.data) {
@@ -108,24 +105,6 @@ export default function StudioPage() {
     setRoom({ key: Date.now(), id: session.id });
     select(session.id);
     list.reload();
-  };
-
-  const onSwitched = useCallback(
-    (toSessionId: string) => {
-      // The server keeps streaming the new session on the same socket.
-      setRoom((current) => (current ? { ...current, id: toSessionId } : current));
-      select(toSessionId, true);
-      reloadList();
-    },
-    [select, reloadList],
-  );
-
-  const onSwitchResult = (result: SwitchResult) => {
-    setKnown(result.session);
-    setRoom((current) => (current && current.id === result.previousSessionId ? { ...current, id: result.session.id } : { key: Date.now(), id: result.session.id }));
-    select(result.session.id, true);
-    list.reload();
-    toast.success(`Switched to ${harnessLabel(result.session.harness)}. Handoff written to ${result.handoffPath}`);
   };
 
   const resume = async (session: Session) => {
@@ -198,15 +177,6 @@ export default function StudioPage() {
             </h1>
             {selected ? <Badge tone="accent">{harnessLabel(selected.harness)}</Badge> : null}
             {selected?.model ? <Badge>{selected.model}</Badge> : null}
-            <Button
-              size="sm"
-              icon={ArrowRightLeft}
-              disabled={!selected || selected.harness === "shell"}
-              title={selected?.harness === "shell" ? "A plain shell has no conversation to hand off" : undefined}
-              onClick={() => setSwitchOpen(true)}
-            >
-              Switch harness / model
-            </Button>
           </header>
         ) : null}
         <div className="min-h-0 flex-1">
@@ -214,7 +184,6 @@ export default function StudioPage() {
             <TerminalView
               key={room.key}
               sessionId={room.id}
-              onSwitched={onSwitched}
               onExit={() => list.reload()}
               onSize={(cols, rows) => {
                 termSize.current = { cols, rows };
@@ -250,7 +219,6 @@ export default function StudioPage() {
         size={size}
         defaultHarness={filter.harness}
       />
-      <SwitchDialog open={switchOpen} onClose={() => setSwitchOpen(false)} source={selected} models={models} onSwitched={onSwitchResult} />
       <ConfirmDialog
         open={deleting !== null}
         onClose={() => setDeleting(null)}

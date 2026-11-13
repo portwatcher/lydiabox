@@ -12,14 +12,12 @@ import (
 // SessionsRoutes serves /api/v1/sessions* (docs/api.md section 8).
 type SessionsRoutes struct {
 	Manager *harness.Manager
-	Bridge  *harness.Bridge
 }
 
 // RegisterRoutes implements RouteRegistrar.
 func (s SessionsRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("GET /api/v1/sessions", s.list)
 	r.HandleFunc("POST /api/v1/sessions", s.create)
-	r.HandleFunc("POST /api/v1/sessions/switch", s.switchHarness)
 	r.HandleFunc("DELETE /api/v1/sessions/{id}", s.remove)
 	r.HandleFunc("GET /api/v1/sessions/{id}/ws", s.ws)
 }
@@ -92,22 +90,4 @@ func (s SessionsRoutes) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s SessionsRoutes) switchHarness(w http.ResponseWriter, r *http.Request) {
-	var req harness.SwitchRequest
-	if err := httpx.DecodeJSON(w, r, 0, &req); err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
-		return
-	}
-	if req.SourceSessionID == "" || req.TargetHarness == "" {
-		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, "sourceSessionId and targetHarness are required")
-		return
-	}
-	res, err := s.Bridge.SwitchHarness(r.Context(), tenant.FromContext(r.Context()), req)
-	if err != nil {
-		writeHarnessError(w, err)
-		return
-	}
-	httpx.WriteJSON(w, http.StatusOK, res)
 }

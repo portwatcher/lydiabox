@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/url"
 	"path"
 	"path/filepath"
@@ -37,7 +36,6 @@ const (
 	agyStepViewFile   = 8
 	agyStepUserInput  = 14
 	agyStepPlanner    = 15
-	agyStepRunCommand = 21
 )
 
 // protoStrings returns the UTF-8 strings of a protobuf message in wire
@@ -210,10 +208,10 @@ func agySteps(home, id string) ([]agyStep, error) {
 
 var agyTitleRe = regexp.MustCompile(`(?m)^\s*title:\s*"((?:[^"\\]|\\.)*)"`)
 
-func (a Antigravity) meta(home, id string) (harness.SessionMeta, *builder, error) {
+func (a Antigravity) meta(home, id string) (harness.SessionMeta, int, error) {
 	steps, err := agySteps(home, id)
 	if err != nil {
-		return harness.SessionMeta{}, nil, err
+		return harness.SessionMeta{}, 0, err
 	}
 	m := harness.SessionMeta{Harness: a.Name(), NativeID: id}
 	for _, rel := range []string{path.Join(agyRoot, "conversations", id+".db"), path.Join(agyRoot, "brain", id),
@@ -229,66 +227,46 @@ func (a Antigravity) meta(home, id string) (harness.SessionMeta, *builder, error
 			}
 		}
 	}
-	b := newBuilder("")
-	for i, s := range steps {
+	var goal firstPrompt
+	msgs := 0
+	for _, s := range steps {
 		switch s.Type {
-		case agyStepUserInput:
-			b.user(longest(s.Strings))
-		case agyStepPlanner:
-			b.assistant(longest(s.Strings))
-		case agyStepRunCommand:
-			cmd := ""
-			for _, str := range s.Strings {
-				if strings.TrimSpace(str) != "" && !agyPathRe.MatchString(str) {
-					cmd = str
-					break
-				}
+		case agyStepUserInput, agyStepPlanner:
+			text := strings.TrimSpace(longest(s.Strings))
+			if text == "" {
+				continue
 			}
-			call := fmt.Sprintf("step-%d", i)
-			b.tool(call, "run_command", map[string]any{"command": cmd})
-			b.result(call, s.Status == 3, "")
+			if s.Type == agyStepUserInput {
+				goal.user(text)
+			}
+			msgs++
 		case agyStepCodeAction, agyStepViewFile:
-			file := ""
+			if m.WorkspaceDir != "" {
+				continue
+			}
 			for _, str := range s.Strings {
 				if agyPathRe.MatchString(str) {
-					file = strings.TrimPrefix(str, "file://")
+					m.WorkspaceDir = agyWorkspaceOf(strings.TrimPrefix(str, "file://"))
 					break
 				}
 			}
-			if b.workspace == "" && file != "" {
-				b.workspace = agyWorkspaceOf(file)
-			}
-			name := "view_file"
-			if s.Type == agyStepCodeAction {
-				name = "edit_file"
-			}
-			b.tool("", name, map[string]any{"path": file})
 		}
 	}
-	m.WorkspaceDir = b.workspace
 	if raw, err := readHomeFile(home, path.Join(agyRoot, "annotations", id+".pbtxt")); err == nil {
 		if mm := agyTitleRe.FindSubmatch(raw); mm != nil {
 			m.Title = strings.ReplaceAll(string(mm[1]), `\"`, `"`)
 		}
 	}
-	if task, err := readHomeFile(home, path.Join(agyRoot, "brain", id, "task.md")); err == nil && b.goal == "" {
-		b.user(string(task))
+	if task, err := readHomeFile(home, path.Join(agyRoot, "brain", id, "task.md")); err == nil && goal == "" {
+		goal.user(string(task))
+		if goal != "" {
+			msgs++
+		}
 	}
 	if m.Title == "" {
-		m.Title = titleFrom(b.goal)
+		m.Title = titleFrom(goal)
 	}
-	// Re-relativize edits against the workspace found from the paths.
-	if b.workspace != "" {
-		for i, f := range b.modified {
-			b.modified[i] = relPath(f, b.workspace)
-		}
-		for i, act := range b.actions {
-			if verb, p, ok := strings.Cut(act, " "); ok && (verb == "edit" || verb == "read") {
-				b.actions[i] = verb + " " + relPath(p, b.workspace)
-			}
-		}
-	}
-	return m, b, nil
+	return m, msgs, nil
 }
 
 // agyWorkspaceOf guesses the project directory of a file path: the first
@@ -316,38 +294,14 @@ func (a Antigravity) DiscoverSessions(home string) ([]harness.SessionMeta, error
 		if checkID(id) != nil {
 			continue
 		}
-		m, b, err := a.meta(home, id)
-		if err != nil || len(b.messages) == 0 {
+		m, msgs, err := a.meta(home, id)
+		if err != nil || msgs == 0 {
 			continue
 		}
 		out = append(out, m)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out, nil
-}
-
-// ParseTranscript implements harness.HarnessAdapter.
-func (a Antigravity) ParseTranscript(home, id string) (*harness.CanonicalTrajectory, error) {
-	if err := checkID(id); err != nil {
-		return nil, err
-	}
-	m, b, err := a.meta(home, id)
-	if err != nil {
-		return nil, fmt.Errorf("%w: antigravity conversation %s: %v", harness.ErrNotFound, id, err)
-	}
-	if len(b.messages) == 0 {
-		return nil, harness.ErrNoTranscript
-	}
-	return b.finish(a.Name(), id, m.Model), nil
-}
-
-// SynthesizeHandoff starts agy with the continuation prompt. Antigravity
-// conversations are protobuf in SQLite without a public schema, so no
-// native seed is written; the handoff reaches the agent through the prompt
-// and the managed block in GEMINI.md and AGENTS.md. Antigravity assigns the
-// conversation ID at runtime, so newSessionID is empty.
-func (a Antigravity) SynthesizeHandoff(home, workspace string, traj *harness.CanonicalTrajectory) ([]string, string, error) {
-	return []string{"agy", "--prompt-interactive", ContinuePrompt}, "", nil
 }
 
 // LaunchCommand implements harness.Launcher.

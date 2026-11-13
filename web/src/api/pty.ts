@@ -26,13 +26,6 @@ export function parsePtyMessage(message: unknown): PtyServerMessage | null {
       return { type: "pong", id: num(message, "id") };
     case "exit":
       return { type: "exit", code: num(message, "code"), signal: str(message, "signal") };
-    case "switched":
-      return {
-        type: "switched",
-        fromSessionId: str(message, "fromSessionId"),
-        toSessionId: str(message, "toSessionId"),
-        handoffPath: str(message, "handoffPath"),
-      };
     case "error":
       return { type: "error", code: str(message, "code"), message: str(message, "message") };
     default:
@@ -44,7 +37,6 @@ export interface PtyHandlers {
   onOutput: (data: Uint8Array) => void;
   onHello?: (msg: Extract<PtyServerMessage, { type: "hello" }>) => void;
   onExit?: (msg: Extract<PtyServerMessage, { type: "exit" }>) => void;
-  onSwitched?: (msg: Extract<PtyServerMessage, { type: "switched" }>) => void;
   onError?: (msg: Extract<PtyServerMessage, { type: "error" }>) => void;
   onState?: (state: SocketState) => void;
 }
@@ -57,9 +49,9 @@ export interface PtyClientOptions {
 
 /**
  * Terminal room client. Binary frames carry PTY bytes in both directions;
- * text frames carry JSON control messages. After `switched` the server keeps
- * streaming the new session on the same socket; the client adopts the new ID
- * so a reconnect attaches to it. After `exit` the client does not reconnect.
+ * text frames carry JSON control messages. The client adopts the session ID
+ * from `hello` so a reconnect attaches to it. After `exit` the client does
+ * not reconnect.
  */
 export class PtyClient {
   private id: string;
@@ -147,12 +139,6 @@ export class PtyClient {
       case "exit":
         this.socket.finish();
         this.handlers.onExit?.(msg);
-        return;
-      case "switched":
-        if (msg.toSessionId) {
-          this.id = msg.toSessionId;
-        }
-        this.handlers.onSwitched?.(msg);
         return;
       case "error":
         this.handlers.onError?.(msg);

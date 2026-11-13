@@ -28,12 +28,6 @@ type (
 		Code   int    `json:"code"`
 		Signal string `json:"signal"`
 	}
-	CtlSwitched struct {
-		Type          string `json:"type"`
-		FromSessionID string `json:"fromSessionId"`
-		ToSessionID   string `json:"toSessionId"`
-		HandoffPath   string `json:"handoffPath"`
-	}
 	CtlError struct {
 		Type    string `json:"type"`
 		Code    string `json:"code"`
@@ -63,13 +57,11 @@ func (s *Subscriber) close() { s.once.Do(func() { close(s.C) }) }
 const subscriberBuffer = 512
 
 // Room is a terminal shared by every client attached to one session. It
-// pumps PTY output to all subscribers, keeps a replay ring, and can swap
-// the PTY underneath during a harness hot-switch.
+// pumps PTY output to all subscribers and keeps a replay ring.
 type Room struct {
 	mu        sync.Mutex
 	sessionID string
 	pty       PTY
-	gen       int
 	ring      []byte
 	subs      map[*Subscriber]struct{}
 	cols      uint16
@@ -80,21 +72,10 @@ type Room struct {
 }
 
 func newRoom(sessionID string, p PTY, cols, rows uint16, onExit func(int)) *Room {
-	r := &Room{sessionID: sessionID, subs: map[*Subscriber]struct{}{}, cols: cols, rows: rows}
-	r.attach(p, onExit)
-	return r
-}
-
-// attach starts pumping p; the caller holds no lock.
-func (r *Room) attach(p PTY, onExit func(int)) {
-	r.mu.Lock()
-	r.gen++
-	gen := r.gen
-	r.pty = p
-	r.onExit = onExit
+	r := &Room{sessionID: sessionID, pty: p, subs: map[*Subscriber]struct{}{}, cols: cols, rows: rows, onExit: onExit}
 	r.appendRing(p.Replay())
-	r.mu.Unlock()
-	go r.pump(p, gen)
+	go r.pump(p)
+	return r
 }
 
 func (r *Room) appendRing(b []byte) {
@@ -104,17 +85,13 @@ func (r *Room) appendRing(b []byte) {
 	}
 }
 
-func (r *Room) pump(p PTY, gen int) {
+func (r *Room) pump(p PTY) {
 	buf := make([]byte, 32<<10)
 	for {
 		n, err := p.Read(buf)
 		if n > 0 {
 			chunk := append([]byte(nil), buf[:n]...)
 			r.mu.Lock()
-			if r.gen != gen {
-				r.mu.Unlock()
-				return
-			}
 			r.appendRing(chunk)
 			r.broadcastLocked(Frame{Data: chunk})
 			r.mu.Unlock()
@@ -130,10 +107,6 @@ func (r *Room) pump(p PTY, gen int) {
 		code = -1
 	}
 	r.mu.Lock()
-	if r.gen != gen {
-		r.mu.Unlock()
-		return
-	}
 	r.done = true
 	onExit := r.onExit
 	r.broadcastLocked(Frame{Control: CtlExit{Type: "exit", Code: code}, Close: true})
@@ -239,45 +212,4 @@ func (r *Room) Signal(sig string) error {
 		return ErrUnavailable
 	}
 	return pty.Signal(sig)
-}
-
-// size returns the terminal size.
-func (r *Room) size() (uint16, uint16) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.cols, r.rows
-}
-
-// detach stops pumping the current PTY without telling clients it exited
-// (the first step of a hot-switch) and returns it.
-func (r *Room) detach() PTY {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.gen++
-	p := r.pty
-	r.pty = nil
-	r.onExit = nil
-	return p
-}
-
-// swap attaches the PTY of the target session and announces the switch.
-func (r *Room) swap(p PTY, toSessionID string, ctl CtlSwitched, onExit func(int)) {
-	r.mu.Lock()
-	r.sessionID = toSessionID
-	r.broadcastLocked(Frame{Control: ctl})
-	r.mu.Unlock()
-	r.attach(p, onExit)
-}
-
-// fail tells clients that the room cannot continue and closes it.
-func (r *Room) fail(code, msg string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.gen++
-	r.done = true
-	r.broadcastLocked(Frame{Control: CtlError{Type: "error", Code: code, Message: msg}, Close: true})
-	for s := range r.subs {
-		s.close()
-	}
-	r.subs = map[*Subscriber]struct{}{}
 }

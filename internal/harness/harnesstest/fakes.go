@@ -1,6 +1,6 @@
 // Package harnesstest provides fakes of the guest PTY runner, the VM waker,
-// and the session store for tests of the harness manager, the bridge, and
-// the session routes.
+// and the session store for tests of the harness manager and the session
+// routes.
 package harnesstest
 
 import (

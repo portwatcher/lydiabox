@@ -9,7 +9,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/lydiabox/lydiabox/internal/harness"
 	"github.com/lydiabox/lydiabox/internal/harness/safefile"
@@ -51,32 +50,8 @@ type claudeMessage struct {
 }
 
 type claudeBlock struct {
-	Type      string          `json:"type"`
-	Text      string          `json:"text"`
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Input     json.RawMessage `json:"input"`
-	ToolUseID string          `json:"tool_use_id"`
-	IsError   bool            `json:"is_error"`
-	Content   json.RawMessage `json:"content"`
-}
-
-// claudeEncode is Claude Code's project directory name for a cwd: every
-// character that is not a letter or digit becomes "-".
-func claudeEncode(cwd string) string {
-	var b strings.Builder
-	for _, r := range cwd {
-		if r < 128 && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('-')
-		}
-	}
-	s := b.String()
-	if len(s) > 200 {
-		s = s[:200]
-	}
-	return s
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 // blocks decodes message content given as a string or as an array.
@@ -88,21 +63,6 @@ func claudeBlocks(raw json.RawMessage) []claudeBlock {
 	var bs []claudeBlock
 	_ = json.Unmarshal(raw, &bs)
 	return bs
-}
-
-// blockText flattens tool_result content.
-func blockText(raw json.RawMessage) string {
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return s
-	}
-	var parts []string
-	for _, b := range claudeBlocks(raw) {
-		if b.Text != "" {
-			parts = append(parts, b.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
 }
 
 // isClaudeNoise reports injected user text (slash command echoes, caveats,
@@ -118,22 +78,17 @@ func isClaudeNoise(text string) bool {
 	return false
 }
 
-type claudeScan struct {
-	meta    harness.SessionMeta
-	builder *builder
-}
-
-func (c Claude) scan(home, rel string) (*claudeScan, error) {
+func (c Claude) scan(home, rel string) (*harness.SessionMeta, error) {
 	data, err := readHomeFile(home, rel)
 	if err != nil {
 		return nil, err
 	}
 	id := strings.TrimSuffix(path.Base(rel), ".jsonl")
-	s := &claudeScan{meta: harness.SessionMeta{Harness: c.Name(), NativeID: id, Files: []string{hostPath(home, rel)}}}
+	s := &harness.SessionMeta{Harness: c.Name(), NativeID: id, Files: []string{hostPath(home, rel)}}
 	usage := harness.Usage{}
 	seenMsg := map[string]bool{}
 	var title, summary string
-	var b *builder
+	var goal firstPrompt
 	var n int
 	err = eachLine(bytes.NewReader(data), func(line []byte) error {
 		var r claudeRecord
@@ -154,18 +109,15 @@ func (c Claude) scan(home, rel string) (*claudeScan, error) {
 		if r.IsSidechain {
 			return nil
 		}
-		if s.meta.WorkspaceDir == "" && r.Cwd != "" {
-			s.meta.WorkspaceDir = r.Cwd
-		}
-		if b == nil {
-			b = newBuilder(s.meta.WorkspaceDir)
+		if s.WorkspaceDir == "" && r.Cwd != "" {
+			s.WorkspaceDir = r.Cwd
 		}
 		if ts := parseTime(r.Timestamp); !ts.IsZero() {
-			if s.meta.CreatedAt.IsZero() || ts.Before(s.meta.CreatedAt) {
-				s.meta.CreatedAt = ts
+			if s.CreatedAt.IsZero() || ts.Before(s.CreatedAt) {
+				s.CreatedAt = ts
 			}
-			if ts.After(s.meta.UpdatedAt) {
-				s.meta.UpdatedAt = ts
+			if ts.After(s.UpdatedAt) {
+				s.UpdatedAt = ts
 			}
 		}
 		var m claudeMessage
@@ -176,7 +128,7 @@ func (c Claude) scan(home, rel string) (*claudeScan, error) {
 		usage.CostUSD += r.CostUSD
 		if r.Type == "assistant" {
 			if m.Model != "" && m.Model != "<synthetic>" {
-				s.meta.Model = m.Model
+				s.Model = m.Model
 			}
 			if m.Usage != nil && (m.ID == "" || !seenMsg[m.ID]) {
 				seenMsg[m.ID] = true
@@ -184,18 +136,11 @@ func (c Claude) scan(home, rel string) (*claudeScan, error) {
 				usage.OutputTokens += m.Usage.OutputTokens
 			}
 		}
-		for _, blk := range claudeBlocks(m.Content) {
-			switch {
-			case blk.Type == "text" && r.Type == "user":
-				if !r.IsMeta && !isClaudeNoise(blk.Text) {
-					b.user(blk.Text)
+		if r.Type == "user" && !r.IsMeta {
+			for _, blk := range claudeBlocks(m.Content) {
+				if blk.Type == "text" && !isClaudeNoise(blk.Text) {
+					goal.user(blk.Text)
 				}
-			case blk.Type == "text":
-				b.assistant(blk.Text)
-			case blk.Type == "tool_use":
-				b.tool(blk.ID, blk.Name, jsonArgs(blk.Input))
-			case blk.Type == "tool_result":
-				b.result(blk.ToolUseID, blk.IsError, blockText(blk.Content))
 			}
 		}
 		return nil
@@ -206,10 +151,9 @@ func (c Claude) scan(home, rel string) (*claudeScan, error) {
 	if n == 0 {
 		return nil, harness.ErrNoTranscript
 	}
-	s.builder = b
-	s.meta.Title = firstNonEmptyStr(title, summary, titleFrom(b.goal))
+	s.Title = firstNonEmptyStr(title, summary, titleFrom(goal))
 	if !usage.IsZero() {
-		s.meta.Usage = &usage
+		s.Usage = &usage
 	}
 	return s, nil
 }
@@ -235,7 +179,7 @@ func (c Claude) DiscoverSessions(home string) ([]harness.SessionMeta, error) {
 		if err != nil {
 			continue
 		}
-		out = append(out, s.meta)
+		out = append(out, *s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out, nil
@@ -253,55 +197,6 @@ func (c Claude) find(home, id string) (string, error) {
 		return "", fmt.Errorf("%w: claude-code session %s", harness.ErrNotFound, id)
 	}
 	return files[0], nil
-}
-
-// ParseTranscript implements harness.HarnessAdapter.
-func (c Claude) ParseTranscript(home, id string) (*harness.CanonicalTrajectory, error) {
-	rel, err := c.find(home, id)
-	if err != nil {
-		return nil, err
-	}
-	s, err := c.scan(home, rel)
-	if err != nil {
-		return nil, err
-	}
-	t := s.builder.finish(c.Name(), id, s.meta.Model)
-	t.Usage = s.meta.Usage
-	return t, nil
-}
-
-// SynthesizeHandoff writes a native seed transcript (the handoff as the
-// first user turn plus a synthetic assistant acknowledgement) and resumes
-// it with a continuation prompt.
-func (c Claude) SynthesizeHandoff(home, workspace string, traj *harness.CanonicalTrajectory) ([]string, string, error) {
-	id := newUUID()
-	now := time.Now().UTC()
-	common := func(typ, uuid, parent string, ts time.Time) map[string]any {
-		r := map[string]any{"type": typ, "uuid": uuid, "parentUuid": nil, "sessionId": id, "cwd": workspace,
-			"timestamp": ts.Format("2006-01-02T15:04:05.000Z"), "version": "lydiabox-handoff", "isSidechain": false,
-			"userType": "external"}
-		if parent != "" {
-			r["parentUuid"] = parent
-		}
-		return r
-	}
-	u1, a1 := newUUID(), newUUID()
-	user := common("user", u1, "", now)
-	user["message"] = map[string]any{"role": "user", "content": seedText(traj)}
-	asst := common("assistant", a1, u1, now.Add(time.Millisecond))
-	asst["message"] = map[string]any{"id": "msg_lydiabox_" + strings.ReplaceAll(a1, "-", ""), "type": "message",
-		"role": "assistant", "model": "<synthetic>", "content": []map[string]any{{"type": "text", "text": ackText}},
-		"stop_reason": "end_turn", "usage": map[string]any{"input_tokens": 0, "output_tokens": 0}}
-	title := map[string]any{"type": "custom-title", "customTitle": "Handoff: " + titleFrom(traj.OriginalGoal), "sessionId": id}
-	data, err := marshalLines(user, asst, title)
-	if err != nil {
-		return nil, "", err
-	}
-	rel := path.Join(".claude/projects", claudeEncode(workspace), id+".jsonl")
-	if err := writeHome(home, rel, data); err != nil {
-		return nil, "", err
-	}
-	return []string{"claude", "--resume", id, ContinuePrompt}, id, nil
 }
 
 // LaunchCommand implements harness.Launcher. New sessions get an ID chosen

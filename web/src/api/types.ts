@@ -176,41 +176,6 @@ export interface CreateSessionRequest {
   rows: number;
 }
 
-export interface SwitchRequest {
-  sourceSessionId: string;
-  targetHarness: HarnessID;
-  targetModel?: string;
-  dryRun: boolean;
-}
-
-export interface HandoffMessage {
-  role: "user" | "assistant" | string;
-  text: string;
-}
-
-export interface HandoffState {
-  originalGoal: string;
-  modifiedFiles: string[];
-  toolActionsSummary: string[];
-  recentMessages: HandoffMessage[];
-  unresolvedIssues: string[];
-  gitStatus: string;
-  gitDiffStat: string;
-}
-
-export interface SwitchPreview {
-  dryRun: true;
-  handoffMarkdown: string;
-  state: HandoffState;
-}
-
-export interface SwitchResult {
-  dryRun: false;
-  previousSessionId: string;
-  session: Session;
-  handoffPath: string;
-}
-
 export type PtySignal = "SIGINT" | "SIGTERM" | "SIGHUP" | "SIGQUIT";
 
 export type PtyClientMessage =
@@ -223,7 +188,6 @@ export type PtyServerMessage =
   | { type: "resized"; cols: number; rows: number }
   | { type: "pong"; id: number }
   | { type: "exit"; code: number; signal: string }
-  | { type: "switched"; fromSessionId: string; toSessionId: string; handoffPath: string }
   | { type: "error"; code: string; message: string };
 
 // Section 9: desktop.

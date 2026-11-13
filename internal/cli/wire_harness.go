@@ -12,15 +12,14 @@ import (
 
 // wireHarness wires Phase 3 into `lydiabox up`: the host magpie gateway
 // (supervisor, VM gateway key, admin client), the harness config wirers, the
-// five harness adapters, the session manager, the hot-switch bridge, and the
-// sessions and models routes.
+// five harness adapters, the session manager, and the sessions and models
+// routes.
 //
 // Guest glue: when wireVM (Phase 2) built the guest client and the VM
 // controller, harness terminals run through them and the guest LLM tunnel
 // injects the magpie gateway key. Without them (a build or test without a
 // VM subsystem), the manager uses harness.UnavailableRunner, so terminal
-// routes answer 503 while discovery, the handoff preview, and the models
-// routes keep working.
+// routes answer 503 while discovery and the models routes keep working.
 func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	cfg := d.Config
 	log := d.Logger.With("component", "harness")
@@ -47,7 +46,6 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	if err != nil {
 		return nil, err
 	}
-	bridge := &harness.Bridge{Manager: mgr, Git: harness.ExecGit{}, Binder: bindings, Logger: log}
 
 	// The guest LLM tunnel replaces guest credentials with the gateway key.
 	if d.VM != nil && d.VM.Gateway != nil {
@@ -57,7 +55,7 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	return &component{
 		Name: "harness",
 		Routes: []api.RouteRegistrar{
-			api.SessionsRoutes{Manager: mgr, Bridge: bridge},
+			api.SessionsRoutes{Manager: mgr},
 			api.ModelsRoutes{Service: service},
 		},
 		Start: func(ctx context.Context) error {

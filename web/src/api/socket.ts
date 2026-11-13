@@ -37,7 +37,7 @@ export function backoffDelay(attempt: number, random: () => number = Math.random
 }
 
 export interface SocketOptions {
-  /** Evaluated on every connect, so the target can change (PTY `switched`). */
+  /** Evaluated on every connect, so the target can change (PTY `hello`). */
   url: () => string;
   protocol: string;
   binaryType?: BinaryType;

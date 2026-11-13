@@ -163,9 +163,3 @@ func (b *Bindings) Env(harness string) map[string]string {
 	}
 	return maps.Clone(w.Env(b.binding("")))
 }
-
-// BindModel implements harness.ModelBinder.
-func (b *Bindings) BindModel(ctx context.Context, tenantID, harness, model string) error {
-	_, err := b.Bind(ctx, tenantID, harness, model)
-	return err
-}

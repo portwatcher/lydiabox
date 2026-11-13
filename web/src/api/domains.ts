@@ -17,9 +17,6 @@ import type {
   RoutingGroup,
   Session,
   SessionsResponse,
-  SwitchPreview,
-  SwitchRequest,
-  SwitchResult,
   TokenRequest,
   UpdateProviderRequest,
 } from "./types";
@@ -30,10 +27,6 @@ export const sessions = {
     http.get<SessionsResponse>("/api/v1/sessions", { harness: filter.harness, workspace: filter.workspace }, signal),
   create: (body: CreateSessionRequest) => http.post<Session>("/api/v1/sessions", body),
   remove: (id: string, purge = false) => http.delete(`/api/v1/sessions/${seg(id)}`, { purge: purge || undefined }),
-  preview: (body: Omit<SwitchRequest, "dryRun">) =>
-    http.post<SwitchPreview>("/api/v1/sessions/switch", { ...body, dryRun: true }),
-  switch: (body: Omit<SwitchRequest, "dryRun">) =>
-    http.post<SwitchResult>("/api/v1/sessions/switch", { ...body, dryRun: false }),
   wsPath: (id: string) => `/api/v1/sessions/${seg(id)}/ws`,
 };
 

@@ -1,8 +1,7 @@
-// Package harness is the unified session manager and the cross-harness
-// session bridge (docs/design.md section 4.4). It discovers the sessions of
-// the five supported harness CLIs from the host copy of /home/agent, runs
-// harness terminals in the guest through a PTYRunner, and hot-switches a
-// running task from one harness to another.
+// Package harness is the unified session manager (docs/design.md section
+// 4.4). It discovers the sessions of the five supported harness CLIs from
+// the host copy of /home/agent and runs harness terminals in the guest
+// through a PTYRunner.
 package harness
 
 import (
@@ -57,51 +56,14 @@ type SessionMeta struct {
 	Files []string `json:"-"`
 }
 
-// Message is one user or assistant turn in a trajectory.
-type Message struct {
-	Role string `json:"role"`
-	Text string `json:"text"`
-}
-
-// Trajectory limits from docs/design.md section 4.4.2.
-const (
-	MaxToolActions   = 30
-	MaxRecentMessage = 10
-)
-
-// CanonicalTrajectory is the harness-neutral summary of a session that the
-// bridge hands to the next harness.
-type CanonicalTrajectory struct {
-	Harness      string `json:"harness"`
-	SessionID    string `json:"sessionId"`
-	WorkspaceDir string `json:"workspaceDir"`
-	Model        string `json:"model,omitempty"`
-
-	OriginalGoal       string    `json:"originalGoal"`
-	ModifiedFiles      []string  `json:"modifiedFiles"`
-	ToolActionsSummary []string  `json:"toolActionsSummary"`
-	RecentMessages     []Message `json:"recentMessages"`
-	UnresolvedIssues   []string  `json:"unresolvedIssues"`
-	Usage              *Usage    `json:"usage,omitempty"`
-
-	// HandoffPath is the guest path of .agent/HANDOFF.md. The bridge sets it
-	// before SynthesizeHandoff so seed sessions can point at it.
-	HandoffPath string `json:"handoffPath,omitempty"`
-	// HandoffMarkdown is the rendered handoff, set by the bridge.
-	HandoffMarkdown string `json:"-"`
-}
-
-// HarnessAdapter reads and seeds the on-disk sessions of one harness.
-// homeDir is always the host path of the guest /home/agent; workspaceDir is
-// the guest working directory.
+// HarnessAdapter reads the on-disk sessions of one harness. homeDir is
+// always the host path of the guest /home/agent.
 type HarnessAdapter interface {
 	Name() string // "claude-code" | "codex" | "dsh" | "antigravity" | "opencode"
 	DiscoverSessions(homeDir string) ([]SessionMeta, error)
-	ParseTranscript(homeDir, sessionID string) (*CanonicalTrajectory, error)
-	SynthesizeHandoff(homeDir, workspaceDir string, traj *CanonicalTrajectory) (resumeCmd []string, newSessionID string, err error)
 }
 
-// LaunchOptions describes a harness start that is not a handoff.
+// LaunchOptions describes a harness start.
 type LaunchOptions struct {
 	WorkspaceDir string
 	Model        string

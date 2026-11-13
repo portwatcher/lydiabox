@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +31,6 @@ type env struct {
 
 type fakeWiring struct {
 	wired []string
-	bound []string
 }
 
 func (f *fakeWiring) EnsureWired(_ context.Context, _, h string) error {
@@ -41,10 +41,6 @@ func (f *fakeWiring) Env(h string) map[string]string {
 	if h == harness.Codex {
 		return map[string]string{"LYDIABOX_GATEWAY_TOKEN": "lydiabox-local"}
 	}
-	return nil
-}
-func (f *fakeWiring) BindModel(_ context.Context, _, h, m string) error {
-	f.bound = append(f.bound, h+"="+m)
 	return nil
 }
 
@@ -81,6 +77,21 @@ func eventually(t *testing.T, what string, cond func() bool) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// writeDSHSession writes a plain-text dsh session file with one prompt.
+func writeDSHSession(t *testing.T, home, workspace, id string) {
+	t.Helper()
+	dir := filepath.Join(home, ".dsh/sessions", "--"+strings.ReplaceAll(workspace, "/", "-")+"--", id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	data := `{"type":"session","id":"` + id + `","createdAt":` + now + `,"cwd":"` + workspace + `"}` + "\n" +
+		`{"type":"user/message","seq":1,"time":` + now + `,"data":{"role":"user","content":[{"type":"text","text":"x"}],"source":{"kind":"user"}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "session.jsonl"), []byte(data), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -230,11 +241,8 @@ func TestProvisionalSessionAdoptsNativeID(t *testing.T) {
 		t.Fatal(err)
 	}
 	// dsh writes its session file after it starts.
-	traj := &harness.CanonicalTrajectory{OriginalGoal: "x"}
-	_, nativeID, err := adapters.DSH{}.SynthesizeHandoff(e.home, "/workspace/fresh", traj)
-	if err != nil {
-		t.Fatal(err)
-	}
+	nativeID := "session-0f3c9a2e-5d6b-4e7f-8a9b-0c1d2e3f4a5b"
+	writeDSHSession(t, e.home, "/workspace/fresh", nativeID)
 	all, err := e.mgr.List(ctx, tenant, harness.Filter{Workspace: "/workspace/fresh"})
 	if err != nil {
 		t.Fatal(err)

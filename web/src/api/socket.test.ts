@@ -153,19 +153,13 @@ describe("PtyClient", () => {
     expect(ws?.json().at(-1)).toEqual({ type: "signal", signal: "SIGINT" });
   });
 
-  it("follows switched to the new session and stops after exit", () => {
+  it("adopts the session ID from hello and stops after exit", () => {
     const { factory, sockets } = fakeFactory();
-    const switched = vi.fn();
     const exited = vi.fn();
-    const client = new PtyClient(
-      "claude-code:6b1e",
-      { onOutput: () => undefined, onSwitched: switched, onExit: exited },
-      { factory, url: (p) => p },
-    );
+    const client = new PtyClient("dsh:new-1", { onOutput: () => undefined, onExit: exited }, { factory, url: (p) => p });
     client.connect();
     sockets[0]?.open();
-    sockets[0]?.receiveJson({ type: "switched", fromSessionId: "claude-code:6b1e", toSessionId: "dsh:a91f", handoffPath: "/w/.agent/HANDOFF.md" });
-    expect(switched).toHaveBeenCalledWith(expect.objectContaining({ toSessionId: "dsh:a91f" }));
+    sockets[0]?.receiveJson({ type: "hello", sessionId: "dsh:a91f", replayBytes: 0, cols: 80, rows: 24 });
     expect(client.sessionId).toBe("dsh:a91f");
     sockets[0]?.serverClose();
     vi.advanceTimersByTime(1000);

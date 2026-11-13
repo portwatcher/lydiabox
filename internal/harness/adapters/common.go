@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,14 +24,6 @@ import (
 	"github.com/lydiabox/lydiabox/internal/harness"
 	"github.com/lydiabox/lydiabox/internal/harness/safefile"
 )
-
-// ContinuePrompt is the first instruction a target harness gets after a
-// hot-switch.
-const ContinuePrompt = "Continue the interrupted task. Read .agent/HANDOFF.md first: it has the original goal, " +
-	"the modified files, the recent tool actions, and the open issues from the previous agent."
-
-// ackText is the synthetic assistant turn of a seed session.
-const ackText = "I have read the handoff in .agent/HANDOFF.md and will continue the task from where the previous agent stopped."
 
 // All returns one adapter per harness in display order.
 func All() []harness.Adapter {
@@ -61,28 +52,14 @@ func newUUID() string {
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
 }
 
-// newUUIDv7 returns a time-ordered UUID (codex uses UUIDv7 session IDs).
-func newUUIDv7(t time.Time) string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
-	}
-	ms := uint64(t.UnixMilli())
-	for i := 0; i < 6; i++ {
-		b[i] = byte(ms >> (40 - 8*i))
-	}
-	b[6] = b[6]&0x0f | 0x70
-	b[8] = b[8]&0x3f | 0x80
-	h := hex.EncodeToString(b[:])
-	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
-}
+// firstPrompt keeps the first human prompt of a transcript. It becomes the
+// session title.
+type firstPrompt string
 
-// seedText is the user message of a seed session.
-func seedText(traj *harness.CanonicalTrajectory) string {
-	if traj.HandoffMarkdown == "" {
-		return ContinuePrompt
+func (p *firstPrompt) user(text string) {
+	if *p == "" {
+		*p = firstPrompt(strings.TrimSpace(text))
 	}
-	return ContinuePrompt + "\n\n" + traj.HandoffMarkdown
 }
 
 // lines splits JSONL content into non-empty lines.
@@ -165,52 +142,10 @@ func millis(ms int64) time.Time {
 }
 
 // titleFrom shortens a first prompt into a session title.
-func titleFrom(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
+func titleFrom(p firstPrompt) string {
+	s := strings.Join(strings.Fields(string(p)), " ")
 	if r := []rune(s); len(r) > 80 {
 		return string(r[:79]) + "…"
 	}
 	return s
-}
-
-func truncate(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n-1]) + "…"
-	}
-	return s
-}
-
-// jsonArgs decodes tool arguments given as an object or a JSON string.
-func jsonArgs(raw json.RawMessage) map[string]any {
-	var m map[string]any
-	if json.Unmarshal(raw, &m) == nil {
-		return m
-	}
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		if json.Unmarshal([]byte(s), &m) == nil {
-			return m
-		}
-		return map[string]any{"input": s}
-	}
-	return map[string]any{}
-}
-
-// writeHome atomically writes a file below the host home directory.
-func writeHome(home, rel string, data []byte) error {
-	return safefile.WriteFile(home, rel, data, 0o600)
-}
-
-// marshalLines renders values as JSONL.
-func marshalLines(values ...any) ([]byte, error) {
-	var b bytes.Buffer
-	for _, v := range values {
-		line, err := json.Marshal(v)
-		if err != nil {
-			return nil, err
-		}
-		b.Write(line)
-		b.WriteByte('\n')
-	}
-	return b.Bytes(), nil
 }

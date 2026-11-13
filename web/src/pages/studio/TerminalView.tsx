@@ -47,21 +47,20 @@ const stateLabels: Record<SocketState, string> = {
 };
 
 export interface TerminalViewProps {
-  /** Session to attach to when the view mounts; `switched` moves it in place. */
+  /** Session to attach to when the view mounts. */
   sessionId: string;
-  onSwitched: (toSessionId: string, handoffPath: string) => void;
   onExit: () => void;
   /** Reports the terminal size, used for new sessions. */
   onSize?: (cols: number, rows: number) => void;
 }
 
-export function TerminalView({ sessionId, onSwitched, onExit, onSize }: TerminalViewProps) {
+export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<PtyClient | null>(null);
   const initialId = useRef(sessionId);
-  const callbacks = useRef({ onSwitched, onExit, onSize });
+  const callbacks = useRef({ onExit, onSize });
   useEffect(() => {
-    callbacks.current = { onSwitched, onExit, onSize };
+    callbacks.current = { onExit, onSize };
   });
   const [conn, setConn] = useState<SocketState>("connecting");
   const [exited, setExited] = useState<string | null>(null);
@@ -99,10 +98,6 @@ export function TerminalView({ sessionId, onSwitched, onExit, onSize }: Terminal
         term.write(`\r\n\x1b[2m[process exited with ${detail}]\x1b[0m\r\n`);
         setExited(detail);
         callbacks.current.onExit();
-      },
-      onSwitched: (msg) => {
-        term.write(`\r\n\x1b[2m[switched to ${msg.toSessionId}]\x1b[0m\r\n`);
-        callbacks.current.onSwitched(msg.toSessionId, msg.handoffPath);
       },
       onError: (msg) => setServerError(msg.message || msg.code),
       onState: setConn,

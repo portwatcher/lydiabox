@@ -8,7 +8,6 @@ import (
 	"io"
 	"path"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -57,16 +56,9 @@ type dshEvent struct {
 }
 
 type dshMessage struct {
-	ID         string `json:"id"`
-	Role       string `json:"role"`
-	ToolCallID string `json:"toolCallId"`
-	IsError    bool   `json:"isError"`
-	Content    []struct {
-		Type      string `json:"type"`
-		Text      string `json:"text"`
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
 	} `json:"content"`
 	Source struct {
 		Kind     string `json:"kind"`
@@ -83,26 +75,6 @@ func (m dshMessage) text() string {
 		}
 	}
 	return strings.Join(parts, "\n")
-}
-
-// dshProjectKey encodes a cwd the way dsh names project directories:
-// "--" + cwd with "/", "\" and ":" as "-" and other unsafe bytes as
-// "~XXXX" + "--".
-func dshProjectKey(cwd string) string {
-	var b strings.Builder
-	b.WriteString("--")
-	for _, r := range cwd {
-		switch {
-		case r == '/' || r == '\\' || r == ':':
-			b.WriteByte('-')
-		case r < 128 && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-'):
-			b.WriteRune(r)
-		default:
-			fmt.Fprintf(&b, "~%04X", r)
-		}
-	}
-	b.WriteString("--")
-	return b.String()
 }
 
 // readDSH returns the decompressed JSONL of a session file.
@@ -122,22 +94,17 @@ func readDSH(home, rel string) ([]byte, error) {
 	return io.ReadAll(dec)
 }
 
-type dshScan struct {
-	meta    harness.SessionMeta
-	builder *builder
-}
-
-func (d DSH) scan(home, rel string) (*dshScan, error) {
+func (d DSH) scan(home, rel string) (*harness.SessionMeta, error) {
 	data, err := readDSH(home, rel)
 	if err != nil {
 		return nil, err
 	}
-	s := &dshScan{meta: harness.SessionMeta{Harness: d.Name(), Files: []string{hostPath(home, path.Dir(rel))}}}
+	s := &harness.SessionMeta{Harness: d.Name(), Files: []string{hostPath(home, path.Dir(rel))}}
 	usage := harness.Usage{}
-	var b *builder
+	var goal firstPrompt
 	var msgs int
 	err = eachLine(bytes.NewReader(data), func(line []byte) error {
-		if s.meta.NativeID == "" {
+		if s.NativeID == "" {
 			var h dshHeader
 			if json.Unmarshal(line, &h) != nil || h.Type != "session" || h.ID == "" {
 				return harness.ErrNoTranscript
@@ -145,30 +112,22 @@ func (d DSH) scan(home, rel string) (*dshScan, error) {
 			if h.Origin == "subagent" {
 				return harness.ErrNoTranscript
 			}
-			s.meta.NativeID, s.meta.WorkspaceDir = h.ID, h.Cwd
-			s.meta.CreatedAt, s.meta.UpdatedAt = millis(h.CreatedAt), millis(h.CreatedAt)
-			b = newBuilder(h.Cwd)
+			s.NativeID, s.WorkspaceDir = h.ID, h.Cwd
+			s.CreatedAt, s.UpdatedAt = millis(h.CreatedAt), millis(h.CreatedAt)
 			return nil
 		}
 		var ev dshEvent
 		if json.Unmarshal(line, &ev) != nil {
 			return nil
 		}
-		if t := millis(ev.Time); t.After(s.meta.UpdatedAt) {
-			s.meta.UpdatedAt = t
+		if t := millis(ev.Time); t.After(s.UpdatedAt) {
+			s.UpdatedAt = t
 		}
 		switch ev.Type {
-		case "working-directory/change":
-			var wd struct {
-				Cwd string `json:"cwd"`
-			}
-			if json.Unmarshal(ev.Data, &wd) == nil && wd.Cwd != "" {
-				b.workspace = wd.Cwd
-			}
 		case "user/message":
 			var m dshMessage
 			if json.Unmarshal(ev.Data, &m) == nil && m.Source.Kind == "user" {
-				b.user(m.text())
+				goal.user(m.text())
 				msgs++
 			}
 		case "assistant/message":
@@ -187,23 +146,10 @@ func (d DSH) scan(home, rel string) (*dshScan, error) {
 				usage.OutputTokens += a.Usage.Output
 			}
 			if a.Message.Source.Model != "" {
-				s.meta.Model = strings.Trim(a.Message.Source.Provider+"/"+a.Message.Source.Model, "/")
+				s.Model = strings.Trim(a.Message.Source.Provider+"/"+a.Message.Source.Model, "/")
 			}
-			if t := a.Message.text(); t != "" {
-				b.assistant(t)
+			if a.Message.text() != "" {
 				msgs++
-			}
-			for _, c := range a.Message.Content {
-				if c.Type == "tool-call" {
-					b.tool(c.ID, c.Name, jsonArgs(json.RawMessage(strconv.Quote(c.Arguments))))
-				}
-			}
-		case "tool/result":
-			var r struct {
-				Message dshMessage `json:"message"`
-			}
-			if json.Unmarshal(ev.Data, &r) == nil {
-				b.result(r.Message.ToolCallID, r.Message.IsError, r.Message.text())
 			}
 		}
 		return nil
@@ -211,13 +157,12 @@ func (d DSH) scan(home, rel string) (*dshScan, error) {
 	if err != nil {
 		return nil, err
 	}
-	if b == nil || msgs == 0 {
+	if s.NativeID == "" || msgs == 0 {
 		return nil, harness.ErrNoTranscript
 	}
-	s.builder = b
-	s.meta.Title = titleFrom(b.goal)
+	s.Title = titleFrom(goal)
 	if !usage.IsZero() {
-		s.meta.Usage = &usage
+		s.Usage = &usage
 	}
 	return s, nil
 }
@@ -257,77 +202,35 @@ func (d DSH) DiscoverSessions(home string) ([]harness.SessionMeta, error) {
 	out := []harness.SessionMeta{}
 	for _, rel := range files {
 		if s, err := d.scan(home, rel); err == nil {
-			out = append(out, s.meta)
+			out = append(out, *s)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out, nil
 }
 
-func (d DSH) find(home, id string) (string, *dshScan, error) {
+func (d DSH) find(home, id string) (string, error) {
 	if err := checkID(id); err != nil {
-		return "", nil, err
+		return "", err
 	}
 	files, err := d.sessionFiles(home)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
 	for _, rel := range files {
 		if path.Base(path.Dir(rel)) != id {
 			continue
 		}
-		if s, err := d.scan(home, rel); err == nil && s.meta.NativeID == id {
-			return rel, s, nil
+		if s, err := d.scan(home, rel); err == nil && s.NativeID == id {
+			return rel, nil
 		}
 	}
 	for _, rel := range files {
-		if s, err := d.scan(home, rel); err == nil && s.meta.NativeID == id {
-			return rel, s, nil
+		if s, err := d.scan(home, rel); err == nil && s.NativeID == id {
+			return rel, nil
 		}
 	}
-	return "", nil, fmt.Errorf("%w: dsh session %s", harness.ErrNotFound, id)
-}
-
-// ParseTranscript implements harness.HarnessAdapter.
-func (d DSH) ParseTranscript(home, id string) (*harness.CanonicalTrajectory, error) {
-	_, s, err := d.find(home, id)
-	if err != nil {
-		return nil, err
-	}
-	t := s.builder.finish(d.Name(), id, s.meta.Model)
-	t.Usage = s.meta.Usage
-	return t, nil
-}
-
-// SynthesizeHandoff writes a seeded native session (header isSeeded=true
-// and the handoff as the first user/message event, zstd compressed like
-// dsh's own files) and resumes it in the TUI.
-func (d DSH) SynthesizeHandoff(home, workspace string, traj *harness.CanonicalTrajectory) ([]string, string, error) {
-	id := "session-" + newUUID()
-	now := time.Now().UTC().UnixMilli()
-	jsonl, err := marshalLines(
-		map[string]any{"type": "session", "version": 1, "id": id, "createdAt": now, "cwd": workspace,
-			"isSeeded": true, "delegationDepth": 0},
-		map[string]any{"type": "user/message", "seq": 1, "time": now, "data": map[string]any{
-			"id": "msg-" + newUUID(), "role": "user",
-			"content": []map[string]any{{"type": "text", "text": seedText(traj)}},
-			"source":  map[string]any{"kind": "user", "rpcId": "lydiabox-handoff"},
-		}},
-	)
-	if err != nil {
-		return nil, "", err
-	}
-	enc, err := zstd.NewWriter(nil)
-	if err != nil {
-		return nil, "", err
-	}
-	data := enc.EncodeAll(jsonl, nil)
-	enc.Close()
-	rel := path.Join(".dsh/sessions", dshProjectKey(workspace), id, "session.jsonl.zstd")
-	if err := writeHome(home, rel, data); err != nil {
-		return nil, "", err
-	}
-	return dshCommand("", "tui", "--resume", id), id, nil
+	return "", fmt.Errorf("%w: dsh session %s", harness.ErrNotFound, id)
 }
 
 // LaunchCommand implements harness.Launcher. dsh reads its model from the
@@ -342,7 +245,7 @@ func (d DSH) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
 
 // Purge implements harness.Purger: it removes the session directory.
 func (d DSH) Purge(home, id string) error {
-	rel, _, err := d.find(home, id)
+	rel, err := d.find(home, id)
 	if errors.Is(err, harness.ErrNotFound) {
 		return nil
 	}
