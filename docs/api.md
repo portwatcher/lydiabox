@@ -415,7 +415,8 @@ Harness IDs: `claude-code`, `codex`, `dsh`, `antigravity`, `opencode`, plus
   PTY), `exited`. `live` is true while a PTY exists.
 - `usage` is omitted when the harness transcript has no usage data.
 - Discovery reads harness files from `home/agent` on the host, so listing
-  works while the VM is `STOPPED`.
+  works while the VM is `STOPPED`. On-disk formats and what is verified are
+  listed in [harness-formats.md](harness-formats.md).
 
 ### `GET /api/v1/sessions?harness=<id>&workspace=<guest dir>`
 
@@ -493,64 +494,10 @@ Server → client:
 { "type": "resized", "cols": 160, "rows": 48 }
 { "type": "pong", "id": 7 }
 { "type": "exit", "code": 0, "signal": "" }
-{ "type": "switched", "fromSessionId": "claude-code:6b1e...", "toSessionId": "dsh:a91f...", "handoffPath": "/workspace/lydiabox/.agent/HANDOFF.md" }
 { "type": "error", "code": "unavailable", "message": "VM is not running" }
 ```
 
-After `switched`, the server keeps the socket open and streams the new
-session in the same room; the client updates its session ID. After `exit`,
-the server closes with status `1000`.
-
-### `POST /api/v1/sessions/switch` — hot-switch and preview
-
-```json
-{ "sourceSessionId": "claude-code:6b1e...", "targetHarness": "dsh",
-  "targetModel": "deepseek/deepseek-v4-pro", "dryRun": true }
-```
-
-`targetModel` is optional (keeps the target harness binding). With a
-`targetModel`, the binding of the target harness is changed as with
-`PUT /api/v1/models/bindings/{harness}`.
-With `dryRun: true` nothing is interrupted or written; response `200`:
-
-```json
-{
-  "dryRun": true,
-  "handoffMarkdown": "# Handoff\n\n## Original goal\n...",
-  "state": {
-    "originalGoal": "Make uploads resumable",
-    "modifiedFiles": ["internal/storage/files/http.go"],
-    "toolActionsSummary": ["edit internal/storage/files/http.go", "run go test ./..."],
-    "recentMessages": [ { "role": "user", "text": "..." }, { "role": "assistant", "text": "..." } ],
-    "unresolvedIssues": ["TestUpload fails on Windows paths"],
-    "gitStatus": " M internal/storage/files/http.go",
-    "gitDiffStat": " 1 file changed, 12 insertions(+), 3 deletions(-)"
-  }
-}
-```
-
-With `dryRun: false` the switch runs (interrupt, extract, write
-`.agent/HANDOFF.md` and `.agent/state.json`, update the managed blocks in
-`AGENTS.md`/`CLAUDE.md`/`GEMINI.md`, bind the model, start the target).
-Response `200`:
-
-```json
-{ "dryRun": false, "previousSessionId": "claude-code:6b1e...", "session": { "id": "dsh:a91f...", "harness": "dsh" },
-  "handoffPath": "/workspace/lydiabox/.agent/HANDOFF.md" }
-```
-
-(`session` is a full `Session` object.) Errors: `404` unknown source,
-`400` same harness, unknown target, or a source without a workspace
-directory, `503` VM not available.
-
-The switch works for idle sessions too (no terminal to interrupt; the
-target starts in a new room). The target gets a native seed session that
-holds the handoff where the harness format allows it (`claude-code`,
-`codex`, `dsh`, `opencode` through `opencode import`); `antigravity` gets
-the continuation prompt only. If the target cannot start after the source
-was interrupted, room clients get an `error` message and the socket closes.
-On-disk formats and what is verified are listed in
-[harness-formats.md](harness-formats.md).
+After `exit`, the server closes with status `1000`.
 
 ## 9. Desktop — implemented (Phase 2 guest and relay, Phase 5 UI)
 

@@ -37,7 +37,7 @@ src/api/          typed REST client, error envelope, PTY and desktop WebSocket c
 src/components/   app shell (status bar, VM power), dialogs, state views, form controls
 src/hooks/        polling resources, system status context, model options
 src/lib/          formatting (Intl), path helpers, video coordinate mapping
-src/pages/studio      sessions list, xterm terminal, new session, harness switch
+src/pages/studio      sessions list, xterm terminal, new session
 src/pages/desktop     WebRTC stream, HUD overlay, takeover input, activity feed
 src/pages/files       folder tree, listing, upload, CodeMirror editor, WebDAV
 src/pages/models      gateway, providers, routing groups, harness bindings

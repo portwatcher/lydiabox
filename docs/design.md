@@ -17,10 +17,10 @@
    - Powered by **JuiceFS** (`sqlite3://` local metadata engine with automatic background snapshot sync to the user's S3 bucket).
    - Users can browse, edit, upload, and download workspace & home files via the **Web UI**, **WebDAV**, or **Virtual S3 Gateway** even when the Agent VM is completely powered off (`STOPPED`).
    - Full VM persistence: `/home/agent` and `/workspace` mount via `virtio-fs`; `/` root filesystem uses `OverlayFS` (`rootfs.squashfs` read-only base + a sparse ext4 `root-upper.img` stored on JuiceFS attached via `virtio-blk`), so `sudo apt install`, `/etc` edits, Chrome login profiles, and Blender plugins persist across VM lifecycles.
-3. **Multi-Harness Session Management, LLM Decoupling & Mid-Task Hot-Switch**:
+3. **Multi-Harness Session Management & LLM Decoupling**:
    - First-class support for 5 Harnesses: **`claude-code` (`claude`)**, **`codex`**, **`dsh`**, **`antigravity` (`agy`)**, and **`opencode`**.
    - Integrates **`yetone/magpie`** on the Host Control Plane (`127.0.0.1:3425`) bridged into the VM via `vsock`. Upstream LLM API keys and OAuth subscriptions stay strictly on the host; Harnesses inside the VM only receive a revocable local gateway token.
-   - **Session Bridge**: Discovers sessions across all 5 Harnesses (even while VM is off), tracks usage, changes bound LLMs on the fly, and supports **mid-task Harness hot-switching** (interrupting Harness A, extracting a canonical trajectory + `git diff` into `.agent/HANDOFF.md`, synthesizing a native session for Harness B, and resuming immediately in the same POSIX directory).
+   - **Session Manager**: Discovers sessions across all 5 Harnesses (even while VM is off), tracks usage, and changes bound LLMs on the fly.
 4. **Zero-Trust Connectors (OAuth2 & Dynamic Credential Broker)**:
    - Built-in Connector manager for **GitHub**, **Google Drive**, **Notion**, and **Slack**. Self-hosted users configure their own OAuth `CLIENT_ID`/`CLIENT_SECRET` (or Personal Access Tokens for instant setup; also supports an optional `LYDIABOX_OAUTH_RELAY_URL` for future cloud OAuth relay).
    - Refresh tokens are AES-256-GCM encrypted in host SQLite and **never written to the VM disk**. Inside the VM, `lydiabox-guest` provides a dynamic `git-credential-helper` and a bridged **Connector MCP Server** over `vsock`.
@@ -71,9 +71,8 @@ lydiabox/
 │   │   ├── chv/                    # Cloud Hypervisor UNIX socket REST client + virtiofsd supervisor + TAP/NAT networking + optional VFIO GPU
 │   │   └── docker/                 # Container fallback driver sharing identical guest protocol via bind-mounted UNIX socket
 │   ├── magpie/                     # Host-side yetone/magpie process supervisor, gateway key provisioning, atomic Harness config wirer
-│   ├── harness/                    # Unified Session manager, PTY runner client, and Cross-Harness Session Bridge
-│   │   ├── types.go                # CanonicalTrajectory, SessionMeta, HarnessAdapter interface
-│   │   ├── bridge.go               # Mid-task interrupt -> transcript extract -> .agent/HANDOFF.md -> target session synthesis
+│   ├── harness/                    # Unified Session manager and PTY runner client
+│   │   ├── types.go                # SessionMeta, HarnessAdapter interface
 │   │   └── adapters/               # claude.go, codex.go, dsh.go, antigravity.go, opencode.go
 │   ├── connector/                  # OAuth2 state machine (GitHub, Google Drive, Notion, Slack), PAT support, MCP & git-cred broker
 │   ├── desktop/                    # Host-side WebRTC signaling relay, Takeover state coordinator, action HUD broadcaster
@@ -99,7 +98,7 @@ lydiabox/
         ├── App.tsx
         ├── api/                    # Typed REST & WebSocket clients
         └── pages/
-            ├── StudioPage.tsx      # Sessions sidebar + xterm.js terminal + Mid-task Switch Harness/LLM modal
+            ├── StudioPage.tsx      # Sessions sidebar + xterm.js terminal
             ├── DesktopPage.tsx     # WebRTC video canvas + Agent action overlay + Observer/Takeover toggle + VM power bar
             ├── FilesPage.tsx       # Offline-capable file tree, code editor, drag-drop folder upload, WebDAV/S3 mount info
             ├── ModelsPage.tsx      # Magpie provider/routing management & per-Harness model selector
@@ -197,7 +196,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 
 ---
 
-### 4.4 Magpie Integration & Cross-Harness Session Bridge (`internal/magpie` & `internal/harness`)
+### 4.4 Magpie Integration & Multi-Harness Sessions (`internal/magpie` & `internal/harness`)
 
 1. **Host Magpie Supervisor & Config Wirer**:
    - Run `magpie` on the host listening on `127.0.0.1:3425` with data dir `$DATA_DIR/state/magpie`.
@@ -209,23 +208,14 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      - **`antigravity`**: `~/.antigravity/settings.json` -> gateway endpoint `http://127.0.0.1:3425`, selected model, and `~/.gemini/antigravity/mcp_config.json`.
      - **`opencode`**: `~/.config/opencode/opencode.json` -> custom provider pointing to `http://127.0.0.1:3425/v1`, selected `model`, and `mcp` section.
 
-2. **Cross-Harness Session Discovery & Mid-Task Hot-Switch (`internal/harness/bridge.go`)**:
+2. **Cross-Harness Session Discovery (`internal/harness`)**:
    - Define `HarnessAdapter`:
      ~~~go
      type HarnessAdapter interface {
          Name() string // "claude-code" | "codex" | "dsh" | "antigravity" | "opencode"
          DiscoverSessions(homeDir string) ([]SessionMeta, error)
-         ParseTranscript(homeDir, sessionID string) (*CanonicalTrajectory, error)
-         SynthesizeHandoff(homeDir, workspaceDir string, traj *CanonicalTrajectory) (resumeCmd []string, newSessionID string, err error)
      }
      ~~~
-   - **Hot-Switch Execution (`SwitchHarness(ctx, req)`)**:
-     1. If source session has an active PTY in `lydiabox-guest`, send `SIGINT`, wait up to 3s for clean flush, then `SIGTERM`.
-     2. Call `sourceAdapter.ParseTranscript(...)` to extract: `OriginalGoal`, `ModifiedFiles`, `ToolActionsSummary` (last 30 actions), `RecentMessages` (last 10 turns), and `UnresolvedIssues`.
-     3. Inspect `workspaceDir` (`git status --short` and `git diff --stat`) from host FS.
-     4. Write `/workspace/<project>/.agent/HANDOFF.md` (human & LLM readable structured markdown) and `/workspace/<project>/.agent/state.json`. Ensure `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` contain an idempotent managed block `<!-- LYDIABOX:HANDOFF:START --> ... <!-- LYDIABOX:HANDOFF:END -->` instructing any Harness to read `.agent/HANDOFF.md` first.
-     5. If `req.TargetModel != ""`, update target Harness's model binding via `magpie` wirer.
-     6. Call `targetAdapter.SynthesizeHandoff(...)` to write a native seed session file (or construct an initial continuation invocation) and spawn the new Harness PTY in `lydiabox-guest` attached to the same WebSocket terminal room!
 
 ---
 
@@ -277,7 +267,6 @@ Build a responsive, dark-themed workstation UI (TailwindCSS + Lucide icons + `xt
 2. **Studio Tab (`/studio`)**:
    - Left pane: Unified Sessions list filterable by Harness (`claude-code`, `codex`, `dsh`, `antigravity`, `opencode`) and Workspace directory; works even when VM is `STOPPED`.
    - Center pane: Live `xterm.js` WebSocket PTY terminal attached to the active Harness session.
-   - Header Action Bar: **"Switch Harness / Model"** button -> opens modal allowing mid-task selection of a new target Harness and LLM model, previewing `.agent/HANDOFF.md` before executing hot-switch.
 3. **Desktop & Computer Use Tab (`/desktop`)**:
    - Full-viewport WebRTC `<video>` player with aspect-ratio scaling (`1920x1080` coordinate mapping).
    - Live SVG overlay rendering Agent cursor position, click ripples, and recent MCP tool call feed on a collapsible right sidebar.
@@ -303,10 +292,10 @@ Implement the repository sequentially in the following 6 phases. Do NOT skip ver
   - Implement `internal/guest/rpc` (`vsock` + UNIX socket framing), `ptymanager`, `x11` (`xgb` capture & `xtest` input + Takeover mutex), `webrtc` (`pion/webrtc` + RTP), `mcp` (Computer Use tools), and `credproxy`.
   - Implement `internal/vmm/chv` (Cloud Hypervisor UNIX socket REST client + `virtiofsd` + `vsock` `CONNECT` protocol), `internal/vmm/docker` fallback, auto-wake/idle-hibernate controller, `deploy/initramfs/init`, and `deploy/rootfs/Dockerfile`.
   - *Verification*: Compile both `cmd/lydiabox` and `cmd/lydiabox-guest` with `CGO_ENABLED=0` for `linux/amd64` and `linux/arm64`. Test `chv` JSON payload generation & mock UNIX socket lifecycle (`vm.create`, `vm.boot`, `vm.pause`, `vsock` handshake) plus `guest/rpc` PTY + MCP round-trip over UNIX sockets.
-- **Phase 3 — Magpie Gateway Integration & 5-Harness Session Bridge**:
+- **Phase 3 — Magpie Gateway Integration & 5-Harness Sessions**:
   - Implement `internal/magpie` supervisor & non-destructive config wirers for `claude-code`, `codex`, `dsh`, `antigravity`, and `opencode`.
-  - Implement all 5 `HarnessAdapter`s (`DiscoverSessions`, `ParseTranscript`, `SynthesizeHandoff`) and `SwitchHarness` orchestrator generating `.agent/HANDOFF.md` + `AGENTS.md`/`CLAUDE.md`/`GEMINI.md` managed blocks.
-  - *Verification*: Table-driven tests with realistic sample session logs for all 5 Harnesses proving lossless discovery, config wiring, and mid-task hot-switching between any pair of Harnesses (e.g., `claude-code` -> `dsh`, `codex` -> `opencode`).
+  - Implement all 5 `HarnessAdapter`s (`DiscoverSessions`, launch and resume commands, transcript purge).
+  - *Verification*: Table-driven tests with realistic sample session logs for all 5 Harnesses proving lossless discovery and config wiring.
 - **Phase 4 — Zero-Trust Connectors & Dynamic Credential Broker**:
   - Implement OAuth2 PKCE + PAT flows, token auto-refresh, `vsock` `git-cred` subcommand handler, and Host Connector MCP server (GitHub + Google Drive file sync).
   - *Verification*: End-to-end test invoking `lydiabox-guest git-cred get` over simulated `vsock` and verifying encrypted host token retrieval without writing secrets to guest disk.

@@ -28,7 +28,7 @@ on KVM ([Integration run (chv on KVM)](#integration-run-chv-on-kvm),
 | 4.1 Configuration and bootstrap | 8 | 0 | 0 | 0 |
 | 4.2 Storage | 13 | 0 | 0 | 0 |
 | 4.3 VM engine | 12 | 0 | 0 | 0 |
-| 4.4 Magpie and session bridge | 14 | 0 | 0 | 0 |
+| 4.4 Magpie and harness sessions | 10 | 0 | 0 | 0 |
 | 4.5 Desktop and computer use | 11 | 0 | 0 | 0 |
 | 4.6 Connectors | 9 | 0 | 0 | 0 |
 | 5. Web UI | 6 | 0 | 0 | 0 |
@@ -51,9 +51,9 @@ the OAuth connectors against the real providers (checklist in
 [connectors-manual-test.md](connectors-manual-test.md)).
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
-host state database restore, `virtiofsd` on `linux/arm64`, the Antigravity
-seed session, the dsh and Antigravity CLIs in the image, the web page file
-layout, and per-tenant `chv` subnets.
+host state database restore, `virtiofsd` on `linux/arm64`, the dsh and
+Antigravity CLIs in the image, the web page file layout, and per-tenant
+`chv` subnets.
 
 Closed in the literal-conformance work: the S3 gateway at `/s3` (SigV4
 verify-and-re-sign proxy), the literal gateway base URLs
@@ -74,12 +74,12 @@ single WebRTC UDP port, and the extra packages.
 | Virtual S3 gateway | done | `internal/storage/s3gateway.go`, `internal/storage/s3proxy`, `internal/api/routes_s3.go` | `TestS3GatewaySupervisor`, `TestS3RouteVerifiesAndResigns`, `TestRoundTrip`; E2E (`aws s3` through port 8080 at `/s3`, steps 43 to 52) |
 | Persistent root (squashfs + `root-upper.img` overlay) | done (`chv`) | `deploy/initramfs/init`, `internal/vmm/chv` | `TestBuildConfigPayload`; KVM run (steps K11, K15) |
 | Persistent root with the `docker` driver: stop keeps the container; recreated only when the image, settings, or guest binary change, or on `resetRoot` | done | `internal/vmm/docker` | `TestStopKeepsContainer`, `TestBootStartsExistingContainer`, `TestRecreateOnChangedSpec`; E2E (a file in `/etc` survives stop and wake) |
-| Five harnesses | done | `internal/harness/adapters` | `TestDiscoverAndParse`, `TestHotSwitchPairs` |
+| Five harnesses | done | `internal/harness/adapters` | `TestDiscover`, `TestLaunchCommands` |
 | magpie on the host, bridged into the VM, keys only on the host | done | `internal/magpie`, `internal/guest/credproxy` | `TestGatewayRoundTripOverUnixSockets`; E2E (`/api/hello` from the guest) |
-| Session discovery while the VM is off, usage, model rebinding, hot-switch | done | `internal/harness` | `TestListWhileVMStopped`, `TestHotSwitchPairs` |
+| Session discovery while the VM is off, usage, model rebinding | done | `internal/harness`, `internal/api` | `TestListWhileVMStopped`, `TestModelsRoutes` |
 | Connectors with own OAuth clients, PATs, optional relay | done | `internal/connector` | `TestClientSources`, `TestPKCEAuthorizeCallback`, `TestBindToken` |
 | Tokens encrypted on the host; git helper and connector MCP over vsock | done | `internal/store`, `internal/connector/broker`, `internal/guest/gitcred` | `TestGitCredEndToEnd`; E2E (MCP bridge tool list) |
-| Antigravity session format | done (schema-free protobuf decoding; format inferred, see [harness-formats.md](harness-formats.md)) | `internal/harness/adapters` | `TestDiscoverAndParse` |
+| Antigravity session format | done (schema-free protobuf decoding; format inferred, see [harness-formats.md](harness-formats.md)) | `internal/harness/adapters` | `TestDiscover` |
 | X11 desktop, Chrome (CDP), Blender in the guest | done | `deploy/rootfs/Dockerfile` | `TestLocalAppsStartsChromeForCDP`; KVM full-image run (F5 to F7) |
 | Computer-use MCP, WebRTC streaming, Observer and Takeover modes | done | `internal/guest/*`, `internal/desktop`, `web/src/pages/desktop` | `TestTakeoverBlocksAgentAndInjectsUserInput`, `TestViewerReceivesVideoAndSendsInput`; E2E |
 
@@ -109,7 +109,7 @@ single WebRTC UDP port, and the extra packages.
 | `internal/storage` (FS REST API in `internal/storage/files`) | done | |
 | `internal/vmm` (`driver.go`, `chv/`, `docker/`) | done | |
 | `internal/magpie` | done | wirers in `internal/magpie/wire` |
-| `internal/harness` (`types.go`, `bridge.go`, `adapters/`) | done | |
+| `internal/harness` (`types.go`, `adapters/`) | done | |
 | `internal/connector` | done | |
 | `internal/desktop`, `internal/api` | done | |
 | `internal/guest/{rpc,x11,webrtc,mcp,ptymanager,credproxy}` | done | plus `cli`, `gitcred` |
@@ -178,7 +178,7 @@ makes these changes; the row above is `done` with them.
 | `disks`: `{"path": ..., "readonly": ...}` | Cloud Hypervisor 54 refuses `vm.boot` with "Image type required for disk" when `image_type` is not set. | Adds `"image_type": "Raw"` to the three disks | `TestBuildConfigPayload`; KVM run |
 | `fs`: `"num_queues": 2` | virtiofsd serves one request queue. With 2, Cloud Hypervisor refuses the device with "Queue number is not correct". | `"num_queues": 1` for `lydia_home` and `lydia_workspace` (`FSQueues`) | `TestBuildConfigPayload`; KVM run |
 
-## 4.4 Magpie integration and session bridge
+## 4.4 Magpie integration and harness sessions
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
@@ -192,10 +192,6 @@ makes these changes; the row above is `done` with them.
 | antigravity wirer: `~/.antigravity/settings.json` (design path: endpoint, model), `~/.gemini/antigravity/mcp_config.json`, plus the CLI's own `~/.gemini/antigravity-cli/settings.json` (`modelProvider: "gemini"`, `customModelsConfig.customModels.<model>.modelName = "gemini-api://<model>"`), `~/.gemini/config/mcp_config.json`, and `GOOGLE_GEMINI_BASE_URL` / `GEMINI_API_KEY` | done (CLI keys from the published schema and docs, and checked with agy 1.5.4: `agy --model <m>` posted `/v1beta/models/<m>:streamGenerateContent` to a capture server on `127.0.0.1:3425`, and `agy mcp list` showed both servers; see [harness-formats.md](harness-formats.md)) | `internal/magpie/wire/others.go` | `TestWirersCreateMissingFiles`, `TestWirersPreserveUserContent` |
 | opencode wirer (`/v1`, model, `mcp`) | done | `internal/magpie/wire/others.go` | `TestWirersPreserveUserContent` |
 | `HarnessAdapter` interface as specified | done | `internal/harness/types.go` | build |
-| Hot-switch: SIGINT, 3 s, SIGTERM | done | `internal/harness/bridge.go` | `TestHotSwitchPairs` |
-| Transcript extraction (goal, files, last 30 actions, last 10 messages, issues) and git state | done | `internal/harness/adapters`, `internal/harness/git.go` | `TestDiscoverAndParse`, `TestExecGitSandbox` |
-| `.agent/HANDOFF.md`, `.agent/state.json`, managed blocks, model binding | done | `internal/harness/handoff.go` | `TestUpsertManagedBlock`, `TestSwitchTwiceIsIdempotent` |
-| Native seed session and new PTY in the same terminal room | done (Antigravity uses the continuation invocation that the design allows, because its native format is undocumented) | `internal/harness/adapters` | `TestSynthesizeHandoffSeeds`, `TestSessionsWebSocketRoom` |
 
 ## 4.5 Computer use, desktop streaming, and takeover
 
@@ -232,7 +228,7 @@ makes these changes; the row above is `done` with them.
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
 | Status bar: VM pill, Wake / Hibernate / Stop, CPU/RAM, "Synced Xs ago" | done | `web/src/components` | web tests; E2E (browser) |
-| Studio: session list with harness and workspace filters, xterm.js, Switch modal with HANDOFF preview | done | `web/src/pages/studio` | web tests; E2E (browser) |
+| Studio: session list with harness and workspace filters, xterm.js | done | `web/src/pages/studio` | web tests; E2E (browser) |
 | Desktop: WebRTC video, overlay, Observer/Takeover, Chrome/Blender launch | done | `web/src/pages/desktop` | web tests; E2E (browser, signaling) |
 | Files: tree, editor, drag-and-drop upload, download, WebDAV dialog | done | `web/src/pages/files` | web tests; E2E (browser) |
 | Models: providers, routing groups, per-harness bindings | done | `web/src/pages/models` | web tests |
@@ -244,7 +240,7 @@ makes these changes; the row above is `done` with them.
 | :--- | :--- | :--- |
 | Phase 1: traversal rejection, AES-256-GCM, File API CRUD without a VM | done | `TestTraversalRejected`, `TestCipherRoundTrip`, `TestFileAPICRUD`; E2E |
 | Phase 2: `linux/amd64` and `linux/arm64` builds; `chv` payload and mock lifecycle; RPC PTY + MCP over UNIX sockets | done | `make release`; `TestBuildConfigPayload`, `TestLifecycleAgainstMockCloudHypervisor`, `TestVsockHandshake`, `TestPTYRoundTripOverUnixSocket` |
-| Phase 3: realistic logs for 5 harnesses, wiring, hot-switch between pairs | done | `TestDiscoverAndParse`, `TestHotSwitchPairs` |
+| Phase 3: realistic logs for 5 harnesses, wiring | done | `TestDiscover`, `TestWirersPreserveUserContent` |
 | Phase 4: `git-cred get` over simulated vsock without secrets on guest disk | done | `TestGitCredEndToEnd` |
 | Phase 5: web UI built and embedded | done | `make build`; E2E |
 | Phase 6: `.env.example`, `README.md`, `go test -race`, `make build` static binaries | done | final validation below |
@@ -406,8 +402,8 @@ Other checks on this host:
   Google's release service, and checks its SHA512 before it installs `agy`.
 
 Not run on this host: the `chv` driver (no KVM), the full `desktop` image
-(Chrome, Blender, and harness CLIs; too large for this Docker VM), a hot
-switch between real harness CLIs, and OAuth against real providers.
+(Chrome, Blender, and harness CLIs; too large for this Docker VM), and OAuth
+against real providers.
 
 ### Bugs found and fixed
 

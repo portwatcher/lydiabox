@@ -49,7 +49,6 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Records | `type` `user`/`assistant`/`system`/`summary`/`custom-title`/`file-history-snapshot`/…; `uuid`, `parentUuid`, `sessionId`, `cwd`, `timestamp`, `isSidechain`, `isMeta`, `message.{role,content,model,usage}`; content blocks `text`, `thinking`, `tool_use`, `tool_result` (`is_error`) | Verified |
 | Usage | One API message is written as several lines with the same `message.id`; usage is counted once per ID. Input tokens = `input_tokens` + `cache_creation_input_tokens` + `cache_read_input_tokens` | Verified |
 | Start / resume | `claude --session-id <uuid>`, `claude --resume <id> [prompt]`, `--model` | Verified |
-| Seed session | A user line with the handoff and an assistant line with `model: "<synthetic>"`, then `claude --resume <id> "<continue prompt>"` | Inferred (resume of a file that Claude Code did not write) |
 | Config | `.claude/settings.json` `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, `model`; user-scope MCP servers in `.claude.json` `mcpServers.<name> = {"type":"http","url":…}` | Verified |
 
 ## Codex CLI (`codex`)
@@ -59,10 +58,8 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Rollout | `.codex/sessions/YYYY/MM/DD/rollout-<local time>-<uuid>.jsonl`; new IDs are UUIDv7 | Verified |
 | Current lines | `{timestamp, type, payload}`; `session_meta` (`id`, `cwd`), `turn_context` (`model`, `cwd`), `response_item` (`message` with `input_text`/`output_text`, `function_call`, `function_call_output`, `custom_tool_call` such as `apply_patch`, `custom_tool_call_output`, `reasoning`), `event_msg` (`token_count` with `info.total_token_usage`) | Verified |
 | Old lines (2025) | First line `{id, timestamp, instructions, git}`, then `{"record_type":"state"}` and bare items | Verified |
-| Tool output | `function_call_output.output` is a JSON string `{"output":…,"metadata":{"exit_code":…}}` | Verified |
 | Titles | `.codex/session_index.jsonl` (`id`, `thread_name`) | Verified |
 | Start / resume | `codex [--model m]`, `codex resume <id> [prompt]` | Verified |
-| Seed session | `session_meta` + user message + assistant message | Inferred (the minimum field set for `codex resume`) |
 | Config | `model`, `model_provider`, `[model_providers.lydiabox]` (`name`, `base_url`, `env_key`, `wire_api = "responses"`), `[mcp_servers.<name>] url` | Verified (`wire_api` accepts only `responses` now) |
 
 ## dsh (DeepSeek Harness, `@deepseek-ai/dsh`)
@@ -74,7 +71,6 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Lines | Header `{type:"session", version, id, createdAt, cwd, isSeeded, delegationDepth, origin?}`; events `{type, seq, time, data, ignorable?}`; `user/message` (`source.kind` is `user` for human prompts), `assistant/message` (`message.content[]` with `text` and `tool-call` blocks, `message.source.{model,provider}`, `usage.{inputTokens,outputTokens}`), `tool/result` (`message.toolCallId`, `isError`) | Verified |
 | Resume | `dsh tui --resume <id>`; headless `--session-id` | Verified (`docs/cli-help.md`) |
 | `encodedId` for IDs with only safe characters | The ID itself | Inferred |
-| Seed session | Header with `isSeeded: true` and one `user/message` event, zstd compressed | Inferred (readers refuse unknown non-ignorable events, so only surface events are written) |
 | `.dsh/.env` and `DSH_MODEL` | dsh has no documented `.env` support. The launcher runs dsh through `sh -c 'set -a; . ~/.dsh/.env; …'`, so `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `DEEPSEEK_BASE_URL`, the `*_API_KEY` placeholders, and `DSH_MODEL` reach the process | Inferred |
 
 ## Antigravity (`agy`)
@@ -83,10 +79,9 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | :--- | :--- | :--- |
 | Conversations | `.gemini/antigravity/conversations/<uuid>.db`: SQLite, table `steps(idx, step_type, status, step_payload BLOB, metadata BLOB)`, payloads are protobuf without a public schema | Verified (real files) |
 | Artifacts | `.gemini/antigravity/brain/<uuid>/` (`task.md` and others), `annotations/<uuid>.pbtxt` (text protobuf with `title`) | Verified (layout); `title` field Inferred |
-| Step types | 14 user input, 15 planner response, 5 code action, 8 view file, 21 run command; status 3 is a failed step | Inferred |
+| Step types | 14 user input, 15 planner response, 5 code action, 8 view file | Inferred |
 | Payload decoding | Schema-free protobuf walk; the longest string of a user or planner step is its text; paths are strings that look like file paths | Inferred |
 | CLI | `agy [--model m] [--conversation <id>] [-i/--prompt-interactive <text>]`; `-p/--print`, `--settings`, `agy mcp list`, `agy models` | Verified (`agy --help`, agy 1.5.4) |
-| Seed session | None: native conversations cannot be written safely. The target gets `agy --prompt-interactive "<continue prompt>"`, and the managed blocks in `GEMINI.md`/`AGENTS.md` point at `.agent/HANDOFF.md`. The conversation ID is assigned at runtime. Design section 4.4 allows this path ("or construct an initial continuation invocation") | Design decision |
 | Config (design path) | `.antigravity/settings.json`: `endpoint`, `apiKey`, `model`, `env.GOOGLE_GEMINI_BASE_URL`, `env.GEMINI_API_KEY`. The CLI does not read this file; the wirer writes it because design section 4.4.1 names it, and `CurrentModel` reads `model` from it | Design path |
 | Config (CLI) | `.gemini/antigravity-cli/settings.json` (schema `https://antigravity.google/schemas/v1/settings.json`): `"modelProvider": "gemini"` and `customModelsConfig.customModels.<model> = {"modelName": "gemini-api://<model>", "label": "<model>"}`. With `GEMINI_API_KEY` and `GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:3425` in the environment (wirer `Env` and `ptymanager.DefaultEnv`), `agy --model <model>` sends `POST /v1beta/models/<model>:streamGenerateContent?alt=sse` with `X-Goog-Api-Key` to the gateway. The CLI `model` key is not written: agy 1.5.4 resolves a saved custom-model label to an empty model in print mode (`tModel: model is empty`), and without `GEMINI_API_KEY` it refuses to start when `modelProvider` is `gemini` | Verified (schema, docs, and agy 1.5.4 against a capture server) |
 | MCP | `.gemini/config/mcp_config.json` (documented global path; `agy mcp list` shows both servers) and `.gemini/antigravity/mcp_config.json` (design path), as `mcpServers.<name>.serverUrl` | Verified (docs, agy 1.5.4) |
@@ -99,20 +94,9 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Store (legacy) | `.local/share/opencode/storage/{session/<project>/<id>.json, message/<sessionID>/<id>.json, part/<messageID>/<id>.json}` | Verified (older releases) |
 | IDs | `ses_`, `msg_`, `prt_` + time-ordered suffix | Verified |
 | Start / resume | `opencode [--session id] [--model provider/model] [--prompt text]`; `opencode import <file>` takes `opencode export` JSON | Verified |
-| Seed session | An export file in `.local/share/lydiabox/handoff/<id>.json`, started with `opencode import <file> && opencode --session <id> --prompt …`; `projectID` is `global` | Inferred (import of a hand-written export) |
 | Config | `.config/opencode/opencode.json`: `provider.lydiabox` (`npm: "@ai-sdk/openai-compatible"`, `options.baseURL`, `options.apiKey`, `models`), `model: "lydiabox/<provider>/<model>"`, `mcp.<name> = {"type":"remote","url","enabled":true}`. When the file already uses the newer `providers` or `mcp.servers` keys, those are written instead | Verified (old form, still accepted); new form Inferred |
 
 ## Common rules
 
 - Discovery skips sidechain and subagent sessions, archived opencode
   sessions, and files without a human prompt.
-- `ToolActionsSummary` keeps the last 30 actions, `RecentMessages` the last
-  10 user or assistant messages (each at most 4000 characters).
-- An unresolved issue is a failed tool action that did not later succeed
-  with the same action, plus a last user message without an answer.
-- The workspace git state comes from `git status --short` and
-  `git diff --stat` on the host. The repository is guest-controlled, so git
-  runs without system or global config and with fsmonitor, hooks, pagers,
-  external diff, textconv, and filter drivers disabled. A repository whose
-  config includes other files, or whose `.git` is not a directory, is not
-  inspected.

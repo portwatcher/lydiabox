@@ -238,9 +238,7 @@ use the gateway at `http://127.0.0.1:3425` with a placeholder token; the
 host side of the tunnel replaces it with a revocable gateway key.
 
 The Studio lists the sessions of all five harnesses from `/home/agent`,
-also while the VM is off. "Switch Harness / Model" stops the running
-harness, writes `.agent/HANDOFF.md`, and continues the task in another
-harness in the same terminal. See
+also while the VM is off. See
 [docs/harness-formats.md](docs/harness-formats.md).
 
 ## Connectors
@@ -299,7 +297,7 @@ npm run typecheck && npm run lint && npm run test
 | Storage, File API, WebDAV | Done; tested end to end |
 | Docker VM driver, guest daemon, sessions | Done; tested end to end |
 | Cloud Hypervisor driver | Done; verified on real KVM (arm64, nested KVM in Lima; amd64, nested KVM on Google Cloud; see [docs/kvm-test.md](docs/kvm-test.md)); GPU passthrough untested |
-| magpie gateway, harness bridge | Done; harness formats partly inferred |
+| magpie gateway, harness sessions | Done; harness formats partly inferred |
 | Connectors | Done; tested against fake provider APIs; real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 
@@ -316,7 +314,7 @@ internal/bootstrap      runtime binary downloader, guest image fetcher
 internal/storage        JuiceFS supervisor, S3 metadata backup, WebDAV and S3 proxies, File API
 internal/vmm            VM driver interface, auto-wake and idle controller (chv, docker)
 internal/magpie         magpie supervisor, admin client, harness config wirers
-internal/harness        session manager, terminal rooms, hot-switch bridge, adapters
+internal/harness        session manager, terminal rooms, adapters
 internal/connector      OAuth, tokens, refresh, audit, guest broker
 internal/desktop        desktop signaling relay and takeover mode
 internal/api            HTTP server, authentication, routes
