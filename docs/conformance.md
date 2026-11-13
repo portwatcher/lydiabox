@@ -50,8 +50,9 @@ Not tested on real hardware, because no host had it: GPU passthrough
 user decided to skip it. The GitHub connector passed every step of the
 real-provider checklist (authorize, Cancel, expired state, grant, guest
 `git-cred` and `git ls-remote`, connector MCP tools, Disconnect with
-revoke at GitHub). The user chose to test GitHub only, so Google Drive,
-Notion, and Slack ran against fake providers only. See
+revoke at GitHub). On 2026-11-14 the user decided that this general flow
+is sufficient and waived the real-provider check for Google Drive,
+Notion, and Slack; these ran against fake providers only. See
 [Connector run (GitHub, real provider)](#connector-run-github-real-provider).
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
@@ -621,7 +622,7 @@ Open items:
   same Chrome.
 - The fixed 120 s boot limit (see the open items above) also stopped
   wakes on this loaded host.
-- Not tested here: GPU passthrough (checklist in
+- Not tested here, both waived by the user: GPU passthrough (checklist in
   [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)), and the Google
   Drive, Notion, and Slack connectors against the real providers (GitHub
   passed: [connector run](#connector-run-github-real-provider)). The VFIO
@@ -782,9 +783,11 @@ Its client ID and secret came from `LYDIABOX_GITHUB_CLIENT_ID` and
 | Disconnect | pass: `DELETE /api/v1/connectors/github?account=portwatcher` answers `204`; the card shows "Not connected"; audit `connector.disconnected` with `revoked: true`; "LydiaBox local test" is not in the 22 authorized OAuth apps at GitHub (Settings, Applications) |
 | After Disconnect | pass: `git-cred get` prints nothing; the MCP call answers `isError: true` "connector is not connected: github" |
 
-On 2026-11-11 the user chose to test GitHub only. Google Drive, Notion,
-and Slack ran against fake providers only (the tests listed in the open
-items of the full-image run).
+On 2026-11-14 the user decided that the general OAuth flow, shown end to
+end on GitHub, is sufficient, and waived the real-provider check for
+Google Drive, Notion, and Slack. These providers ran against fake
+providers only (the tests listed in the open items of the full-image
+run). No OAuth app was created at Google, Notion, or Slack.
 
 Finding: step 1 of the checklist told the tester to set a new random
 `LYDIABOX_MASTER_KEY`. On a data directory with stored secrets, the new
