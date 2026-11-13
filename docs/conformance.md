@@ -47,11 +47,12 @@ virtualization, wake in 3.7 s) after two amd64 fixes: see
 [Integration run (chv on KVM, amd64)](#integration-run-chv-on-kvm-amd64).
 Not tested on real hardware, because no host had it: GPU passthrough
 (checklist in [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)). The
-user decided to skip it. The GitHub connector ran against the real
-provider up to the consent page: the authorize request, Cancel, and the
-expired-state refusal pass. The user decided on 2026-11-14 to skip the
-grant and the steps after it, and the Google Drive, Notion, and Slack
-providers. See [Connector run (GitHub, real provider)](#connector-run-github-real-provider).
+user decided to skip it. The GitHub connector passed every step of the
+real-provider checklist (authorize, Cancel, expired state, grant, guest
+`git-cred` and `git ls-remote`, connector MCP tools, Disconnect with
+revoke at GitHub). The user chose to test GitHub only, so Google Drive,
+Notion, and Slack ran against fake providers only. See
+[Connector run (GitHub, real provider)](#connector-run-github-real-provider).
 
 Closed in the gap-closure work: root persistence with the `docker` driver,
 host state database restore, `virtiofsd` on `linux/arm64`, the dsh and
@@ -216,7 +217,7 @@ makes these changes; the row above is `done` with them.
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
-| OAuth2 Authorization Code + PKCE (`authorize`, `callback`) | done | `internal/connector/oauth.go` | `TestPKCEAuthorizeCallback` (fake provider); real GitHub: authorize request, Cancel, and expired state pass, grant skipped by the user ([connector run](#connector-run-github-real-provider)) |
+| OAuth2 Authorization Code + PKCE (`authorize`, `callback`) | done | `internal/connector/oauth.go` | `TestPKCEAuthorizeCallback` (fake provider); real GitHub: full checklist passes, including grant, guest `git-cred`, MCP tools, and revoke ([connector run](#connector-run-github-real-provider)) |
 | Token / PAT binding (`POST .../token`) | done | `internal/connector/token.go` | `TestBindToken` |
 | GitHub (`repo`, `read:org`, `workflow`), Drive (`drive.file`, `drive.readonly`), Notion, Slack | done | `internal/connector/providers_builtin.go` | `TestAuthorizeValidation`; tools against fake provider APIs: `TestGitHubTools`, `TestGDriveTools`, `TestNotionTools`, `TestSlackTools`; real providers: [connectors-manual-test.md](connectors-manual-test.md) |
 | Encrypted `connector_accounts` | done | `internal/store/connectors.go` | `TestConnectorAccounts` |
@@ -621,9 +622,9 @@ Open items:
 - The fixed 120 s boot limit (see the open items above) also stopped
   wakes on this loaded host.
 - Not tested here: GPU passthrough (checklist in
-  [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)), and the connectors
-  against the real OAuth providers past the GitHub consent page
-  ([connector run](#connector-run-github-real-provider)). The VFIO
+  [kvm-test.md](kvm-test.md#10-gpu-passthrough-vfio)), and the Google
+  Drive, Notion, and Slack connectors against the real providers (GitHub
+  passed: [connector run](#connector-run-github-real-provider)). The VFIO
   `devices` payload is covered by `TestBuildConfigPayload`, and the OAuth
   code paths by the fake-provider tests `TestPKCEAuthorizeCallback`,
   `TestAuthorizeValidation`, `TestClientSources`, `TestBindToken`,
@@ -756,8 +757,9 @@ Open items:
 
 ## Connector run (GitHub, real provider)
 
-On 2026-11-11, with [connectors-manual-test.md](connectors-manual-test.md)
-on the KVM test VM (`chv` driver, binaries from `929fa65`). The web UI was
+On 2026-11-11 and 2026-11-14, with [connectors-manual-test.md](connectors-manual-test.md)
+on the KVM test VM (`chv` driver, full desktop image, binaries from
+`929fa65`; the connector code is the same on `main`). The web UI was
 at `http://localhost:8080` through the Lima port forward. The OAuth app
 "LydiaBox local test" (owner `portwatcher`, "Expire user access tokens"
 on) had the callback `http://localhost:8080/api/v1/connectors/github/callback`.
@@ -770,12 +772,19 @@ Its client ID and secret came from `LYDIABOX_GITHUB_CLIENT_ID` and
 | Connect | pass: the browser goes to `github.com/login/oauth/authorize` with `code_challenge_method=S256`, a `code_challenge`, a `state`, the registered redirect URI, and `scope=repo read:org workflow` |
 | Cancel on the consent page | pass: back to `/connectors` with "access was denied on the provider's page"; host log `connector authorization failed` `error=access_denied` |
 | Authorize 50 minutes after Connect | pass (negative check): the state lives 10 minutes, so the callback answers `invalid_state` and the page shows "the sign-in link expired"; no account and no audit entry |
-| Authorize inside 10 minutes, account `ok`, `connector.connected` audit entry, no token in the API | not run |
-| `git-cred` and `git ls-remote` in the guest, connector MCP tools, Disconnect and revoke | not run |
+| Connect and grant (2026-11-14) | pass: GitHub kept the grant of the earlier Authorize click, so it sent the browser back at once to `/connectors?connected=github`. The card shows account `portwatcher`, OAuth, scopes `read:org repo workflow`, and an expiry 8 hours later (expiring user token); status `ok` |
+| Audit and token hiding | pass: one `connector.connected` entry (`authKind` `oauth2`, `source` `env`). `GET /api/v1/connectors/github` has no `token`, `accessToken`, or `refreshToken` field and no `gho_`/`ghu_`/`ghr_` value. The host databases `state/lydiabox.db` and `meta/jfs.db` (with WAL files) contain no GitHub token in clear text |
+| `git-cred get` in the guest (`LYDIABOX_HOST_ADDR=vsock://2:9001`) | pass: `username=x-access-token` and a `password=` line; exit 0; two `connector.token.issued` audit entries with consumer `git-cred` |
+| `git ls-remote` of the private repository `portwatcher/lydiabox` | pass: `HEAD` and `refs/heads/main` listed without a prompt (`GIT_TERMINAL_PROMPT=0`) |
+| No token in a guest file | pass: `grep -r` for `gh[ousr]_` in `~` and `/workspace` finds nothing |
+| Connector MCP in the guest (`127.0.0.1:8911`) | pass: `tools/list` gives the 15 connector tools; `github_list_repos`, `github_list_issues`, `github_get_file_contents` (`README.md`), and `github_create_issue` (issue #1, closed right after the test) succeed; four `connector.mcp.call` audit entries with `ok: true` |
+| Host route `POST /mcp/connectors` | pass: `github_list_issues` with the admin token succeeds; without a token the answer is `401` |
+| Disconnect | pass: `DELETE /api/v1/connectors/github?account=portwatcher` answers `204`; the card shows "Not connected"; audit `connector.disconnected` with `revoked: true`; "LydiaBox local test" is not in the 22 authorized OAuth apps at GitHub (Settings, Applications) |
+| After Disconnect | pass: `git-cred get` prints nothing; the MCP call answers `isError: true` "connector is not connected: github" |
 
-On 2026-11-14 the user decided to skip the steps that were not run, and
-the Google Drive, Notion, and Slack providers. The fake-provider tests
-listed in the open items of the full-image run cover these code paths.
+On 2026-11-11 the user chose to test GitHub only. Google Drive, Notion,
+and Slack ran against fake providers only (the tests listed in the open
+items of the full-image run).
 
 Finding: step 1 of the checklist told the tester to set a new random
 `LYDIABOX_MASTER_KEY`. On a data directory with stored secrets, the new
