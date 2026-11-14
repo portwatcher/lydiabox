@@ -35,6 +35,8 @@ type deps struct {
 	// and gateway tunnel, and the guest daemon client (PTYs, MCP tools).
 	VM    *vmRuntime
 	Guest *guestclient.Client
+	// SkipBootstrap is `lydiabox up -skip-bootstrap`: install nothing.
+	SkipBootstrap bool
 }
 
 // component is one subsystem wired into `lydiabox up`: its routes and an
@@ -50,6 +52,7 @@ type component struct {
 // wirers lists the subsystem wiring functions in start order. Each later
 // phase implements its function in its own wire_<subsystem>.go file.
 var wirers = []func(ctx context.Context, d *deps) (*component, error){
+	wireRemote,    // remote access: internal/cli/wire_remote.go (first: it can move the listen address)
 	wireVM,        // Phase 2: internal/cli/wire_vm.go
 	wireHarness,   // Phase 3: internal/cli/wire_harness.go
 	wireConnector, // Phase 4: internal/cli/wire_connector.go
@@ -145,8 +148,9 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 
 	d := &deps{
 		Config: cfg, Driver: driver, Logger: log, Store: st, Bootstrap: boot, Storage: sup,
-		Auth:     api.NewAuthenticator(cfg.AuthToken),
-		VMStatus: api.StaticVMStatus{State: api.VMStopped, Driver: driver},
+		Auth:          api.NewAuthenticator(cfg.AuthToken),
+		VMStatus:      api.StaticVMStatus{State: api.VMStopped, Driver: driver},
+		SkipBootstrap: skipBootstrap,
 	}
 	var comps []*component
 	for _, wire := range wirers {

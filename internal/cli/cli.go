@@ -1,5 +1,5 @@
 // Package cli implements the lydiabox host command line: up, status,
-// runtime, and version. cmd/lydiabox/main.go only calls Main.
+// runtime, cloudflare, and version. cmd/lydiabox/main.go only calls Main.
 package cli
 
 import (
@@ -26,10 +26,11 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"up":      {"Start the control plane (storage, API, web UI)", runUp},
-	"status":  {"Show the status of a running control plane", runStatus},
-	"runtime": {"Manage runtime binaries and guest images", runRuntime},
-	"version": {"Print version information", runVersion},
+	"up":         {"Start the control plane (storage, API, web UI)", runUp},
+	"status":     {"Show the status of a running control plane", runStatus},
+	"runtime":    {"Manage runtime binaries and guest images", runRuntime},
+	"cloudflare": {"Set up remote access through Cloudflare Zero Trust", runCloudflare},
+	"version":    {"Print version information", runVersion},
 }
 
 // errUsage marks errors that already printed usage text.
@@ -73,7 +74,7 @@ func usage(w io.Writer) {
 	}
 	sort.Strings(names)
 	for _, n := range names {
-		fmt.Fprintf(w, "  %-9s %s\n", n, commands[n].summary)
+		fmt.Fprintf(w, "  %-10s %s\n", n, commands[n].summary)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Configuration comes from LYDIABOX_* environment variables and an optional")
