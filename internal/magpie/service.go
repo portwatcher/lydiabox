@@ -25,6 +25,9 @@ type Provider struct {
 	Models    []string `json:"models"`
 	Status    string   `json:"status"`
 	LastError string   `json:"lastError"`
+	// Subscription is the subscription kind ("claude", "codex") of a
+	// provider that serves signed-in accounts instead of an API key.
+	Subscription string `json:"subscription,omitempty"`
 }
 
 // Model is one model of the gateway catalog.
@@ -121,6 +124,9 @@ func toProvider(p RemoteProvider) Provider {
 	out := Provider{ID: p.ID, Name: p.Name, Enabled: !p.Off, HasKey: p.HasKey, Models: p.Models, LastError: p.Error}
 	if out.Models == nil {
 		out.Models = []string{}
+	}
+	if p.Account != nil {
+		out.Subscription = p.Account.Agent
 	}
 	switch {
 	case p.Preset != "":
@@ -255,6 +261,9 @@ func (s *Service) UpdateProvider(ctx context.Context, id string, req PatchProvid
 		}
 	}
 	if req.Name != nil || req.BaseURL != nil || req.APIKey != nil {
+		if cur.Subscription != "" {
+			return Provider{}, fmt.Errorf("%w: a subscription provider only takes enabled", ErrBadRequest)
+		}
 		in := ProviderInput{ID: id, Name: req.Name, Key: req.APIKey}
 		if req.BaseURL != nil {
 			urlField(cur.Kind, &in, req.BaseURL)
@@ -277,8 +286,12 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.findProvider(ctx, a, id); err != nil {
+	cur, err := s.findProvider(ctx, a, id)
+	if err != nil {
 		return err
+	}
+	if cur.Subscription != "" {
+		return fmt.Errorf("%w: remove the accounts of a subscription provider instead", ErrBadRequest)
 	}
 	return a.DeleteProvider(ctx, id)
 }

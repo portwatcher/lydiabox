@@ -26,6 +26,7 @@ func (m ModelsRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("PUT /api/v1/models/routing", m.putRouting)
 	r.HandleFunc("GET /api/v1/models/bindings", m.listBindings)
 	r.HandleFunc("PUT /api/v1/models/bindings/{harness}", m.putBinding)
+	m.registerSubscriptions(r)
 }
 
 func writeMagpieError(w http.ResponseWriter, err error) {

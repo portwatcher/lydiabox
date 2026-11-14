@@ -34,6 +34,8 @@ type RemoteProvider struct {
 	Models    []string
 	// Error is the last listing or request error magpie reports.
 	Error string
+	// Account is set when the provider serves a subscription.
+	Account *RemoteAccount
 }
 
 // ProviderInput creates or updates a provider. Nil fields are left
@@ -92,4 +94,10 @@ type AdminAPI interface {
 	AddGatewayKey(ctx context.Context, name, secret string) (GatewayKey, error)
 	SetGatewayKeyOff(ctx context.Context, id string, off bool) error
 	RemoveGatewayKey(ctx context.Context, id string) error
+	StartSignIn(ctx context.Context, agent, site string) (SignIn, error)
+	SignInStatus(ctx context.Context, id string) (SignIn, error)
+	SubmitSignInCode(ctx context.Context, id, code string) error
+	CancelSignIn(ctx context.Context, id string) error
+	AddSetupToken(ctx context.Context, token string) (string, error)
+	ForgetLogin(ctx context.Context, agent, user string) error
 }

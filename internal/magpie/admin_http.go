@@ -103,6 +103,7 @@ func (a *HTTPAdmin) do(ctx context.Context, method, base, path string, body, out
 func remoteError(status int, path string, data []byte) error {
 	var body struct {
 		Error string `json:"error"`
+		Code  string `json:"code"`
 	}
 	msg := strings.TrimSpace(string(data))
 	if json.Unmarshal(data, &body) == nil && body.Error != "" {
@@ -112,6 +113,9 @@ func remoteError(status int, path string, data []byte) error {
 		msg = msg[:512]
 	}
 	switch {
+	case body.Code == "signed_in" || body.Code == "signed_in_only":
+		// magpie keeps the account its own harness copy is signed in to.
+		return fmt.Errorf("%w: %s", ErrConflict, msg)
 	case status == http.StatusNotFound:
 		return fmt.Errorf("%w: magpie %s: %s", ErrNotFound, path, msg)
 	case status == http.StatusBadRequest:
@@ -148,6 +152,7 @@ type providerWire struct {
 	Models    []json.RawMessage `json:"models"`
 	ListError string            `json:"listError"`
 	Error     string            `json:"error"`
+	Account   *accountWire      `json:"account"`
 }
 
 // ListProviders implements AdminAPI.
@@ -162,7 +167,7 @@ func (a *HTTPAdmin) ListProviders(ctx context.Context) ([]RemoteProvider, error)
 	for _, p := range resp.Providers {
 		rp := RemoteProvider{ID: p.ID, Name: p.Name, Preset: p.Preset, Chat: p.Chat, Responses: p.Responses,
 			Anthropic: p.Anthropic, Gemini: p.Gemini, Off: p.Off, HasKey: p.Key.Set, Ready: p.Ready,
-			Models: []string{}, Error: firstNonEmpty(p.Error, p.ListError)}
+			Models: []string{}, Error: firstNonEmpty(p.Error, p.ListError), Account: p.Account.remote()}
 		for _, m := range p.Models {
 			if id := modelIDOf(m); id != "" {
 				rp.Models = append(rp.Models, id)

@@ -27,6 +27,10 @@ type FakeAdmin struct {
 	Secrets     map[string]string // gateway key secrets by key ID
 	nextID      int
 	Calls       []string
+	// Tokens holds subscription tokens by "agent/user"; signIns holds the
+	// sign-ins under way (signin.go).
+	Tokens  map[string][]string
+	signIns map[string]*fakeSignIn
 }
 
 // NewFakeAdmin returns an empty, healthy fake.
@@ -76,6 +80,9 @@ func (f *FakeAdmin) ListProviders(context.Context) ([]magpie.RemoteProvider, err
 	out := slices.Clone(f.Providers)
 	for i := range out {
 		out[i].HasKey = f.Keys[out[i].ID] != ""
+		if a := out[i].Account; a != nil {
+			out[i].Account = &magpie.RemoteAccount{Agent: a.Agent, Logins: slices.Clone(a.Logins)}
+		}
 	}
 	return out, nil
 }
