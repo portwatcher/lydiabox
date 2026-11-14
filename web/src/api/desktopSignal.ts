@@ -101,6 +101,7 @@ export function parseDesktopMessage(message: unknown): DesktopServerMessage | nu
         mode,
         screen: { width: num(screen, "width", 1920), height: num(screen, "height", 1080) },
         iceServers: decodeIceServers(message.iceServers),
+        iceTransportPolicy: message.iceTransportPolicy === "relay" ? "relay" : "all",
       };
     }
     case "answer":

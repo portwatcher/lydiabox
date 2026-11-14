@@ -24,6 +24,25 @@ describe("parseDesktopMessage", () => {
       mode: "OBSERVER",
       screen: { width: 1920, height: 1080 },
       iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
+      iceTransportPolicy: "all",
+    });
+  });
+
+  it("decodes the relay-only ICE policy and TURN credentials", () => {
+    expect(
+      parseDesktopMessage({
+        type: "hello",
+        mode: "TAKEOVER",
+        screen: { width: 1920, height: 1080 },
+        iceServers: [{ urls: ["turns:turn.example.com:443?transport=tcp"], username: "u", credential: "c" }],
+        iceTransportPolicy: "relay",
+      }),
+    ).toEqual({
+      type: "hello",
+      mode: "TAKEOVER",
+      screen: { width: 1920, height: 1080 },
+      iceServers: [{ urls: ["turns:turn.example.com:443?transport=tcp"], username: "u", credential: "c" }],
+      iceTransportPolicy: "relay",
     });
   });
 

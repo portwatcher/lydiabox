@@ -83,9 +83,9 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
   }, []);
 
   const startPeer = useCallback(
-    async (client: DesktopSignalClient, iceServers: RTCIceServer[]) => {
+    async (client: DesktopSignalClient, iceServers: RTCIceServer[], iceTransportPolicy: RTCIceTransportPolicy) => {
       closePeer();
-      const pc = new RTCPeerConnection({ iceServers });
+      const pc = new RTCPeerConnection({ iceServers, iceTransportPolicy });
       pcRef.current = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
       preferH264(transceiver);
@@ -129,6 +129,7 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
           void startPeer(
             client,
             msg.iceServers.map((s) => ({ urls: s.urls, username: s.username, credential: s.credential })),
+            msg.iceTransportPolicy,
           );
           return;
         case "answer": {

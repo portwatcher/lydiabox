@@ -235,7 +235,13 @@ export interface AgentAction {
 }
 
 export type DesktopServerMessage =
-  | { type: "hello"; mode: DesktopMode; screen: { width: number; height: number }; iceServers: IceServer[] }
+  | {
+      type: "hello";
+      mode: DesktopMode;
+      screen: { width: number; height: number };
+      iceServers: IceServer[];
+      iceTransportPolicy: RTCIceTransportPolicy;
+    }
   | { type: "answer"; sdp: string }
   | { type: "ice"; candidate: IceCandidate }
   | { type: "mode"; mode: DesktopMode; changedBy: ChangedBy }
