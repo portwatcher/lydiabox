@@ -17,6 +17,8 @@ static Go binary runs the control plane on your server:
 See [docs/design.md](docs/design.md) for the architecture,
 [docs/api.md](docs/api.md) for the HTTP and WebSocket API, and
 [docs/conformance.md](docs/conformance.md) for the implementation status.
+[docs/cloud-design.md](docs/cloud-design.md) is a proposal for a hosted
+service (LydiaBox Cloud) on top of this core.
 
 ## Quick start
 
