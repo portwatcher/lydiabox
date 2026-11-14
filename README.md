@@ -78,7 +78,7 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_S3_SECRET_KEY` | required | Secret access key |
 | `LYDIABOX_S3_REGION` | `auto` | Region (AWS needs the bucket region) |
 | `LYDIABOX_S3_BUCKET_URL` | derived | JuiceFS `--bucket` URL override |
-| `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` | Web UI, API, WebSocket, `/webdav`, and the S3 gateway (`/s3`) |
+| `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` (`127.0.0.1:8080` with a tunnel) | Web UI, API, WebSocket, `/webdav`, and the S3 gateway (`/s3`) |
 | `LYDIABOX_S3_GATEWAY_ADDR` | `127.0.0.1:8090` | Backend of the S3 gateway (empty or `off` disables it) |
 | `LYDIABOX_AUTH_TOKEN` | generated | Admin password (16 characters or more) |
 | `LYDIABOX_MASTER_KEY` | generated | 64 hex characters; encrypts connector tokens |
@@ -99,6 +99,9 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_CLOUDFLARE_TURN_KEY_ID`, `_API_TOKEN` | empty | Cloudflare Realtime TURN key; mints credentials for each viewer |
 | `LYDIABOX_TURN_TTL` | `1h` | Lifetime of minted TURN credentials (1m to 48h) |
 | `LYDIABOX_WEBRTC_RELAY_ONLY` | `false` | Desktop stream through TURN only |
+| `LYDIABOX_CLOUDFLARE_API_TOKEN`, `_ACCOUNT_ID` | empty | Cloudflare API access of `lydiabox cloudflare` (environment only) |
+| `LYDIABOX_CLOUDFLARE_TUNNEL` | `auto` | `auto` runs cloudflared when a tunnel is set up; `off` never runs it |
+| `LYDIABOX_ACCESS_TEAM_DOMAIN`, `_AUD`, `_EMAILS` | stored by setup | Cloudflare Access settings; replace the stored values |
 | `LYDIABOX_DOCKER_IMAGE` | `lydiabox/guest:latest` | Guest image of the `docker` driver |
 | `LYDIABOX_GUEST_BINARY` | found next to `lydiabox` | Linux `lydiabox-guest` injected into the VM |
 | `LYDIABOX_ROOTFS_URL` | empty | Base URL of prebuilt guest images (`chv`) |
@@ -258,7 +261,52 @@ the SigV4 signature of each request at `/s3`, removes the prefix, and signs
 the request again for the gateway.
 
 Put LydiaBox behind TLS before you expose it to a network you do not
-trust.
+trust. The simplest way is Cloudflare Zero Trust (next section).
+
+## Remote access with Cloudflare Zero Trust
+
+One command connects LydiaBox to a hostname on your Cloudflare account.
+Only the emails you give can sign in (Cloudflare sends a one-time PIN), and
+the host needs no open port. Create an API token with the permissions in
+[docs/remote-access-manual-test.md](docs/remote-access-manual-test.md#1-before-you-start),
+enable Zero Trust once in the Cloudflare dashboard (pick a team name), then:
+
+```sh
+export LYDIABOX_CLOUDFLARE_API_TOKEN=... LYDIABOX_CLOUDFLARE_ACCOUNT_ID=...
+lydiabox cloudflare setup -hostname agent.example.com -email me@example.com
+lydiabox up                    # runs cloudflared; open https://agent.example.com
+```
+
+`setup` creates (or reuses) a Cloudflare Tunnel, a proxied DNS record, an
+Access application with a policy for the emails, and a service token. It
+stores the tunnel token encrypted in the state database. Run it again to
+change the emails; `lydiabox cloudflare status` shows the setup and
+`lydiabox cloudflare teardown` deletes it. `lydiabox up` downloads the
+pinned `cloudflared` on first use.
+
+- With a tunnel, `lydiabox up` listens on `127.0.0.1:8080`, so that every
+  request goes through Cloudflare Access. To also serve the LAN, set
+  `LYDIABOX_LISTEN_ADDR=0.0.0.0:8080`; there, only the admin token
+  protects LydiaBox.
+- The web UI skips the token prompt for an Access login and shows the
+  email. The admin token keeps working everywhere.
+- Scripts, WebDAV, and S3 clients send the service token headers that
+  `setup` prints, in addition to the admin token:
+
+  ```sh
+  curl -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" \
+    -H "Authorization: Bearer $LYDIABOX_AUTH_TOKEN" https://agent.example.com/api/v1/status
+  rclone lsd :webdav: --webdav-url=https://agent.example.com/webdav/ --webdav-user=lydiabox \
+    --webdav-pass="$(rclone obscure "$LYDIABOX_AUTH_TOKEN")" \
+    --header "CF-Access-Client-Id: $CF_ID" --header "CF-Access-Client-Secret: $CF_SECRET"
+  ```
+
+- Clients that cannot send extra headers (macOS Finder, the AWS CLI) need
+  `setup -bypass /webdav,/s3`. These paths then skip the Access login, and
+  only the admin token protects them.
+- To run cloudflared yourself, or to use an Access application that you made
+  by hand, set `LYDIABOX_CLOUDFLARE_TUNNEL=off` and the
+  `LYDIABOX_ACCESS_*` variables (see [.env.example](.env.example)).
 
 ## Models and sessions
 
@@ -339,6 +387,7 @@ npm run typecheck && npm run lint && npm run test
 | Harness subscriptions (Claude, ChatGPT) | Done; tested against a fake magpie; real-account checklist in [docs/subscriptions-manual-test.md](docs/subscriptions-manual-test.md) |
 | Connectors | Done; tested against fake provider APIs; full real-provider checklist passed on GitHub ([results](docs/conformance.md#connector-run-github-real-provider)); real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
+| Remote access (Cloudflare Zero Trust) | Done; tested against a fake Cloudflare API, a fake JWKS, and a fake cloudflared; real-account checklist in [docs/remote-access-manual-test.md](docs/remote-access-manual-test.md) |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).
 
@@ -357,6 +406,7 @@ internal/harness        session manager, terminal rooms, adapters
 internal/connector      OAuth, tokens, refresh, audit, guest broker
 internal/desktop        desktop signaling relay and takeover mode
 internal/api            HTTP server, authentication, routes
+internal/cloudflare     Cloudflare API client, tunnel and Access setup, Access JWT verifier, cloudflared supervisor
 internal/guest          guest daemon: rpc, ptymanager, x11, webrtc, mcp, credproxy, gitcred
 internal/webui          embedded web UI
 web                     React + TypeScript web workstation

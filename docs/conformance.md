@@ -135,6 +135,7 @@ single WebRTC UDP port, and the extra packages.
 | Pinned URLs, SHA256, `+x`, `LYDIABOX_MIRROR_*` | done | `internal/bootstrap/manifest.json` | `TestChecksumMismatchKeepsExistingBinary`, `TestMirrorOverride` |
 | Pinned checksums for every binary | done (`virtiofsd`: amd64 uses the upstream zip; arm64 has no upstream binary and is built locally from the `v1.14.0` tag, manifest `checksumSource: "build"`) | `internal/bootstrap/manifest.json`, `internal/bootstrap/local.go`, `deploy/virtiofsd` | `TestLocallyBuiltBinary`, `TestLocallyBuiltBinaryMirror`, `TestBuildEntryValidation`; build run on this host (static aarch64 ELF in 59 s) |
 | `lydiabox runtime build-rootfs` (also builds and installs `virtiofsd` on arm64), `runtime install-local`, `LYDIABOX_ROOTFS_URL` | done | `internal/cli/runtime.go`, `deploy/rootfs/build-artifacts.sh` | `TestRuntimeStatusAndBuildRootfs`, `TestFetchImages`; E2E (slim image build) |
+| Remote access through Cloudflare Zero Trust (addition): `lydiabox cloudflare setup|status|teardown`, supervised `cloudflared` (pinned, optional), Access JWT login, loopback listener with a tunnel | done; the check with a real Cloudflare account is pending ([remote-access-manual-test.md](remote-access-manual-test.md)) | `internal/cloudflare`, `internal/api/access_auth.go`, `internal/cli/cloudflare.go`, `internal/cli/wire_remote.go`, `internal/config/remote.go` | `TestSetupCreatesEverything`, `TestSetupIsIdempotent`, `TestSetupFailures`, `TestTeardown` (fake API); `TestVerify`, `TestVerifyRejectsTampering`, `TestUnknownKeyRefreshesJWKS` (fake JWKS); `TestSupervisorConnectsAndStops`, `TestSupervisorRestartsWithBackoff` (fake cloudflared); `TestAccessLogin`, `TestAccessSameOriginCheck`, `TestAccessLimiterUsesConnectingIP`, `TestCloudflareSetupStatusTeardown`, `TestWireRemoteTunnel` |
 
 ## 4.2 Persistent POSIX storage and disaster recovery
 
@@ -240,6 +241,7 @@ makes these changes; the row above is `done` with them.
 | Files: tree, editor, drag-and-drop upload, download, WebDAV dialog | done | `web/src/pages/files` | web tests; E2E (browser) |
 | Models: subscriptions (sign-in dialog), providers, routing groups, per-harness bindings | done | `web/src/pages/models` | web tests; browser check against a fake magpie |
 | Connectors: cards, OAuth / client / token drawers, audit log | done | `web/src/pages/connectors` | web tests |
+| Cloudflare Access login: no token prompt, email in the status bar, sign-out through `/cdn-cgi/access/logout`, notice for an email that is not allowed | done | `web/src/App.tsx`, `web/src/pages/LoginPage.tsx`, `web/src/components/StatusBar.tsx` | browser check against a mocked session route |
 
 ## 6. Phase verification gates
 

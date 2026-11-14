@@ -70,6 +70,7 @@ by any one of:
 | `Authorization: Bearer <token>` | CLI, scripts, non-browser WebSocket clients |
 | Cookie `lydiabox_session` | Browser UI, set by `POST /api/v1/auth/login` |
 | `Authorization: Basic base64("lydiabox:<token>")` | WebDAV clients |
+| `Cf-Access-Jwt-Assertion` header or `CF_Authorization` cookie | Browser through Cloudflare Access (section 2.1) |
 
 Rules:
 
@@ -88,10 +89,51 @@ Rules:
 - Unauthenticated responses carry `WWW-Authenticate: Bearer realm="LydiaBox"`,
   or `Basic realm="LydiaBox"` under `/webdav/`.
 
+### 2.1 Cloudflare Access — implemented
+
+When Cloudflare Access login is on (`lydiabox cloudflare setup`, or the
+`LYDIABOX_ACCESS_*` settings), Cloudflare signs every request that passes
+the Access policy with an application token (a JWT). The server accepts it
+from the `Cf-Access-Jwt-Assertion` header, or else from the
+`CF_Authorization` cookie, and treats the request as the admin when all of
+these are true:
+
+- The RS256 signature matches a key of the team JWKS at
+  `https://<team-domain>/cdn-cgi/access/certs`. The server caches the keys,
+  fetches them again for an unknown key ID (at most once per 30 seconds),
+  and refreshes them after one hour.
+- `iss` is `https://<team-domain>` and `aud` contains the audience tag of
+  the Access application.
+- `exp`, `nbf`, and `iat` are valid, with 60 seconds of clock skew.
+- `email` is on the allow list (an entry `@example.com` allows a domain).
+  Service token logins have no email and do not count as the admin.
+
+Other rules:
+
+- An `Authorization` header always decides on its own: a request with a
+  wrong Bearer or Basic credential gets `401`, even with a valid Access
+  token.
+- Access-authenticated requests get the same `Origin` check as the session
+  cookie, because the browser sends the `CF_Authorization` cookie on
+  cross-site requests too.
+- For a request from loopback (cloudflared), the failed-attempt limiter uses
+  the `Cf-Connecting-IP` header as the client IP, so one client behind the
+  tunnel cannot lock out the others.
+- The admin token keeps working for Bearer, Basic, and cookie clients.
+- To sign out of Access, the UI opens `/cdn-cgi/access/logout`, which
+  Cloudflare serves on the application hostname.
+
+Non-browser clients through the tunnel send the Access service token headers
+`CF-Access-Client-Id` and `CF-Access-Client-Secret` (printed by
+`lydiabox cloudflare setup`) together with the admin token as usual. Paths
+set up with `-bypass` (for example `/webdav`, `/s3`) skip Access and need
+only the admin token.
+
 ### `POST /api/v1/auth/login` — public, implemented
 
 Request: `{ "token": "<LYDIABOX_AUTH_TOKEN>" }`
-Response `200`: `{ "authenticated": true }` and `Set-Cookie: lydiabox_session=...`
+Response `200`: `{ "authenticated": true, "method": "token", "access": false }`
+and `Set-Cookie: lydiabox_session=...`
 Errors: `401 unauthorized`, `429 rate_limited`.
 
 ### `POST /api/v1/auth/logout` — public, implemented
@@ -100,8 +142,19 @@ Clears the cookie. Response `204`.
 
 ### `GET /api/v1/auth/session` — public, implemented
 
-Response `200`: `{ "authenticated": false }`. The UI calls this on load to
-decide between the login screen and the app.
+Response `200`:
+
+```json
+{ "authenticated": true, "method": "access", "email": "me@example.com", "access": true }
+```
+
+- `method` is `token` (cookie, Bearer, or Basic) or `access` (section 2.1).
+  It is omitted when `authenticated` is false.
+- `email` is the Cloudflare Access email. When `authenticated` is false, an
+  `email` means a valid Access login whose email is not on the allow list.
+- `access` is true when Cloudflare Access login is on.
+
+The UI calls this on load to decide between the login screen and the app.
 
 ## 3. Health and status
 
@@ -140,6 +193,33 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
   public path on this server. `enabled` is false (and the other fields
   empty) when the address is empty or `off`. `running` is false while the
   process restarts.
+
+## 3a. Remote access — implemented
+
+### `GET /api/v1/remote-access`
+
+Response `200`:
+
+```json
+{
+  "provider": "cloudflare",
+  "configured": true,
+  "hostname": "agent.example.com",
+  "teamDomain": "myteam.cloudflareaccess.com",
+  "emails": ["me@example.com"],
+  "serviceTokenClientId": "0123abcd.access",
+  "bypassPaths": ["/webdav"],
+  "tunnel": { "state": "connected", "restarts": 0, "startedAt": "2026-11-14T08:00:00Z" }
+}
+```
+
+- `configured` is true when Cloudflare Access login is on. `hostname`,
+  `serviceTokenClientId`, and `bypassPaths` come from
+  `lydiabox cloudflare setup` and are omitted for a setup by
+  `LYDIABOX_ACCESS_*` only.
+- `tunnel` is omitted when LydiaBox does not run cloudflared. `state` is
+  `connecting`, `connected` (at least one connection to the Cloudflare edge),
+  `error` (with `lastError`, for example a missing binary), or `stopped`.
 
 ## 4. File Manager — implemented (Phase 1)
 

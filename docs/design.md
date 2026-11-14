@@ -115,7 +115,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 
 | Variable | Required | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `LYDIABOX_LISTEN_ADDR` | No | `0.0.0.0:8080` | Web UI, REST API, WebSocket, `/webdav`, and `/s3` port |
+| `LYDIABOX_LISTEN_ADDR` | No | `0.0.0.0:8080` (`127.0.0.1:8080` when a Cloudflare Tunnel is set up) | Web UI, REST API, WebSocket, `/webdav`, and `/s3` port |
 | `LYDIABOX_AUTH_TOKEN` | No | Auto-generated | Bearer/Cookie admin password printed on first boot if unset |
 | `LYDIABOX_MASTER_KEY` | No | Auto-generated | 32-byte hex key (`0600` in `$DATA_DIR/state/master.key`) for encrypting OAuth tokens |
 | `LYDIABOX_DATA_DIR` | No | `~/.lydiabox` | Host runtime, caches, SQLite metadata, and mount directory |
