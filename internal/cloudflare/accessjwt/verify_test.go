@@ -139,6 +139,17 @@ func TestUnknownKeyRefreshesJWKS(t *testing.T) {
 	}
 }
 
+func TestCanceledRequestDoesNotBreakFirstFetch(t *testing.T) {
+	j := accessjwttest.NewIssuer(t)
+	now := time.Now()
+	v := newVerifier(t, j, &now)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := v.Verify(ctx, j.Sign(t, j.Claims(now))); err != nil {
+		t.Fatalf("a canceled request context must not cancel the JWKS fetch: %v", err)
+	}
+}
+
 func TestKnownKeySurvivesJWKSOutage(t *testing.T) {
 	j := accessjwttest.NewIssuer(t)
 	now := time.Now()

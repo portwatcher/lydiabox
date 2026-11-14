@@ -139,7 +139,7 @@ func setupBypass(ctx context.Context, c *Client, p SetupParams, n names, apps []
 func bypassApps(apps []Application, prefix string) []Application {
 	var out []Application
 	for _, a := range apps {
-		if strings.HasPrefix(strings.ToLower(a.Domain), prefix) && strings.HasPrefix(a.Name, "LydiaBox ") {
+		if strings.HasPrefix(strings.ToLower(a.Domain), prefix) && strings.HasPrefix(a.Name, appPrefix) {
 			out = append(out, a)
 		}
 	}
@@ -187,7 +187,8 @@ func Teardown(ctx context.Context, c *Client, st State, progress func(string, ..
 		keep(err)
 	} else {
 		for _, a := range apps {
-			if strings.EqualFold(a.Domain, st.Hostname) || len(bypassApps([]Application{a}, st.Hostname+"/")) == 1 {
+			ours := strings.HasPrefix(a.Name, appPrefix)
+			if (ours && strings.EqualFold(a.Domain, st.Hostname)) || len(bypassApps([]Application{a}, st.Hostname+"/")) == 1 {
 				keep(deleteApp(ctx, c, a, progress))
 			}
 		}

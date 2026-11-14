@@ -75,7 +75,9 @@ func (s *keySet) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 }
 
 func (s *keySet) fetch(ctx context.Context) (map[string]*rsa.PublicKey, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// A client that disconnects must not cancel the shared fetch: the
+	// refetch limit would then refuse every new key for MinRefresh.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
 	if err != nil {

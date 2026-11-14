@@ -180,6 +180,16 @@ func Setup(ctx context.Context, c *Client, p SetupParams, prev State, prevSecret
 		return st, sec, err
 	}
 	st.TeamDomain = org.AuthDomain
+	// Check for a foreign application before anything is created.
+	apps, err := c.Applications(ctx)
+	if err != nil {
+		return st, sec, err
+	}
+	for _, domain := range append([]string{p.Hostname}, bypassDomains(p)...) {
+		if err := checkForeignApp(apps, domain); err != nil {
+			return st, sec, err
+		}
+	}
 
 	if err := setupTunnel(ctx, c, p, &st, &sec); err != nil {
 		return st, sec, err
@@ -206,10 +216,6 @@ func Setup(ctx context.Context, c *Client, p SetupParams, prev State, prevSecret
 			return st, sec, err
 		}
 		refs = append(refs, *svcRef)
-	}
-	apps, err := c.Applications(ctx)
-	if err != nil {
-		return st, sec, err
 	}
 	app, err := upsertApp(ctx, c, apps, Application{
 		Name: n.app, Domain: p.Hostname, Type: "self_hosted", SessionDuration: p.SessionDuration, Policies: refs,
@@ -336,7 +342,34 @@ func upsertPolicy(ctx context.Context, c *Client, existing []Policy, want Policy
 	return out, err
 }
 
+// appPrefix starts the name of every Access application that Setup makes.
+// Setup and Teardown never change or delete an application without it.
+const appPrefix = "LydiaBox "
+
+func bypassDomains(p SetupParams) []string {
+	out := make([]string, 0, len(p.BypassPaths))
+	for _, bp := range p.BypassPaths {
+		out = append(out, p.Hostname+bp)
+	}
+	return out
+}
+
+// checkForeignApp refuses a domain that an application not made by Setup
+// already protects.
+func checkForeignApp(apps []Application, domain string) error {
+	for _, a := range apps {
+		if strings.EqualFold(a.Domain, domain) && !strings.HasPrefix(a.Name, appPrefix) {
+			return fmt.Errorf("cloudflare: the Access application %q already protects %s; delete it or choose another hostname",
+				a.Name, a.Domain)
+		}
+	}
+	return nil
+}
+
 func upsertApp(ctx context.Context, c *Client, existing []Application, want Application, progress func(string, ...any)) (Application, error) {
+	if err := checkForeignApp(existing, want.Domain); err != nil {
+		return Application{}, err
+	}
 	for _, a := range existing {
 		if strings.EqualFold(a.Domain, want.Domain) {
 			out, err := c.UpdateApplication(ctx, a.ID, want)

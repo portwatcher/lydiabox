@@ -239,6 +239,24 @@ func TestSetupFailures(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
+	t.Run("foreign Access application", func(t *testing.T) {
+		f := cloudflaretest.New(t)
+		f.Apps["mine"] = cloudflare.Application{ID: "mine", Name: "My app", Domain: "agent.example.com", AUD: "x"}
+		_, _, err := cloudflare.Setup(ctx, f.Client(t), params(), cloudflare.State{}, cloudflare.Secrets{})
+		if err == nil || !strings.Contains(err.Error(), "already protects") || f.Apps["mine"].Name != "My app" {
+			t.Fatalf("err = %v, app = %+v", err, f.Apps["mine"])
+		}
+		if len(f.Tunnels) != 0 || len(f.Records) != 0 {
+			t.Fatal("setup must stop before it creates anything")
+		}
+		// Teardown leaves the foreign application alone.
+		if err := cloudflare.Teardown(ctx, f.Client(t), cloudflare.State{Hostname: "agent.example.com"}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := f.Apps["mine"]; !ok {
+			t.Fatal("teardown deleted a foreign application")
+		}
+	})
 	t.Run("other hostname already set up", func(t *testing.T) {
 		f := cloudflaretest.New(t)
 		_, _, err := cloudflare.Setup(ctx, f.Client(t), params(), cloudflare.State{Hostname: "old.example.com"}, cloudflare.Secrets{})
