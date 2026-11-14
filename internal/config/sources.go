@@ -49,6 +49,8 @@ type fileConfig struct {
 	} `yaml:"connectors"`
 	// WebRTC is the desktop stream ICE section (webrtc.go).
 	WebRTC webrtcFile `yaml:"webrtc"`
+	// RemoteAccess is the Cloudflare Zero Trust section (remote.go).
+	RemoteAccess remoteFile `yaml:"remote_access"`
 }
 
 func applyFile(cfg *Config, path string, explicit bool, home string) error {
@@ -102,6 +104,7 @@ func applyFile(cfg *Config, path string, explicit bool, home string) error {
 	for provider, c := range fc.Connectors {
 		cfg.OAuthClients[strings.ToLower(provider)] = OAuthClient{ClientID: c.ClientID, ClientSecret: c.ClientSecret}
 	}
+	applyRemoteFile(cfg, &fc)
 	return applyWebRTCFile(&cfg.WebRTC, &fc.WebRTC)
 }
 
@@ -198,6 +201,7 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 	}
 	applyMirrors(cfg, env)
 	errs = append(errs, applyWebRTCEnv(&cfg.WebRTC, env)...)
+	applyRemoteEnv(cfg, env)
 	if len(errs) > 0 {
 		return fmt.Errorf("config: %w", errors.Join(errs...))
 	}

@@ -62,6 +62,9 @@ type Config struct {
 	LogLevel string
 	// TenantID is the tenant served by this process.
 	TenantID string
+	// Remote configures remote access through Cloudflare Zero Trust
+	// (remote.go).
+	Remote RemoteAccessConfig
 
 	// AuthTokenGenerated and MasterKeyGenerated report whether EnsureSecrets
 	// created the secret during this run (the CLI prints new tokens once).
@@ -124,6 +127,7 @@ func Defaults(homeDir string) *Config {
 		MetaSyncInterval: 60 * time.Second,
 		LogLevel:         "info",
 		TenantID:         DefaultTenantID,
+		Remote:           RemoteAccessConfig{Tunnel: TunnelAuto},
 	}
 }
 

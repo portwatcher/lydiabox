@@ -77,6 +77,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	errs = append(errs, c.WebRTC.validate()...)
+	errs = append(errs, c.Remote.validate()...)
 	for name, m := range c.Mirrors {
 		if m.SHA256 != "" {
 			if b, err := hex.DecodeString(m.SHA256); err != nil || len(b) != 32 {
