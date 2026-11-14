@@ -3,7 +3,8 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { ApiError } from "../api/http";
 import { describeError } from "../api/errors";
-import { auth } from "../api/system";
+import { accessLogoutPath, auth } from "../api/system";
+import type { AuthState } from "../api/types";
 import { Button, Field, TextInput, describedBy } from "../components/ui";
 
 function loginError(err: unknown): string {
@@ -13,7 +14,11 @@ function loginError(err: unknown): string {
   return describeError(err, "Not signed in");
 }
 
-export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
+// The token form shows only when the request is not signed in. When
+// Cloudflare Access already signed the request in, the app never renders
+// this page (App.tsx). An Access login whose email is not on the allow list
+// arrives here with session.email set.
+export function LoginPage({ session, onSignedIn }: { session?: AuthState; onSignedIn: () => void }) {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +52,16 @@ export function LoginPage({ onSignedIn }: { onSignedIn: () => void }) {
           <img src="/favicon.svg" alt="" className="size-10" />
           <h1 className="text-xl font-semibold tracking-tight">Sign in to LydiaBox</h1>
         </div>
+        {session?.email ? (
+          <p className="text-sm text-fg-muted">
+            Cloudflare Access signed you in as <span className="font-medium break-all text-fg">{session.email}</span>, but this email
+            is not on the allow list. Sign in with the admin token, or{" "}
+            <a href={accessLogoutPath} className="font-medium text-fg underline underline-offset-2">
+              sign out of Cloudflare Access
+            </a>
+            .
+          </p>
+        ) : null}
         <Field
           id="token"
           label="Admin token"

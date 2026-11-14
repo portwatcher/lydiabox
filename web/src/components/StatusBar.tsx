@@ -72,7 +72,7 @@ function VmResources() {
   );
 }
 
-export function StatusBar({ onLogout }: { onLogout: () => void }) {
+export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
   const { error, status } = useSystem();
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle bg-bg-subtle px-3 py-2 sm:px-4">
@@ -111,7 +111,8 @@ export function StatusBar({ onLogout }: { onLogout: () => void }) {
         <SyncIndicator />
         <VmResources />
         <VmPower compact />
-        <IconButton icon={LogOut} label="Sign out" onClick={onLogout} />
+        {email ? <span className="hidden text-xs text-fg-muted md:inline">{email}</span> : null}
+        <IconButton icon={LogOut} label={email ? `Sign out ${email}` : "Sign out"} onClick={onLogout} />
       </div>
     </header>
   );

@@ -8,6 +8,9 @@ export const auth = {
   logout: () => http.post<undefined>("/api/v1/auth/logout"),
 };
 
+/** Cloudflare Access ends its own session at this path of the app host. */
+export const accessLogoutPath = "/cdn-cgi/access/logout";
+
 // Section 3: status.
 export const getStatus = (signal?: AbortSignal) => http.get<Status>("/api/v1/status", undefined, signal);
 

@@ -20,8 +20,16 @@ export interface ErrorEnvelope {
 }
 
 // Section 2: authentication.
+export type AuthMethod = "token" | "access";
+
 export interface AuthState {
   authenticated: boolean;
+  /** How the request was signed in; absent when not authenticated. */
+  method?: AuthMethod;
+  /** The Cloudflare Access email when method is "access". */
+  email?: string;
+  /** True when Cloudflare Access login is on. */
+  access?: boolean;
 }
 
 // Section 3: health and status.

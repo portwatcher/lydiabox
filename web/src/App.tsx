@@ -1,7 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { http } from "./api/http";
-import { auth } from "./api/system";
+import { accessLogoutPath, auth } from "./api/system";
+import type { AuthState } from "./api/types";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorView, LoadingView, StateView } from "./components/StateView";
 import { ToastProvider } from "./components/Toast";
@@ -14,7 +15,11 @@ const FilesPage = lazy(() => import("./pages/FilesPage"));
 const ModelsPage = lazy(() => import("./pages/ModelsPage"));
 const ConnectorsPage = lazy(() => import("./pages/ConnectorsPage"));
 
-type AuthStatus = { kind: "checking" } | { kind: "signedOut" } | { kind: "signedIn" } | { kind: "error"; error: unknown };
+type AuthStatus =
+  | { kind: "checking" }
+  | { kind: "signedOut"; session?: AuthState }
+  | { kind: "signedIn"; session: AuthState }
+  | { kind: "error"; error: unknown };
 
 export function App() {
   const [state, setState] = useState<AuthStatus>({ kind: "checking" });
@@ -23,7 +28,7 @@ export function App() {
     setState({ kind: "checking" });
     auth
       .session()
-      .then((s) => setState({ kind: s.authenticated ? "signedIn" : "signedOut" }))
+      .then((session) => setState(session.authenticated ? { kind: "signedIn", session } : { kind: "signedOut", session }))
       .catch((error: unknown) => setState({ kind: "error", error }));
   }, []);
 
@@ -32,12 +37,20 @@ export function App() {
     return http.onUnauthorized(() => setState({ kind: "signedOut" }));
   }, [check]);
 
+  const accessSignedIn = state.kind === "signedIn" && state.session.method === "access";
   const logout = useCallback(() => {
     auth
       .logout()
       .catch(() => undefined)
-      .finally(() => setState({ kind: "signedOut" }));
-  }, []);
+      .finally(() => {
+        if (accessSignedIn) {
+          // The admin cookie is gone; Cloudflare Access ends its own session.
+          window.location.assign(accessLogoutPath);
+          return;
+        }
+        setState({ kind: "signedOut" });
+      });
+  }, [accessSignedIn]);
 
   switch (state.kind) {
     case "checking":
@@ -45,13 +58,13 @@ export function App() {
     case "error":
       return <ErrorView error={state.error} subsystem="LydiaBox" failed="LydiaBox not loaded" onRetry={check} className="h-full" />;
     case "signedOut":
-      return <LoginPage onSignedIn={() => setState({ kind: "signedIn" })} />;
+      return <LoginPage session={state.session} onSignedIn={check} />;
     case "signedIn":
       return (
         <ToastProvider>
           <SystemProvider>
             <div className="flex h-dvh flex-col">
-              <StatusBar onLogout={logout} />
+              <StatusBar email={state.session.email} onLogout={logout} />
               <main className="min-h-0 flex-1">
                 <Suspense fallback={<LoadingView label="Loading…" />}>
                   <Routes>
