@@ -666,6 +666,56 @@ Details:
   VM send the placeholder token `lydiabox-local`; the host side of the
   gateway tunnel replaces it with the VM gateway key `lydiabox-vm`.
 
+### 10.1 Subscriptions
+
+A user can sign in to a Claude subscription (for Claude Code) or a ChatGPT
+subscription (for Codex) instead of adding an API key. magpie does the
+sign-in on the host and keeps the access and refresh tokens in
+`$LYDIABOX_DATA_DIR/state/magpie` (`logins.json`, and the vendor CLI files
+in its private `home`). magpie refreshes them. No route returns a token, and
+no token is written to `/home/agent`: harnesses keep the gateway URL and the
+placeholder token, and bind to the subscription models (`claude/...`,
+`codex/...`) like any other model.
+
+| Route | Request | Response |
+| :--- | :--- | :--- |
+| `GET /api/v1/models/subscriptions` | | `200 { "subscriptions": [Subscription] }` (always `claude` and `codex`) |
+| `POST /api/v1/models/subscriptions/logins` | `{ "kind": "codex" }`, `{ "kind": "claude" }`, or `{ "kind": "claude", "setupToken": "sk-ant-oat01-..." }` | `201 Login` |
+| `GET /api/v1/models/subscriptions/logins/{id}` | | `200 Login` |
+| `POST /api/v1/models/subscriptions/logins/{id}/code` | `{ "code": "..." }` | `200 Login` |
+| `DELETE /api/v1/models/subscriptions/logins/{id}` | | `204` (cancels the sign-in) |
+| `DELETE /api/v1/models/subscriptions/{kind}?account=<user>` | | `204` (magpie deletes the stored sign-in) |
+
+```json
+Subscription: { "kind": "claude", "name": "Claude", "providerId": "claude", "enabled": true,
+                "accounts": [{ "user": "me@example.com", "plan": "max", "enabled": true, "needsSignIn": false }],
+                "models": ["claude-sonnet-4-5"] }
+Login:        { "id": "YlNHut3ORIVR", "kind": "codex", "state": "waiting", "url": "https://auth.openai.com/codex/device",
+                "userCode": "ABCD-1234", "needsCode": false, "installing": "", "account": "", "error": "" }
+```
+
+Details:
+
+- `kind` `codex` uses the ChatGPT device code: open `url` and enter
+  `userCode`. `kind` `claude` first installs Claude Code on the host
+  (`state` `installing`), because magpie serves a Claude subscription
+  through Anthropic's own Claude Code. When `needsCode` is true, send the
+  code (or the address) that the vendor page shows at the end to
+  `.../code`.
+- Login `state`: `starting`, `installing`, `waiting`, `done` (`account` is
+  set), `failed` (see `error`), or `canceled`. Poll `GET .../logins/{id}`
+  while the state is `starting`, `installing`, or `waiting`.
+- `setupToken` (Claude only) adds the account from `claude setup-token`
+  directly; the response has `state` `done` and no `id`.
+- `providerId` is empty until an account is signed in. The subscription
+  provider is also in `GET /api/v1/models/providers` with `"subscription":
+  "claude"` or `"codex"`. Its `PATCH` takes only `enabled`; `DELETE` on it
+  answers `400` (remove its accounts instead).
+- Removing the only Claude account that magpie's own Claude Code copy is
+  signed in to answers `409 conflict`: magpie does not sign Claude Code
+  out. Turn the subscription off (`PATCH .../providers/claude` with
+  `"enabled": false`), or add another account first.
+
 ## 11. Connectors — implemented (Phase 4)
 
 Providers: `github`, `gdrive`, `notion`, `slack`. Tokens are AES-256-GCM

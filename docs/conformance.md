@@ -28,7 +28,7 @@ on KVM ([Integration run (chv on KVM)](#integration-run-chv-on-kvm),
 | 4.1 Configuration and bootstrap | 8 | 0 | 0 | 0 |
 | 4.2 Storage | 13 | 0 | 0 | 0 |
 | 4.3 VM engine | 12 | 0 | 0 | 0 |
-| 4.4 Magpie and harness sessions | 10 | 0 | 0 | 0 |
+| 4.4 Magpie and harness sessions | 11 | 0 | 0 | 0 |
 | 4.5 Desktop and computer use | 11 | 0 | 0 | 0 |
 | 4.6 Connectors | 9 | 0 | 0 | 0 |
 | 5. Web UI | 6 | 0 | 0 | 0 |
@@ -195,6 +195,7 @@ makes these changes; the row above is `done` with them.
 | codex wirer (`base_url = .../v1`, model, `[mcp_servers.lydiabox]`) | done | `internal/magpie/wire` | `TestWirersPreserveUserContent` |
 | dsh wirer (`OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `DEEPSEEK_BASE_URL` = `http://127.0.0.1:3425`); PTY `OPENAI_BASE_URL=http://127.0.0.1:3425` (`ptymanager.DefaultEnv`) | done | `internal/magpie/wire/others.go`, `internal/guest/ptymanager` | `TestEnvEdit`, `TestWirersPreserveUserContent`, `TestMultiAttachReplayAndInput` |
 | antigravity wirer: `~/.antigravity/settings.json` (design path: endpoint, model), `~/.gemini/antigravity/mcp_config.json`, plus the CLI's own `~/.gemini/antigravity-cli/settings.json` (`modelProvider: "gemini"`, `customModelsConfig.customModels.<model>.modelName = "gemini-api://<model>"`), `~/.gemini/config/mcp_config.json`, and `GOOGLE_GEMINI_BASE_URL` / `GEMINI_API_KEY` | done (CLI keys from the published schema and docs, and checked with agy 1.5.4: `agy --model <m>` posted `/v1beta/models/<m>:streamGenerateContent` to a capture server on `127.0.0.1:3425`, and `agy mcp list` showed both servers; see [harness-formats.md](harness-formats.md)) | `internal/magpie/wire/others.go` | `TestWirersCreateMissingFiles`, `TestWirersPreserveUserContent` |
+| OAuth subscriptions stay on the host (design section 1): Claude and ChatGPT sign-in through magpie, tokens in `$DATA_DIR/state/magpie`, harnesses keep the placeholder token | done (tested against a fake magpie and response bodies recorded from magpie v0.1.3531; not yet checked with real accounts, see [subscriptions-manual-test.md](subscriptions-manual-test.md)) | `internal/magpie/subscriptions.go`, `internal/magpie/admin_signin.go`, `internal/api/routes_subscriptions.go` | `TestHTTPAdminSignIn`, `TestSubscriptionRoutes`, `TestSubscriptionStoreStaysOnHost` |
 | opencode wirer (`/v1`, model, `mcp`) | done | `internal/magpie/wire/others.go` | `TestWirersPreserveUserContent` |
 | `HarnessAdapter` interface as specified | done | `internal/harness/types.go` | build |
 
@@ -237,7 +238,7 @@ makes these changes; the row above is `done` with them.
 | Studio: session list with harness and workspace filters, xterm.js | done | `web/src/pages/studio` | web tests; E2E (browser) |
 | Desktop: WebRTC video, overlay, Observer/Takeover, Chrome/Blender launch | done | `web/src/pages/desktop` | web tests; E2E (browser, signaling) |
 | Files: tree, editor, drag-and-drop upload, download, WebDAV dialog | done | `web/src/pages/files` | web tests; E2E (browser) |
-| Models: providers, routing groups, per-harness bindings | done | `web/src/pages/models` | web tests |
+| Models: subscriptions (sign-in dialog), providers, routing groups, per-harness bindings | done | `web/src/pages/models` | web tests; browser check against a fake magpie |
 | Connectors: cards, OAuth / client / token drawers, audit log | done | `web/src/pages/connectors` | web tests |
 
 ## 6. Phase verification gates

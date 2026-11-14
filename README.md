@@ -268,6 +268,13 @@ keys stay in `$LYDIABOX_DATA_DIR/state/magpie`. Inside the VM, harnesses
 use the gateway at `http://127.0.0.1:3425` with a placeholder token; the
 host side of the tunnel replaces it with a revocable gateway key.
 
+Instead of an API key, you can sign in to a Claude subscription (for Claude
+Code) or a ChatGPT subscription (for Codex) in the Subscriptions panel of
+the Models page. magpie does the sign-in on the host and keeps the tokens in
+the same directory; the harnesses in the VM keep the placeholder token. Read
+the provider terms first: see
+[docs/subscriptions-manual-test.md](docs/subscriptions-manual-test.md).
+
 The Studio lists the sessions of all five harnesses from `/home/agent`,
 also while the VM is off. See
 [docs/harness-formats.md](docs/harness-formats.md).
@@ -329,6 +336,7 @@ npm run typecheck && npm run lint && npm run test
 | Docker VM driver, guest daemon, sessions | Done; tested end to end |
 | Cloud Hypervisor driver | Done; verified on real KVM (arm64, nested KVM in Lima; amd64, nested KVM on Google Cloud; see [docs/kvm-test.md](docs/kvm-test.md)); GPU passthrough untested |
 | magpie gateway, harness sessions | Done; harness formats partly inferred |
+| Harness subscriptions (Claude, ChatGPT) | Done; tested against a fake magpie; real-account checklist in [docs/subscriptions-manual-test.md](docs/subscriptions-manual-test.md) |
 | Connectors | Done; tested against fake provider APIs; full real-provider checklist passed on GitHub ([results](docs/conformance.md#connector-run-github-real-provider)); real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 
