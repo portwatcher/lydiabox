@@ -37,6 +37,10 @@ type deps struct {
 	Guest *guestclient.Client
 	// SkipBootstrap is `lydiabox up -skip-bootstrap`: install nothing.
 	SkipBootstrap bool
+	// StoredTURN is set by wireRemote when the desktop stream relays only
+	// through the TURN key of `lydiabox cloudflare setup`; the default
+	// WebRTC UDP port is then 0 (no forward).
+	StoredTURN bool
 }
 
 // component is one subsystem wired into `lydiabox up`: its routes and an

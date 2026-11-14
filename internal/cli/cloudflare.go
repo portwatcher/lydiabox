@@ -101,6 +101,7 @@ func cloudflareSetup(ctx context.Context, env Env, args []string) error {
 	fs.StringVar(&p.OriginURL, "origin", "", "URL that cloudflared sends requests to (default: http://127.0.0.1:<listen port>)")
 	fs.StringVar(&p.TunnelName, "tunnel-name", "", "tunnel name (default: lydiabox-<hostname with dashes>)")
 	fs.BoolVar(&p.ServiceToken, "service-token", true, "create an Access service token for API, WebDAV, and S3 clients")
+	fs.BoolVar(&p.TURN, "turn", true, "create a Cloudflare Realtime TURN key so the desktop stream works through the tunnel")
 	fs.Var(&bypass, "bypass", "paths that skip the Access login and keep only the admin token, for example /webdav,/s3")
 	fs.StringVar(&p.SessionDuration, "session", "24h", "Access login session duration")
 	install := fs.Bool("install", true, "install cloudflared now if it is missing")
@@ -175,6 +176,13 @@ func printSetupResult(env Env, cfg *config.Config, state cloudflare.State, sec, 
 	for _, p := range state.BypassPaths {
 		fmt.Fprintf(w, "\nhttps://%s%s skips the Access login; only the admin token protects it.\n", state.Hostname, p)
 	}
+	if state.TURNKeyID != "" {
+		if cfg.WebRTC.Configured() {
+			fmt.Fprintf(w, "\nThe desktop stream keeps your LYDIABOX_*TURN*/STUN settings; they override the stored TURN key.\n")
+		} else {
+			fmt.Fprintf(w, "\nThe desktop stream goes through Cloudflare TURN (relay only, no UDP port).\n")
+		}
+	}
 	if cfg.Remote.ListenAddrSet && !config.IsLoopbackAddr(cfg.ListenAddr) {
 		fmt.Fprintf(w, "\nwarning: LYDIABOX_LISTEN_ADDR=%s is reachable without Cloudflare Access; use 127.0.0.1 to allow only the tunnel.\n", cfg.ListenAddr)
 	}
@@ -216,11 +224,13 @@ func cloudflareStatus(ctx context.Context, env Env, args []string) error {
 	row("DNS zone", state.ZoneName)
 	row("Service token ID", state.ServiceTokenClientID)
 	row("Bypass paths", strings.Join(state.BypassPaths, ", "))
+	row("TURN key", state.TURNKeyID)
 	row("Tunnel mode", cfg.Remote.Tunnel)
 	row("Updated", state.UpdatedAt.Format("2006-01-02 15:04:05 MST"))
 	if *showSecret {
 		row("Service token secret", sec.ServiceTokenSecret)
 		row("Tunnel token", sec.TunnelToken)
+		row("TURN key secret", sec.TURNKeySecret)
 	}
 	if cfg.Remote.AccessConfigured() {
 		row("Overrides", "LYDIABOX_ACCESS_* values replace the stored Access settings")

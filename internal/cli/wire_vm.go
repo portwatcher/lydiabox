@@ -45,7 +45,7 @@ type vmRuntime struct {
 func wireVM(ctx context.Context, d *deps) (*component, error) {
 	cfg := d.Config
 	log := d.Logger.With("component", "vmm")
-	webrtcPort, err := webRTCPort()
+	webrtcPort, err := webRTCPort(defaultWebRTCPort(d))
 	if err != nil {
 		return nil, err
 	}
@@ -123,10 +123,19 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 	}, nil
 }
 
-func webRTCPort() (int, error) {
+// defaultWebRTCPort is the UDP port forwarded when LYDIABOX_WEBRTC_UDP_PORT
+// is not set: none when the stream relays through the stored TURN key.
+func defaultWebRTCPort(d *deps) int {
+	if d.StoredTURN {
+		return 0
+	}
+	return rpc.DefaultWebRTCPort
+}
+
+func webRTCPort(def int) (int, error) {
 	v := os.Getenv(rpc.EnvWebRTCPort)
 	if v == "" {
-		return rpc.DefaultWebRTCPort, nil
+		return def, nil
 	}
 	p, err := strconv.Atoi(v)
 	if err != nil || p < 0 || p > 65535 {

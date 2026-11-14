@@ -9,6 +9,7 @@ import (
 
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/lydiabox/lydiabox/internal/guest/rpc"
 )
 
 func TestWireVMAndDesktopWithDockerDriver(t *testing.T) {
@@ -37,11 +38,19 @@ func TestWireVMAndDesktopWithDockerDriver(t *testing.T) {
 
 func TestWebRTCPortAndGuestBinary(t *testing.T) {
 	t.Setenv("LYDIABOX_WEBRTC_UDP_PORT", "")
-	if p, err := webRTCPort(); err != nil || p != 50000 {
+	if p, err := webRTCPort(defaultWebRTCPort(&deps{})); err != nil || p != 50000 {
 		t.Fatalf("default port %d %v", p, err)
 	}
+	// The stored Cloudflare TURN key turns the default forward off.
+	if p, err := webRTCPort(defaultWebRTCPort(&deps{StoredTURN: true})); err != nil || p != 0 {
+		t.Fatalf("stored TURN port %d %v", p, err)
+	}
+	t.Setenv("LYDIABOX_WEBRTC_UDP_PORT", "50001")
+	if p, _ := webRTCPort(defaultWebRTCPort(&deps{StoredTURN: true})); p != 50001 {
+		t.Fatalf("an explicit port must win over the stored TURN key, got %d", p)
+	}
 	t.Setenv("LYDIABOX_WEBRTC_UDP_PORT", "70000")
-	if _, err := webRTCPort(); err == nil {
+	if _, err := webRTCPort(rpc.DefaultWebRTCPort); err == nil {
 		t.Fatal("invalid port accepted")
 	}
 	dir := t.TempDir()

@@ -58,7 +58,8 @@ func TestCloudflareSetupStatusTeardown(t *testing.T) {
 		t.Fatalf("setup: %d %s %s", code, out, errOut)
 	}
 	if !strings.Contains(out, "created tunnel") || !strings.Contains(out, "https://agent.example.com") ||
-		!strings.Contains(out, "CF-Access-Client-Secret: secret-") || !strings.Contains(out, "skips the Access login") {
+		!strings.Contains(out, "CF-Access-Client-Secret: secret-") || !strings.Contains(out, "skips the Access login") ||
+		!strings.Contains(out, "created TURN key") || !strings.Contains(out, "through Cloudflare TURN (relay only") {
 		t.Fatalf("setup output:\n%s", out)
 	}
 	if !strings.Contains(out, "Generated admin token") {
@@ -93,7 +94,7 @@ func TestCloudflareSetupStatusTeardown(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "reused tunnel") || !strings.Contains(out, "Secret: unchanged") {
 		t.Fatalf("second setup: %d\n%s\n%s", code, out, errOut)
 	}
-	if len(f.Tunnels) != 1 || len(f.Apps) != 2 {
+	if len(f.Tunnels) != 1 || len(f.Apps) != 2 || len(f.TURNKeys) != 1 || !strings.Contains(out, "reused TURN key") {
 		t.Fatalf("duplicates: %d tunnels, %d apps", len(f.Tunnels), len(f.Apps))
 	}
 
@@ -102,7 +103,11 @@ func TestCloudflareSetupStatusTeardown(t *testing.T) {
 		strings.Contains(out, "secret-") {
 		t.Fatalf("status: %d\n%s", code, out)
 	}
-	if _, out, _ = run(t, "cloudflare", "status", "-show-secret"); !strings.Contains(out, "secret-") || !strings.Contains(out, "token-tun") {
+	if !strings.Contains(out, "TURN key") {
+		t.Fatalf("status without the TURN key:\n%s", out)
+	}
+	if _, out, _ = run(t, "cloudflare", "status", "-show-secret"); !strings.Contains(out, "secret-") || !strings.Contains(out, "token-tun") ||
+		!strings.Contains(out, "TURN key secret") {
 		t.Fatalf("status -show-secret:\n%s", out)
 	}
 
@@ -110,7 +115,7 @@ func TestCloudflareSetupStatusTeardown(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "Remote access is removed") {
 		t.Fatalf("teardown: %d\n%s\n%s", code, out, errOut)
 	}
-	if len(f.Tunnels) != 0 || len(f.Apps) != 0 || len(f.Records) != 0 {
+	if len(f.Tunnels) != 0 || len(f.Apps) != 0 || len(f.Records) != 0 || len(f.TURNKeys) != 0 {
 		t.Fatal("teardown left resources")
 	}
 	if ok, _ := storedSetup(t); ok {

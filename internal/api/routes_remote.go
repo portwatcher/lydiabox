@@ -30,6 +30,10 @@ type RemoteAccessStatus struct {
 	// ServiceTokenClientID is the CF-Access-Client-Id of the service token.
 	ServiceTokenClientID string   `json:"serviceTokenClientId,omitempty"`
 	BypassPaths          []string `json:"bypassPaths,omitempty"`
+	// TURNKeyID is the stored Cloudflare Realtime TURN key. TURNInUse is
+	// true when the desktop stream uses it (no WebRTC setting overrides it).
+	TURNKeyID string `json:"turnKeyId,omitempty"`
+	TURNInUse bool   `json:"turnInUse"`
 	// Tunnel is nil when LydiaBox does not run cloudflared.
 	Tunnel *TunnelStatus `json:"tunnel,omitempty"`
 }

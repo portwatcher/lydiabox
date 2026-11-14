@@ -16,15 +16,17 @@ import (
 
 // remoteAccess is the remote access state of a running control plane.
 type remoteAccess struct {
-	state  cloudflare.State
-	access *accessjwt.Verifier
-	tunnel *cloudflared.Supervisor
+	state     cloudflare.State
+	access    *accessjwt.Verifier
+	tunnel    *cloudflared.Supervisor
+	turnInUse bool
 }
 
 // RemoteAccessStatus implements api.RemoteAccessSource.
 func (ra *remoteAccess) RemoteAccessStatus(_ context.Context, _ string) api.RemoteAccessStatus {
 	st := api.RemoteAccessStatus{Provider: remoteProvider, Configured: ra.access != nil,
-		Hostname: ra.state.Hostname, ServiceTokenClientID: ra.state.ServiceTokenClientID, BypassPaths: ra.state.BypassPaths}
+		Hostname: ra.state.Hostname, ServiceTokenClientID: ra.state.ServiceTokenClientID, BypassPaths: ra.state.BypassPaths,
+		TURNKeyID: ra.state.TURNKeyID, TURNInUse: ra.turnInUse}
 	if ra.access != nil {
 		st.TeamDomain = ra.access.TeamDomain()
 		st.Emails = ra.accessEmails()
@@ -85,6 +87,8 @@ func wireRemote(ctx context.Context, d *deps) (*component, error) {
 	ra := &remoteAccess{state: state}
 	comp := &component{Name: "remote access", Routes: []api.RouteRegistrar{api.RemoteAccessRoutes{Source: ra}}}
 
+	ra.turnInUse = applyStoredTURN(d, state, sec, log)
+
 	team, aud, emails, on, err := accessSettings(cfg.Remote, state)
 	if err != nil {
 		return nil, err
@@ -124,6 +128,27 @@ func wireRemote(ctx context.Context, d *deps) (*component, error) {
 	comp.Start = tunnel.Start
 	comp.Stop = tunnel.Stop
 	return comp, nil
+}
+
+// applyStoredTURN makes the desktop stream use the TURN key of
+// `lydiabox cloudflare setup` (relay only, no UDP port forward) when no
+// WebRTC setting is set. Explicit settings always win.
+func applyStoredTURN(d *deps, state cloudflare.State, sec cloudflare.Secrets, log *slog.Logger) bool {
+	if state.TURNKeyID == "" || sec.TURNKeySecret == "" {
+		return false
+	}
+	w := &d.Config.WebRTC
+	if w.Configured() {
+		log.Info("WebRTC settings are set; the stored Cloudflare TURN key is not used")
+		return false
+	}
+	w.CloudflareTURNKeyID, w.CloudflareTURNAPIToken = state.TURNKeyID, sec.TURNKeySecret
+	if !w.RelayOnlySet {
+		w.RelayOnly = true
+		d.StoredTURN = true
+	}
+	log.Info("the desktop stream uses the stored Cloudflare TURN key", "relayOnly", w.RelayOnly)
+	return true
 }
 
 // newTunnel resolves (and on first use installs) cloudflared and returns

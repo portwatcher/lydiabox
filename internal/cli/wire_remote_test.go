@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -143,4 +144,114 @@ func TestWireRemoteManualAccess(t *testing.T) {
 	if _, err := wireRemote(context.Background(), d); err == nil || !strings.Contains(err.Error(), "LYDIABOX_ACCESS_TEAM_DOMAIN") {
 		t.Fatalf("incomplete settings: %v", err)
 	}
+}
+
+func storeTURN(t *testing.T, d *deps) {
+	t.Helper()
+	ctx := context.Background()
+	state, sec, _, err := loadCloudflare(ctx, d.Store, d.Config.TenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.TURNKeyID, sec.TURNKeySecret = "turnkey1", "turnsecret"
+	if err := saveCloudflare(ctx, d.Store, d.Config.TenantID, state, sec); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWireRemoteStoredTURN(t *testing.T) {
+	d := remoteDeps(t, true)
+	storeTURN(t, d)
+	c, err := wireRemote(context.Background(), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := d.Config.WebRTC
+	if w.CloudflareTURNKeyID != "turnkey1" || w.CloudflareTURNAPIToken != "turnsecret" || !w.RelayOnly || !d.StoredTURN {
+		t.Fatalf("stored TURN not used: %+v StoredTURN=%v", w, d.StoredTURN)
+	}
+	if p, err := webRTCPort(defaultWebRTCPort(d)); err != nil || p != 0 {
+		t.Fatalf("UDP port = %d, %v; want 0 with the stored TURN key", p, err)
+	}
+	if prov, err := desktopICE(w, d.Logger); err != nil || prov == nil {
+		t.Fatalf("desktop ICE provider: %v %v", prov, err)
+	}
+	if st := remoteStatus(t, c); st.TURNKeyID != "turnkey1" || !st.TURNInUse {
+		t.Fatalf("status = %+v", st)
+	}
+}
+
+func TestWireRemoteTURNPrecedence(t *testing.T) {
+	t.Setenv("LYDIABOX_WEBRTC_UDP_PORT", "")
+	cases := []struct {
+		name  string
+		env   map[string]string
+		yaml  string
+		check func(t *testing.T, d *deps)
+	}{
+		{"YAML TURN wins", nil, "webrtc:\n  turn_urls: [\"turn:turn.example.com:3478\"]\n  turn_username: u\n  turn_password: p\n",
+			func(t *testing.T, d *deps) {
+				if w := d.Config.WebRTC; w.CloudflareTURNKeyID != "" || len(w.TURNURLs) != 1 || d.StoredTURN {
+					t.Fatalf("YAML TURN overridden: %+v", w)
+				}
+			}},
+		{"explicit STUN wins", map[string]string{"LYDIABOX_STUN_URLS": "stun:stun.example.com:3478"}, "", func(t *testing.T, d *deps) {
+			if d.Config.WebRTC.CloudflareTURNKeyID != "" || d.Config.WebRTC.RelayOnly || d.StoredTURN {
+				t.Fatalf("stored key used: %+v", d.Config.WebRTC)
+			}
+		}},
+		{"explicit Cloudflare TURN wins", map[string]string{"LYDIABOX_CLOUDFLARE_TURN_KEY_ID": "envkey", "LYDIABOX_CLOUDFLARE_TURN_API_TOKEN": "envtoken"}, "",
+			func(t *testing.T, d *deps) {
+				if w := d.Config.WebRTC; w.CloudflareTURNKeyID != "envkey" || w.CloudflareTURNAPIToken != "envtoken" || w.RelayOnly {
+					t.Fatalf("env TURN overridden: %+v", w)
+				}
+			}},
+		{"explicit relay-only false wins", map[string]string{"LYDIABOX_WEBRTC_RELAY_ONLY": "false"}, "", func(t *testing.T, d *deps) {
+			w := d.Config.WebRTC
+			if w.CloudflareTURNKeyID != "turnkey1" || w.RelayOnly || d.StoredTURN {
+				t.Fatalf("want stored key without relay-only: %+v StoredTURN=%v", w, d.StoredTURN)
+			}
+			if p, _ := webRTCPort(defaultWebRTCPort(d)); p != 50000 {
+				t.Fatalf("UDP port = %d, want the default forward", p)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var pairs []string
+			for k, v := range tc.env {
+				pairs = append(pairs, k+"="+v)
+			}
+			cfg, err := config.Load(config.LoadOptions{HomeDir: t.TempDir(), ConfigFile: writeYAML(t, tc.yaml), Environ: func() []string { return pairs }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := remoteDeps(t, true)
+			cfg.DataDir = d.Config.DataDir
+			d.Config = cfg
+			storeTURN(t, d)
+			if _, err := wireRemote(context.Background(), d); err != nil {
+				t.Fatal(err)
+			}
+			tc.check(t, d)
+		})
+	}
+
+	// Without a stored key nothing changes.
+	d := remoteDeps(t, true)
+	if _, err := wireRemote(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Config.WebRTC.Configured() || d.StoredTURN {
+		t.Fatalf("WebRTC changed without a stored key: %+v", d.Config.WebRTC)
+	}
+}
+
+func writeYAML(t *testing.T, content string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "lydiabox.yaml")
+	if err := os.WriteFile(p, []byte("log_level: info\n"+content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

@@ -32,6 +32,9 @@ type WebRTCConfig struct {
 	CloudflareTURNAPIToken string
 	// RelayOnly sets the ICE transport policy "relay" on both peers.
 	RelayOnly bool
+	// RelayOnlySet reports that LYDIABOX_WEBRTC_RELAY_ONLY or
+	// webrtc.relay_only set RelayOnly (also to false).
+	RelayOnlySet bool
 }
 
 // MaxTURNTTL is the longest accepted TURN credential lifetime (the
@@ -70,7 +73,7 @@ func applyWebRTCFile(w *WebRTCConfig, f *webrtcFile) error {
 	setStr(&w.CloudflareTURNKeyID, f.CloudflareTURNKeyID)
 	setStr(&w.CloudflareTURNAPIToken, f.CloudflareTURNAPIToken)
 	if f.RelayOnly != nil {
-		w.RelayOnly = *f.RelayOnly
+		w.RelayOnly, w.RelayOnlySet = *f.RelayOnly, true
 	}
 	return setDuration(&w.TURNTTL, f.TURNTTL, "webrtc.turn_ttl")
 }
@@ -107,7 +110,7 @@ func applyWebRTCEnv(w *WebRTCConfig, env map[string]string) []error {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("LYDIABOX_WEBRTC_RELAY_ONLY: %q is not a boolean", v))
 		} else {
-			w.RelayOnly = b
+			w.RelayOnly, w.RelayOnlySet = b, true
 		}
 	}
 	return errs
