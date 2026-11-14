@@ -19,6 +19,7 @@ import (
 //	0200-0299  magpie / harness (Phase 3)
 //	0300-0399  connector (Phase 4)
 //	0400-0499  web / desktop (Phase 5)
+//	0500-0599  remote access (Cloudflare Zero Trust)
 //
 // To add one, create internal/store/migrations_<subsystem>.go with an init
 // function that calls registerMigration, plus tenant-scoped accessor methods
