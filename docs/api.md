@@ -209,6 +209,8 @@ Response `200`:
   "emails": ["me@example.com"],
   "serviceTokenClientId": "0123abcd.access",
   "bypassPaths": ["/webdav"],
+  "turnKeyId": "0123456789abcdef0123456789abcdef",
+  "turnInUse": true,
   "tunnel": { "state": "connected", "restarts": 0, "startedAt": "2026-11-14T08:00:00Z" }
 }
 ```
@@ -217,6 +219,9 @@ Response `200`:
   `serviceTokenClientId`, and `bypassPaths` come from
   `lydiabox cloudflare setup` and are omitted for a setup by
   `LYDIABOX_ACCESS_*` only.
+- `turnKeyId` is the Cloudflare Realtime TURN key that setup stored.
+  `turnInUse` is true when the desktop stream relays through it, that is,
+  when no STUN or TURN setting replaces it (section 9).
 - `tunnel` is omitted when LydiaBox does not run cloudflared. `state` is
   `connecting`, `connected` (at least one connection to the Cloudflare edge),
   `error` (with `lastError`, for example a missing binary), or `stopped`.

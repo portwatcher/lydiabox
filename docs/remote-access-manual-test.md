@@ -30,6 +30,7 @@ Do the steps in the order given. Record pass or fail for each line.
    | Account | Access: Apps and Policies: Edit | Access applications and reusable policies |
    | Account | Access: Organizations, Identity Providers, and Groups: Edit | Read the team domain, add the one-time PIN login |
    | Account | Access: Service Tokens: Edit | The service token for non-browser clients |
+   | Account | Cloudflare Realtime: Edit (the API reference calls it `Calls Write`) | Create and delete the TURN key of the desktop stream; not needed with `-turn=false` |
    | Zone (`example.com`) | DNS: Edit | The CNAME record of `$HOST` |
    | Zone (`example.com`) | Zone: Read | Find the zone of `$HOST` |
 
@@ -47,8 +48,9 @@ export HOST=agent.example.com ME=<your email>
 1. Run `lydiabox cloudflare setup -hostname $HOST -email $ME`.
    - The output lists `created tunnel`, `routed`, `created DNS record`,
      `enabled the one-time PIN login method` (only when the account had
-     none), `created Access policy`, `created service token`, and `created
-     Access application`.
+     none), `created Access policy`, `created service token`, `created
+     Access application`, and `created TURN key`. The last line says that
+     the desktop stream goes through Cloudflare TURN.
    - It prints `CF-Access-Client-Id` and `CF-Access-Client-Secret`. Save
      them as `$CF_ID` and `$CF_SECRET`.
    - It installs `cloudflared` into `$LYDIABOX_DATA_DIR/runtime/bin`.
@@ -62,16 +64,22 @@ export HOST=agent.example.com ME=<your email>
      email) and `LydiaBox service token ($HOST)` (Service Auth).
    - Zero Trust, Settings, Authentication: One-time PIN is in the list.
    - Zero Trust, Access, Service Auth: `LydiaBox ($HOST)`.
+   - Realtime, TURN Server: a key `LydiaBox ($HOST)`.
 3. `lydiabox cloudflare status` shows the hostname, the team domain, the
    audience tag (the same value as the AUD tag on the application's
-   Overview page), and no secret.
+   Overview page), the TURN key ID (the same as in the dashboard), and no
+   secret.
 4. `sqlite3 $LYDIABOX_DATA_DIR/state/lydiabox.db "select secrets_enc from remote_access"`
    shows binary data, not the tunnel token.
 
 ## 3. Tunnel
 
-1. Start `lydiabox up` without `LYDIABOX_LISTEN_ADDR` in the environment
-   (comment it out in `.env`).
+1. Start `lydiabox up` without `LYDIABOX_LISTEN_ADDR`, without
+   `LYDIABOX_WEBRTC_UDP_PORT`, and without any `LYDIABOX_STUN_*` or
+   `LYDIABOX_*TURN*` variable in the environment (comment them out in
+   `.env`).
+   - The log shows `the desktop stream uses the stored Cloudflare TURN key`
+     with `relayOnly=true`.
    - The log shows `Cloudflare Access login is on`, `the tunnel is on;
      listening on loopback only`, `cloudflared started`, and then
      `Cloudflare Tunnel connected`.
@@ -80,7 +88,8 @@ export HOST=agent.example.com ME=<your email>
    (connection refused).
 3. The dashboard shows the tunnel as Healthy.
 4. `curl -H "Authorization: Bearer $LYDIABOX_AUTH_TOKEN" http://127.0.0.1:8080/api/v1/remote-access`
-   on the host shows `"configured": true` and `"tunnel": {"state": "connected", ...}`.
+   on the host shows `"configured": true`, `"turnInUse": true`, and
+   `"tunnel": {"state": "connected", ...}`.
 5. Kill the `cloudflared` child (`pkill -f "cloudflared tunnel"`). Within
    a few seconds, the log shows `cloudflared stopped; restarting`, and the
    state goes back to `connected` with `restarts` 1.
@@ -95,12 +104,20 @@ export HOST=agent.example.com ME=<your email>
 4. `https://$HOST/api/v1/auth/session` in the same window shows
    `"method": "access"` and `"email": "<your email>"`.
 5. Open the Studio and start a session: the terminal works (WebSocket
-   through the tunnel). Open the Desktop page: signaling connects (the video
-   needs a reachable UDP port or a TURN relay; see the README).
-6. Open the Files page, upload a file, and download it again.
-7. Select Sign out. The browser goes to the Access logout page. Open
+   through the tunnel). Open the Desktop page from another network (for
+   example a phone hotspot): video starts within about 10 seconds, with no
+   extra setting. `chrome://webrtc-internals` shows `iceTransportPolicy:
+   relay` and a `relay` candidate pair on a Cloudflare TURN address. Take
+   over and type in the desktop: the input works.
+6. Restart `lydiabox up` with `LYDIABOX_STUN_URLS=stun:stun.l.google.com:19302`.
+   The log says that the stored TURN key is not used, `/api/v1/remote-access`
+   shows `"turnInUse": false`, and the video through the tunnel does not
+   start (no relay), unless the browser can reach UDP port 50000 of the
+   host. Restart without the variable.
+7. Open the Files page, upload a file, and download it again.
+8. Select Sign out. The browser goes to the Access logout page. Open
    `https://$HOST` again: Cloudflare asks for a new code.
-8. In a new private window, enter another email that is not on the list.
+9. In a new private window, enter another email that is not on the list.
    Cloudflare does not let it in (no code arrives, or Access shows that
    you do not have access).
 
@@ -163,11 +180,16 @@ export HOST=agent.example.com ME=<your email>
 
 1. Run `lydiabox cloudflare setup -hostname $HOST -email $ME -email <second email>`.
    The output shows `reused tunnel`, `reused DNS record`, `updated Access
-   policy`, `reused service token`, and `updated Access application`.
+   policy`, `reused service token`, `updated Access application`, and
+   `reused TURN key`.
 2. The dashboard has one tunnel, one DNS record, one application, and the
    owner policy lists both emails.
 3. Restart `lydiabox up`. The second email can sign in.
-4. Run `lydiabox cloudflare setup -hostname other.example.com -email $ME`:
+4. Run setup again with `-turn=false`: the output shows `deleted TURN key`,
+   the key is gone from the dashboard, and after a restart of
+   `lydiabox up` the Desktop page has no video through the tunnel. Run
+   setup once more without `-turn=false`: a new key is created.
+5. Run `lydiabox cloudflare setup -hostname other.example.com -email $ME`:
    it stops with a message to run teardown first, and changes nothing.
 
 ## 9. Teardown
@@ -177,8 +199,8 @@ export HOST=agent.example.com ME=<your email>
    `Remote access is removed.` If a step fails, the command says that the
    stored setup is kept; run it again. Record such a failure.
 2. The dashboard has no tunnel, no DNS record for `$HOST`, no LydiaBox
-   application, policy, or service token. The One-time PIN login method
-   stays.
+   application, policy, service token, or TURN key. The One-time PIN login
+   method stays.
 3. `lydiabox cloudflare status` says that remote access is not set up.
    `lydiabox up` listens on `0.0.0.0:8080` again and does not start
    `cloudflared`.

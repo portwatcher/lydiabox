@@ -210,7 +210,11 @@ The desktop stream is WebRTC media on UDP. When browsers cannot reach
 `LYDIABOX_WEBRTC_UDP_PORT` (a Cloudflare Tunnel, a host with no inbound
 port), configure a TURN server. The host sends the same STUN and TURN
 servers to the browser and to the guest peer, so the stream can go through
-the relay from both sides. For a tunnel-only host:
+the relay from both sides. `lydiabox cloudflare setup` (see "Remote access with
+Cloudflare Zero Trust") does this for you: it creates a Cloudflare Realtime TURN key, and `lydiabox up`
+then relays the stream through it with no UDP port. To use another TURN
+server or a key that you made yourself, set the variables below; any STUN or
+TURN setting replaces the stored key. For a tunnel-only host:
 
 ```sh
 LYDIABOX_CLOUDFLARE_TURN_KEY_ID=...        # or LYDIABOX_TURN_URLS with credentials
@@ -278,8 +282,9 @@ lydiabox up                    # runs cloudflared; open https://agent.example.co
 ```
 
 `setup` creates (or reuses) a Cloudflare Tunnel, a proxied DNS record, an
-Access application with a policy for the emails, and a service token. It
-stores the tunnel token encrypted in the state database. Run it again to
+Access application with a policy for the emails, a service token, and a
+Cloudflare Realtime TURN key for the desktop stream (`-turn=false` skips
+it). It stores the tokens encrypted in the state database. Run it again to
 change the emails; `lydiabox cloudflare status` shows the setup and
 `lydiabox cloudflare teardown` deletes it. `lydiabox up` downloads the
 pinned `cloudflared` on first use.
@@ -290,6 +295,10 @@ pinned `cloudflared` on first use.
   protects LydiaBox.
 - The web UI skips the token prompt for an Access login and shows the
   email. The admin token keeps working everywhere.
+- The desktop stream relays through the stored TURN key (relay only, no
+  UDP port), so video works through the tunnel with no extra setting.
+  Cloudflare bills TURN traffic above its free monthly amount. Any
+  `LYDIABOX_STUN_*` or `LYDIABOX_*TURN*` setting replaces the stored key.
 - Scripts, WebDAV, and S3 clients send the service token headers that
   `setup` prints, in addition to the admin token:
 

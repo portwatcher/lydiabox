@@ -10,12 +10,16 @@ Do the steps in the order given. Record pass or fail for each line.
 
 ## 1. Setup
 
-1. Create a TURN key in the Cloudflare dashboard (Realtime > TURN Server).
-   Keep the key ID and the API token.
-2. Set up the host with a Cloudflare Tunnel and no inbound port: the web UI
+1. Set up the host with a Cloudflare Tunnel and no inbound port: the web UI
    is reachable only through the tunnel hostname. Make sure that no
-   firewall rule or router forward sends UDP to the host.
-3. Start `lydiabox up` with:
+   firewall rule or router forward sends UDP to the host. The simplest way
+   is `lydiabox cloudflare setup` ([remote-access-manual-test.md](remote-access-manual-test.md)):
+   it also creates a TURN key, and `lydiabox up` then uses it with
+   relay-only on and no UDP port.
+2. Start `lydiabox up` with only `LYDIABOX_TURN_TTL=5m` (it works together
+   with the stored key). A short TTL makes step 4 quick.
+3. To test a TURN key that you made yourself instead (Cloudflare dashboard,
+   Realtime > TURN Server), start `lydiabox up` with:
 
    ```sh
    LYDIABOX_CLOUDFLARE_TURN_KEY_ID=<key id>
@@ -25,7 +29,7 @@ Do the steps in the order given. Record pass or fail for each line.
    LYDIABOX_TURN_TTL=5m
    ```
 
-   A short TTL makes step 4 quick. Do the test with `chv` and with
+   These values replace the stored key. Do the test with `chv` and with
    `docker` if both are available.
 
 ## 2. Stream through the relay
@@ -78,6 +82,8 @@ Do the steps in the order given. Record pass or fail for each line.
 
 ## 6. Default configuration
 
-1. Remove all ICE settings and set `LYDIABOX_WEBRTC_UDP_PORT=50000`.
+1. Remove all ICE settings, run `lydiabox cloudflare setup` with
+   `-turn=false` (or do not set up remote access), and set
+   `LYDIABOX_WEBRTC_UDP_PORT=50000`.
 2. Open the Desktop page from the LAN. Expect video as before, the Google
    STUN server in `chrome://webrtc-internals`, and a `host` candidate pair.
