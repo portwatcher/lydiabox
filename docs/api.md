@@ -526,7 +526,7 @@ Server → client:
 
 ```json
 { "type": "hello", "mode": "OBSERVER", "screen": { "width": 1920, "height": 1080 },
-  "iceServers": [ { "urls": ["stun:stun.l.google.com:19302"] } ] }
+  "iceServers": [ { "urls": ["stun:stun.l.google.com:19302"] } ], "iceTransportPolicy": "all" }
 { "type": "answer", "sdp": "v=0..." }
 { "type": "ice", "candidate": { "candidate": "candidate:...", "sdpMid": "0", "sdpMLineIndex": 0 } }
 { "type": "mode", "mode": "TAKEOVER", "changedBy": "user", "changedAt": "2026-11-10T06:30:00Z" }
@@ -555,6 +555,14 @@ Client → server:
 
 `launch.app` is `chrome`, `blender`, or `terminal`.
 
+`hello.iceServers` are `RTCIceServer` objects; TURN entries have
+`username` and `credential`. `hello.iceTransportPolicy` is `all`, or
+`relay` when `LYDIABOX_WEBRTC_RELAY_ONLY` is set; the browser passes both
+to `RTCPeerConnection`. When the TURN credentials are minted (Cloudflare
+TURN or `LYDIABOX_TURN_SECRET`), the server sends a new `hello` with new
+credentials before they expire; the browser then builds a new peer
+connection and sends a new offer on the same socket.
+
 `mode` and `agent_action` messages go to every socket of the tenant; a
 `mode` change from one browser reaches all of them. `viewers` is sent on
 every join and leave. An invalid message gives an `error` message with
@@ -569,6 +577,19 @@ published port). The guest advertises the address of the host the browser
 connected to (the request `Host`) as its ICE host candidate, so the browser
 needs UDP access to that port. With `chv`, a browser on the host itself
 uses the guest address `172.30.0.2` directly.
+
+TURN relay: when STUN or TURN settings are configured
+(`LYDIABOX_STUN_URLS`, `LYDIABOX_TURN_URLS`, `LYDIABOX_TURN_SECRET`,
+`LYDIABOX_CLOUDFLARE_TURN_KEY_ID`), the guest peer gets the same
+`iceServers` as the browser, through the guest signaling RPC (in memory,
+never on the guest disk). The guest then also gathers a server-reflexive
+candidate (its address behind the host NAT) and a relay candidate. Either
+side's relay is enough when the other side can send to it, so the stream
+works with no inbound port on the host. With `iceTransportPolicy` `relay`
+both peers use only relay candidates and the guest skips the forwarded
+port, so `LYDIABOX_WEBRTC_UDP_PORT=0` is valid. TURN over UDP, TCP
+(`?transport=tcp`), and TLS (`turns:`) are supported. Without these
+settings, the guest gets no ICE server, as before.
 
 ### Data channel `input` (browser → guest, peer-to-peer)
 

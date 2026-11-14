@@ -92,6 +92,13 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_GPU_PCI_ADDR` | empty | VFIO PCI address for GPU passthrough (`chv`) |
 | `LYDIABOX_IDLE_TIMEOUT` | `20m` | Pause the VM after this long without sessions or viewers (`0` disables) |
 | `LYDIABOX_WEBRTC_UDP_PORT` | `50000` | UDP port of the desktop stream (`0` disables forwarding) |
+| `LYDIABOX_STUN_URLS` | Google STUN | STUN URLs of the desktop stream (`none` disables) |
+| `LYDIABOX_TURN_URLS` | empty | TURN URLs (`turn:`, `turn:...?transport=tcp`, `turns:`) |
+| `LYDIABOX_TURN_USERNAME`, `_PASSWORD` | empty | Static TURN credentials |
+| `LYDIABOX_TURN_SECRET` | empty | TURN REST shared secret (coturn); mints short-lived credentials |
+| `LYDIABOX_CLOUDFLARE_TURN_KEY_ID`, `_API_TOKEN` | empty | Cloudflare Realtime TURN key; mints credentials for each viewer |
+| `LYDIABOX_TURN_TTL` | `1h` | Lifetime of minted TURN credentials (1m to 48h) |
+| `LYDIABOX_WEBRTC_RELAY_ONLY` | `false` | Desktop stream through TURN only |
 | `LYDIABOX_DOCKER_IMAGE` | `lydiabox/guest:latest` | Guest image of the `docker` driver |
 | `LYDIABOX_GUEST_BINARY` | found next to `lydiabox` | Linux `lydiabox-guest` injected into the VM |
 | `LYDIABOX_ROOTFS_URL` | empty | Base URL of prebuilt guest images (`chv`) |
@@ -193,6 +200,28 @@ setup.
 4. Set `LYDIABOX_GPU_PCI_ADDR=0000:01:00.0` and restart `lydiabox up`.
    Cloud Hypervisor attaches the device; install the guest GPU driver in
    the VM (it persists in the overlay).
+
+## Desktop stream through a TURN relay
+
+The desktop stream is WebRTC media on UDP. When browsers cannot reach
+`LYDIABOX_WEBRTC_UDP_PORT` (a Cloudflare Tunnel, a host with no inbound
+port), configure a TURN server. The host sends the same STUN and TURN
+servers to the browser and to the guest peer, so the stream can go through
+the relay from both sides. For a tunnel-only host:
+
+```sh
+LYDIABOX_CLOUDFLARE_TURN_KEY_ID=...        # or LYDIABOX_TURN_URLS with credentials
+LYDIABOX_CLOUDFLARE_TURN_API_TOKEN=...
+LYDIABOX_WEBRTC_RELAY_ONLY=true
+LYDIABOX_WEBRTC_UDP_PORT=0
+```
+
+`turn:...?transport=tcp` and `turns:` URLs work on networks that block UDP.
+Minted credentials (Cloudflare, `LYDIABOX_TURN_SECRET`) are renewed before
+`LYDIABOX_TURN_TTL` ends. With `chv`, the guest cannot reach private
+networks or the host, so the TURN server needs a public address.
+[docs/turn-manual-test.md](docs/turn-manual-test.md) is the check with a
+real TURN service.
 
 ## Files, WebDAV, and S3
 
