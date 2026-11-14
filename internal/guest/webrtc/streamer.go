@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/pion/ice/v4"
+	"github.com/pion/transport/v3"
 	pion "github.com/pion/webrtc/v4"
 )
 
@@ -37,7 +38,16 @@ type Options struct {
 	Input func(data []byte) error
 	// IncludeLoopback adds loopback ICE candidates (tests).
 	IncludeLoopback bool
-	Logger          *slog.Logger
+	// Net replaces the OS network for ICE (tests: a pion vnet).
+	Net transport.Net
+	// ICETimeouts overrides the pion ICE timeouts (tests).
+	ICETimeouts *ICETimeouts
+	Logger      *slog.Logger
+}
+
+// ICETimeouts are the pion ICE disconnected, failed, and keepalive timeouts.
+type ICETimeouts struct {
+	Disconnected, Failed, KeepAlive time.Duration
 }
 
 // Streamer owns the shared video track and the encoder lifecycle.

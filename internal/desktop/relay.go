@@ -16,6 +16,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/lydiabox/lydiabox/internal/desktop/ice"
 	"github.com/lydiabox/lydiabox/internal/guest/rpc"
 	"github.com/lydiabox/lydiabox/internal/tenant"
 )
@@ -41,7 +42,7 @@ type EventConn interface {
 
 // Guest is the guest daemon as seen by the relay.
 type Guest interface {
-	OpenSignal(ctx context.Context, tenantID, publicIP string) (SignalConn, rpc.SignalHello, error)
+	OpenSignal(ctx context.Context, tenantID string, p rpc.SignalParams) (SignalConn, rpc.SignalHello, error)
 	SubscribeEvents(ctx context.Context, tenantID string) (EventConn, error)
 	GetMode(ctx context.Context, tenantID string) (rpc.ModeState, error)
 	SetMode(ctx context.Context, tenantID, mode, by string) (rpc.ModeState, error)
@@ -55,9 +56,7 @@ type Power interface {
 }
 
 // ICEServer is an entry of the hello message's iceServers.
-type ICEServer struct {
-	URLs []string `json:"urls"`
-}
+type ICEServer = rpc.ICEServer
 
 // Options configures a Relay.
 type Options struct {
@@ -68,8 +67,16 @@ type Options struct {
 	// PublicIP returns the address at which the browser that sent r reaches
 	// the forwarded WebRTC UDP port ("" lets the guest advertise its own).
 	PublicIP func(r *http.Request) string
-	// ICEServers are sent to the browser in hello (default: Google STUN).
+	// ICEServers are sent to the browser in hello when ICE is nil, and when
+	// ICE fails outside relay-only mode (default: Google STUN).
 	ICEServers []ICEServer
+	// ICE, when set, gives each viewer its ICE servers, which go to the
+	// browser in hello and to the guest peer in the signaling parameters.
+	// Credentials that it mints are replaced before they expire. When ICE
+	// is nil, the guest gets no ICE servers.
+	ICE ice.Provider
+	// RelayOnly sets the ICE transport policy "relay" on both peers.
+	RelayOnly bool
 	// WakeTimeout bounds waking the VM for a new socket (default 120 s).
 	WakeTimeout time.Duration
 	Logger      *slog.Logger
@@ -95,7 +102,10 @@ func New(opts Options) (*Relay, error) {
 		opts.PublicIP = func(*http.Request) string { return "" }
 	}
 	if opts.ICEServers == nil {
-		opts.ICEServers = []ICEServer{{URLs: []string{"stun:stun.l.google.com:19302"}}}
+		opts.ICEServers = []ICEServer{{URLs: []string{ice.DefaultSTUNURL}}}
+	}
+	if opts.RelayOnly && opts.ICE == nil {
+		return nil, errors.New("desktop: RelayOnly needs an ICE provider with a TURN server")
 	}
 	if opts.WakeTimeout <= 0 {
 		opts.WakeTimeout = 120 * time.Second
@@ -118,10 +128,11 @@ func (rl *Relay) Viewers(tenantID string) int {
 
 // Server -> browser messages.
 type helloMsg struct {
-	Type       string      `json:"type"`
-	Mode       string      `json:"mode"`
-	Screen     rpc.Screen  `json:"screen"`
-	ICEServers []ICEServer `json:"iceServers"`
+	Type               string      `json:"type"`
+	Mode               string      `json:"mode"`
+	Screen             rpc.Screen  `json:"screen"`
+	ICEServers         []ICEServer `json:"iceServers"`
+	ICETransportPolicy string      `json:"iceTransportPolicy"`
 }
 
 type errorMsg struct {
@@ -175,33 +186,19 @@ func (rl *Relay) ServeWS(w http.ResponseWriter, r *http.Request) {
 		c.fail("unavailable", "VM is not running: "+err.Error())
 		return
 	}
-	sig, hello, err := rl.opts.Guest.OpenSignal(ctx, tid, rl.opts.PublicIP(r))
-	if err != nil {
+	v := &viewer{rl: rl, tid: tid, c: c, publicIP: rl.opts.PublicIP(r), cancel: cancel}
+	if err := v.connect(ctx); err != nil {
 		c.fail("unavailable", "desktop stream failed to start: "+err.Error())
 		return
 	}
-	defer sig.Close()
-	c.sendJSON(helloMsg{Type: "hello", Mode: hello.Mode, Screen: hello.Screen, ICEServers: rl.opts.ICEServers})
+	defer v.close()
 	rl.join(tid, c)
 	defer rl.leave(tid, c)
-
-	go func() {
-		defer cancel()
-		for {
-			msg, err := sig.Recv()
-			if err != nil {
-				if ctx.Err() == nil {
-					c.sendJSON(errorMsg{Type: "error", Code: "unavailable", Message: "desktop stream ended"})
-				}
-				return
-			}
-			c.send(msg)
-		}
-	}()
-	rl.readLoop(ctx, tid, c, sig)
+	go v.refreshLoop(ctx)
+	rl.readLoop(ctx, tid, c, v)
 }
 
-func (rl *Relay) readLoop(ctx context.Context, tid string, c *client, sig SignalConn) {
+func (rl *Relay) readLoop(ctx context.Context, tid string, c *client, sig interface{ Send(json.RawMessage) error }) {
 	for {
 		typ, data, err := c.conn.Read(ctx)
 		if err != nil {

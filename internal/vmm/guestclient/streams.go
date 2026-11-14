@@ -150,12 +150,12 @@ type SignalStream struct {
 	Hello rpc.SignalHello
 }
 
-// OpenSignal adds a desktop viewer. publicIP is the address at which the
-// browser reaches the forwarded WebRTC UDP port.
-func (c *Client) OpenSignal(ctx context.Context, tenantID, publicIP string) (*SignalStream, error) {
+// OpenSignal adds a desktop viewer with the ICE settings in p (the public
+// IP of the forwarded WebRTC UDP port, the ICE servers, and the policy).
+func (c *Client) OpenSignal(ctx context.Context, tenantID string, p rpc.SignalParams) (*SignalStream, error) {
 	var out *SignalStream
 	err := c.do(ctx, tenantID, true, func(s *rpc.Session) error {
-		st, raw, err := s.Open(ctx, rpc.MethodDesktopSignal, rpc.SignalParams{PublicIP: publicIP})
+		st, raw, err := s.Open(ctx, rpc.MethodDesktopSignal, p)
 		if err != nil {
 			return err
 		}

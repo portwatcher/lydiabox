@@ -140,8 +140,8 @@ func (rl *Relay) ServeMode(w http.ResponseWriter, r *http.Request) {
 type GuestAdapter struct{ Client *guestclient.Client }
 
 // OpenSignal implements Guest.
-func (g GuestAdapter) OpenSignal(ctx context.Context, tid, publicIP string) (SignalConn, rpc.SignalHello, error) {
-	s, err := g.Client.OpenSignal(ctx, tid, publicIP)
+func (g GuestAdapter) OpenSignal(ctx context.Context, tid string, p rpc.SignalParams) (SignalConn, rpc.SignalHello, error) {
+	s, err := g.Client.OpenSignal(ctx, tid, p)
 	if err != nil {
 		return nil, rpc.SignalHello{}, err
 	}

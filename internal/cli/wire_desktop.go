@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/config"
 	"github.com/lydiabox/lydiabox/internal/desktop"
+	"github.com/lydiabox/lydiabox/internal/desktop/ice"
 	"github.com/lydiabox/lydiabox/internal/vmm"
 )
 
@@ -21,15 +23,39 @@ func wireDesktop(ctx context.Context, d *deps) (*component, error) {
 	// browser on the host itself uses the guest's own ICE candidate; the
 	// docker driver publishes the UDP port on the host instead.
 	keepLoopback := d.Driver != config.DriverCHV
+	log := d.Logger.With("component", "desktop")
+	iceProvider, err := desktopICE(d.Config.WebRTC, log)
+	if err != nil {
+		return nil, err
+	}
 	relay, err := desktop.New(desktop.Options{
-		Guest:    desktop.GuestAdapter{Client: d.Guest},
-		Power:    ctl,
-		Running:  func(tid string) bool { return ctl.State(tid) == vmm.StateRunning },
-		PublicIP: func(r *http.Request) string { return desktop.RequestIP(r, keepLoopback) },
-		Logger:   d.Logger.With("component", "desktop"),
+		Guest:     desktop.GuestAdapter{Client: d.Guest},
+		Power:     ctl,
+		Running:   func(tid string) bool { return ctl.State(tid) == vmm.StateRunning },
+		PublicIP:  func(r *http.Request) string { return desktop.RequestIP(r, keepLoopback) },
+		ICE:       iceProvider,
+		RelayOnly: d.Config.WebRTC.RelayOnly,
+		Logger:    log,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &component{Name: "desktop", Routes: []api.RouteRegistrar{api.DesktopRoutes{Relay: relay}}}, nil
+}
+
+// desktopICE returns the ICE provider of the WebRTC settings, or nil when
+// nothing is configured (the browser gets the default STUN server and the
+// guest none).
+func desktopICE(w config.WebRTCConfig, log *slog.Logger) (ice.Provider, error) {
+	if !w.Configured() {
+		return nil, nil
+	}
+	cfg := ice.Config{
+		STUNURLs: w.STUNURLs, TURNURLs: w.TURNURLs, TURNUsername: w.TURNUsername, TURNPassword: w.TURNPassword,
+		TURNSecret: w.TURNSecret, TTL: w.TURNTTL, Logger: log,
+	}
+	if w.CloudflareTURNKeyID != "" {
+		cfg.Cloudflare = &ice.Cloudflare{KeyID: w.CloudflareTURNKeyID, APIToken: w.CloudflareTURNAPIToken}
+	}
+	return ice.New(cfg)
 }

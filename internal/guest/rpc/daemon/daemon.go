@@ -286,7 +286,7 @@ func (s *service) signal(ctx context.Context, st *rpc.Stream, params json.RawMes
 	if err := st.Reply(rpc.SignalHello{Mode: s.Desktop.Mode().Mode, Screen: rpc.Screen{Width: w, Height: h}}); err != nil {
 		return err
 	}
-	peer, err := s.Stream.NewPeer(p.PublicIP, func(m webrtc.Signal) { _ = st.WriteJSON(m) })
+	peer, err := s.Stream.NewPeer(peerConfig(p), func(m webrtc.Signal) { _ = st.WriteJSON(m) })
 	if err != nil {
 		return st.WriteJSON(webrtc.Signal{Type: "error", Code: rpc.CodeUnavailable, Message: err.Error()})
 	}

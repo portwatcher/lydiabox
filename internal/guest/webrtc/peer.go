@@ -32,11 +32,22 @@ type Peer struct {
 	closeOnce sync.Once
 }
 
+// PeerConfig is one viewer's ICE configuration.
+type PeerConfig struct {
+	// PublicIP, when set, replaces the advertised host candidate address so
+	// a browser outside the VM network can reach the forwarded media port.
+	PublicIP string
+	// ICEServers are the STUN and TURN servers of this viewer. A TURN server
+	// gives the guest a relay candidate, which works when the host has no
+	// inbound UDP port; STUN gives a server-reflexive candidate.
+	ICEServers []pion.ICEServer
+	// RelayOnly limits the peer to TURN relay candidates.
+	RelayOnly bool
+}
+
 // NewPeer creates a viewer. send delivers signaling messages to the browser
-// (through the host relay). publicIP, when set, replaces the advertised host
-// candidate address so a browser outside the VM network can reach the
-// forwarded media port.
-func (s *Streamer) NewPeer(publicIP string, send func(Signal)) (*Peer, error) {
+// (through the host relay).
+func (s *Streamer) NewPeer(cfg PeerConfig, send func(Signal)) (*Peer, error) {
 	me := &pion.MediaEngine{}
 	if err := me.RegisterDefaultCodecs(); err != nil {
 		return nil, err
@@ -47,17 +58,28 @@ func (s *Streamer) NewPeer(publicIP string, send func(Signal)) (*Peer, error) {
 	}
 	se := pion.SettingEngine{}
 	se.SetNetworkTypes([]pion.NetworkType{pion.NetworkTypeUDP4})
-	if s.mux != nil {
+	if s.opts.Net != nil {
+		se.SetNet(s.opts.Net)
+	}
+	if s.mux != nil && !cfg.RelayOnly {
 		se.SetICEUDPMux(s.mux)
 	}
-	if publicIP != "" {
-		se.SetNAT1To1IPs([]string{publicIP}, pion.ICECandidateTypeHost)
+	if cfg.PublicIP != "" && !cfg.RelayOnly {
+		se.SetNAT1To1IPs([]string{cfg.PublicIP}, pion.ICECandidateTypeHost)
 	}
 	if s.opts.IncludeLoopback {
 		se.SetIncludeLoopbackCandidate(true)
 	}
+	if s.opts.ICETimeouts != nil {
+		t := s.opts.ICETimeouts
+		se.SetICETimeouts(t.Disconnected, t.Failed, t.KeepAlive)
+	}
+	conf := pion.Configuration{ICEServers: cfg.ICEServers}
+	if cfg.RelayOnly {
+		conf.ICETransportPolicy = pion.ICETransportPolicyRelay
+	}
 	api := pion.NewAPI(pion.WithMediaEngine(me), pion.WithInterceptorRegistry(ir), pion.WithSettingEngine(se))
-	pc, err := api.NewPeerConnection(pion.Configuration{})
+	pc, err := api.NewPeerConnection(conf)
 	if err != nil {
 		return nil, fmt.Errorf("webrtc: new peer connection: %w", err)
 	}
@@ -157,6 +179,20 @@ func (p *Peer) answer(sdp string) error {
 
 // ConnectionState returns the PeerConnection state.
 func (p *Peer) ConnectionState() pion.PeerConnectionState { return p.pc.ConnectionState() }
+
+// SelectedPair returns the local and remote candidate types of the selected
+// ICE candidate pair ("" while none is selected).
+func (p *Peer) SelectedPair() (local, remote string) {
+	sctp := p.pc.SCTP()
+	if sctp == nil || sctp.Transport() == nil || sctp.Transport().ICETransport() == nil {
+		return "", ""
+	}
+	pair, err := sctp.Transport().ICETransport().GetSelectedCandidatePair()
+	if err != nil || pair == nil {
+		return "", ""
+	}
+	return pair.Local.Typ.String(), pair.Remote.Typ.String()
+}
 
 // Close closes the PeerConnection and releases the viewer.
 func (p *Peer) Close() error {

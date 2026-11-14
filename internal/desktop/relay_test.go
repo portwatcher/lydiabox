@@ -72,13 +72,15 @@ type fakeGuest struct {
 	mode     string
 	launched []string
 	publicIP string
+	params   []rpc.SignalParams
 }
 
-func (g *fakeGuest) OpenSignal(_ context.Context, _ string, publicIP string) (SignalConn, rpc.SignalHello, error) {
+func (g *fakeGuest) OpenSignal(_ context.Context, _ string, p rpc.SignalParams) (SignalConn, rpc.SignalHello, error) {
 	s := &fakeSignal{fromBrowser: make(chan json.RawMessage, 8), toBrowser: make(chan json.RawMessage, 8), closed: make(chan struct{})}
 	g.mu.Lock()
 	g.signals = append(g.signals, s)
-	g.publicIP = publicIP
+	g.publicIP = p.PublicIP
+	g.params = append(g.params, p)
 	g.mu.Unlock()
 	return s, rpc.SignalHello{Mode: rpc.ModeObserver, Screen: rpc.Screen{Width: 1920, Height: 1080}}, nil
 }
@@ -156,11 +158,21 @@ func (p *fakePower) count() int {
 
 func setup(t *testing.T) (*httptest.Server, *fakeGuest, *fakePower, *Relay) {
 	t.Helper()
+	return setupWith(t, nil)
+}
+
+// setupWith is setup with Options changed by edit.
+func setupWith(t *testing.T, edit func(*Options)) (*httptest.Server, *fakeGuest, *fakePower, *Relay) {
+	t.Helper()
 	g := &fakeGuest{events: make(chan json.RawMessage, 16), mode: rpc.ModeObserver}
 	p := &fakePower{}
-	rl, err := New(Options{Guest: g, Power: p, Logger: slog.New(slog.DiscardHandler),
+	opts := Options{Guest: g, Power: p, Logger: slog.New(slog.DiscardHandler),
 		Running:  func(string) bool { p.mu.Lock(); defer p.mu.Unlock(); return p.running },
-		PublicIP: func(r *http.Request) string { return RequestIP(r, true) }})
+		PublicIP: func(r *http.Request) string { return RequestIP(r, true) }}
+	if edit != nil {
+		edit(&opts)
+	}
+	rl, err := New(opts)
 	if err != nil {
 		t.Fatal(err)
 	}

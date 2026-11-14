@@ -245,7 +245,7 @@ func TestToolCallModeAndEventsOverUnixSocket(t *testing.T) {
 	if err != nil || !strings.Contains(string(tools), "blender_run_script") {
 		t.Fatalf("tools %s %v", tools, err)
 	}
-	if _, err := c.OpenSignal(ctx, "default", ""); !rpc.IsCode(err, rpc.CodeUnavailable) {
+	if _, err := c.OpenSignal(ctx, "default", rpc.SignalParams{}); !rpc.IsCode(err, rpc.CodeUnavailable) {
 		t.Fatalf("signal without streamer: %v", err)
 	}
 

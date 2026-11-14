@@ -44,6 +44,8 @@ type Config struct {
 
 	S3 S3Config
 	VM VMConfig
+	// WebRTC holds the desktop stream ICE settings (STUN, TURN, relay-only).
+	WebRTC WebRTCConfig
 
 	// OAuthRelayURL is the optional cloud OAuth broker URL.
 	OAuthRelayURL string

@@ -206,10 +206,29 @@ type LaunchParams struct {
 
 // SignalParams opens a viewer. PublicIP, when set, is the address at which
 // the browser reaches the WebRTC UDP port (the host the browser connected
-// to); the guest advertises it as its ICE host candidate.
+// to); the guest advertises it as its ICE host candidate. ICEServers are the
+// STUN and TURN servers of the guest peer (the same set as the browser's);
+// TURN credentials in them are short-lived where the host can mint them, and
+// the guest keeps them in memory only. ICETransportPolicy is "all" (or
+// empty) or "relay"; "relay" limits the guest to TURN relay candidates.
 type SignalParams struct {
-	PublicIP string `json:"publicIp,omitempty"`
+	PublicIP           string      `json:"publicIp,omitempty"`
+	ICEServers         []ICEServer `json:"iceServers,omitempty"`
+	ICETransportPolicy string      `json:"iceTransportPolicy,omitempty"`
 }
+
+// ICEServer is one STUN or TURN server in the RTCIceServer form.
+type ICEServer struct {
+	URLs       []string `json:"urls"`
+	Username   string   `json:"username,omitempty"`
+	Credential string   `json:"credential,omitempty"`
+}
+
+// ICE transport policies.
+const (
+	ICEPolicyAll   = "all"
+	ICEPolicyRelay = "relay"
+)
 
 // Screen is the desktop size in pixels.
 type Screen struct {

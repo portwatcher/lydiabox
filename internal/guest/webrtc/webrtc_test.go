@@ -116,7 +116,7 @@ func TestViewerReceivesVideoAndSendsInput(t *testing.T) {
 	})
 
 	toBrowser := make(chan Signal, 64)
-	peer, err := s.NewPeer("", func(m Signal) { toBrowser <- m })
+	peer, err := s.NewPeer(PeerConfig{}, func(m Signal) { toBrowser <- m })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestViewerReceivesVideoAndSendsInput(t *testing.T) {
 	}
 
 	// A second viewer shares the encoder; the encoder stops after the last.
-	peer2, err := s.NewPeer("203.0.113.7", func(Signal) {})
+	peer2, err := s.NewPeer(PeerConfig{PublicIP: "203.0.113.7"}, func(Signal) {})
 	if err != nil {
 		t.Fatal(err)
 	}

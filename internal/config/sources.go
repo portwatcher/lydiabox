@@ -47,6 +47,8 @@ type fileConfig struct {
 		ClientID     string `yaml:"client_id"`
 		ClientSecret string `yaml:"client_secret"`
 	} `yaml:"connectors"`
+	// WebRTC is the desktop stream ICE section (webrtc.go).
+	WebRTC webrtcFile `yaml:"webrtc"`
 }
 
 func applyFile(cfg *Config, path string, explicit bool, home string) error {
@@ -100,7 +102,7 @@ func applyFile(cfg *Config, path string, explicit bool, home string) error {
 	for provider, c := range fc.Connectors {
 		cfg.OAuthClients[strings.ToLower(provider)] = OAuthClient{ClientID: c.ClientID, ClientSecret: c.ClientSecret}
 	}
-	return nil
+	return applyWebRTCFile(&cfg.WebRTC, &fc.WebRTC)
 }
 
 // gatewayAddr normalizes the S3 gateway address: "" and "off" disable it.
@@ -195,6 +197,7 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 		}
 	}
 	applyMirrors(cfg, env)
+	errs = append(errs, applyWebRTCEnv(&cfg.WebRTC, env)...)
 	if len(errs) > 0 {
 		return fmt.Errorf("config: %w", errors.Join(errs...))
 	}
