@@ -22,12 +22,14 @@ const SessionCookie = "lydiabox_session"
 const BasicUser = "lydiabox"
 
 // Authenticator validates the admin token presented as a Bearer header, a
-// session cookie, or Basic Auth (user "lydiabox").
+// session cookie, or Basic Auth (user "lydiabox"), and, when EnableAccess
+// was called, a Cloudflare Access token (access_auth.go).
 type Authenticator struct {
 	tokenSum [32]byte
 	session  string
 	limiter  *failureLimiter
 	now      func() time.Time
+	access   *accessLogin
 }
 
 // NewAuthenticator derives the session cookie value from token with
@@ -56,30 +58,38 @@ const (
 	credBearer
 	credBasic
 	credCookie
+	// credAccess is a Cloudflare Access token of an allowed email.
+	credAccess
 )
 
-// authenticate reports which credential authenticated the request.
-func (a *Authenticator) authenticate(r *http.Request) credentialKind {
+// authenticate reports which credential authenticated the request and, for
+// an Access token, the email. An Authorization header always decides on its
+// own, so a client that sends a wrong token never falls back to a cookie.
+func (a *Authenticator) authenticate(r *http.Request) (credentialKind, string) {
 	if h := r.Header.Get("Authorization"); h != "" {
 		if tok, ok := strings.CutPrefix(h, "Bearer "); ok && a.tokenOK(strings.TrimSpace(tok)) {
-			return credBearer
+			return credBearer, ""
 		}
 		if user, pass, ok := r.BasicAuth(); ok && user == BasicUser && a.tokenOK(pass) {
-			return credBasic
+			return credBasic, ""
 		}
-		return credNone
+		return credNone, ""
+	}
+	if email := a.accessEmail(r); email != "" {
+		return credAccess, email
 	}
 	if c, err := r.Cookie(SessionCookie); err == nil {
 		if subtle.ConstantTimeCompare([]byte(c.Value), []byte(a.session)) == 1 {
-			return credCookie
+			return credCookie, ""
 		}
 	}
-	return credNone
+	return credNone, ""
 }
 
 // Authenticated reports whether r carries a valid credential.
 func (a *Authenticator) Authenticated(r *http.Request) bool {
-	return a.authenticate(r) != credNone
+	kind, _ := a.authenticate(r)
+	return kind != credNone
 }
 
 // Require wraps h with authentication. Cookie-authenticated requests that
@@ -87,13 +97,13 @@ func (a *Authenticator) Authenticated(r *http.Request) bool {
 // blocks cross-site request forgery and cross-site WebSocket hijacking.
 func (a *Authenticator) Require(h http.Handler, basicChallenge bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := clientIP(r)
+		ip := a.clientIP(r)
 		if a.limiter.blocked(ip, a.now()) {
 			w.Header().Set("Retry-After", "60")
 			httpx.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many failed authentication attempts")
 			return
 		}
-		kind := a.authenticate(r)
+		kind, _ := a.authenticate(r)
 		if kind == credNone {
 			if r.Header.Get("Authorization") != "" {
 				a.limiter.fail(ip, a.now())
@@ -106,7 +116,9 @@ func (a *Authenticator) Require(h http.Handler, basicChallenge bool) http.Handle
 			httpx.WriteError(w, http.StatusUnauthorized, httpx.CodeUnauthorized, "authentication required")
 			return
 		}
-		if kind == credCookie && needsOriginCheck(r) && !sameOrigin(r) {
+		// The browser sends both cookies (ours and CF_Authorization) on
+		// cross-site requests, so both need the same-origin check.
+		if (kind == credCookie || kind == credAccess) && needsOriginCheck(r) && !sameOrigin(r) {
 			httpx.WriteError(w, http.StatusForbidden, httpx.CodeForbidden, "cross-origin request rejected")
 			return
 		}
@@ -202,7 +214,7 @@ type LoginRequest struct {
 }
 
 func (a *Authenticator) login(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
+	ip := a.clientIP(r)
 	if a.limiter.blocked(ip, a.now()) {
 		w.Header().Set("Retry-After", "60")
 		httpx.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many failed login attempts")
@@ -219,16 +231,12 @@ func (a *Authenticator) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, a.cookie(r, a.session, 30*24*time.Hour))
-	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"authenticated": true})
+	httpx.WriteJSON(w, http.StatusOK, SessionState{Authenticated: true, Method: MethodToken, Access: a.access != nil})
 }
 
 func (a *Authenticator) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, a.cookie(r, "", -1))
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (a *Authenticator) sessionStatus(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, http.StatusOK, map[string]bool{"authenticated": a.Authenticated(r)})
 }
 
 func (a *Authenticator) cookie(r *http.Request, value string, maxAge time.Duration) *http.Cookie {
