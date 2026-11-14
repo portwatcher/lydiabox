@@ -16,6 +16,9 @@ import type {
   Provider,
   RoutingGroup,
   Session,
+  Subscription,
+  SubscriptionKind,
+  SubscriptionLogin,
   SessionsResponse,
   TokenRequest,
   UpdateProviderRequest,
@@ -52,6 +55,17 @@ export const models = {
   bindings: (signal?: AbortSignal) => http.get<{ bindings: Binding[] }>("/api/v1/models/bindings", undefined, signal),
   bind: (harness: AgentHarness, model: string) =>
     http.put<Binding>(`/api/v1/models/bindings/${seg(harness)}`, { model }),
+  subscriptions: (signal?: AbortSignal) =>
+    http.get<{ subscriptions: Subscription[] }>("/api/v1/models/subscriptions", undefined, signal),
+  startLogin: (kind: SubscriptionKind, setupToken?: string) =>
+    http.post<SubscriptionLogin>("/api/v1/models/subscriptions/logins", { kind, setupToken }),
+  login: (id: string, signal?: AbortSignal) =>
+    http.get<SubscriptionLogin>(`/api/v1/models/subscriptions/logins/${seg(id)}`, undefined, signal),
+  submitLoginCode: (id: string, code: string) =>
+    http.post<SubscriptionLogin>(`/api/v1/models/subscriptions/logins/${seg(id)}/code`, { code }),
+  cancelLogin: (id: string) => http.delete(`/api/v1/models/subscriptions/logins/${seg(id)}`),
+  removeAccount: (kind: SubscriptionKind, account: string) =>
+    http.delete(`/api/v1/models/subscriptions/${seg(kind)}`, { account }),
 };
 
 // Section 11: connectors.

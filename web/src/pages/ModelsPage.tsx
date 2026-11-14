@@ -11,6 +11,7 @@ import { formatCompact } from "../lib/format";
 import { BindingsTable } from "./models/BindingsTable";
 import { ProviderCards } from "./models/ProviderCards";
 import { RoutingEditor } from "./models/RoutingEditor";
+import { SubscriptionCards } from "./models/SubscriptionCards";
 
 const gatewayInfo: Record<GatewayState, { label: string; tone: Tone; icon: typeof CircleCheck }> = {
   running: { label: "Running", tone: "success", icon: CircleCheck },
@@ -23,7 +24,7 @@ function ModelsTable({ list }: { list: Model[] }) {
   if (list.length === 0) {
     return (
       <StateView title="No models yet" className="min-h-32">
-        Models appear here when a provider with a valid key is enabled.
+        Models appear here when a provider or a subscription is enabled.
       </StateView>
     );
   }
@@ -67,7 +68,15 @@ export default function ModelsPage() {
   const list = useResource(useCallback((s: AbortSignal) => modelsApi.list(s).then((r) => r.models), []), { enabled });
   const routing = useResource(useCallback((s: AbortSignal) => modelsApi.routing(s).then((r) => r.groups), []), { enabled });
   const bindings = useResource(useCallback((s: AbortSignal) => modelsApi.bindings(s).then((r) => r.bindings), []), { enabled });
+  const subscriptions = useResource(useCallback((s: AbortSignal) => modelsApi.subscriptions(s).then((r) => r.subscriptions), []), { enabled });
   const reloadModels = list.reload;
+  const { reload: reloadSubscriptions } = subscriptions;
+  const { reload: reloadProviders } = providers;
+  const subscriptionsChanged = useCallback(() => {
+    reloadSubscriptions();
+    reloadProviders();
+    reloadModels();
+  }, [reloadSubscriptions, reloadProviders, reloadModels]);
   const { mutate: mutateProviders } = providers;
   const { mutate: mutateRouting } = routing;
   const { mutate: mutateBindings } = bindings;
@@ -102,9 +111,21 @@ export default function ModelsPage() {
           ) : null}
         </div>
 
+        {subscriptions.data ? (
+          <SubscriptionCards subscriptions={subscriptions.data} onChanged={subscriptionsChanged} />
+        ) : (
+          <Panel title="Subscriptions">
+            {subscriptions.error ? (
+              <ErrorView error={subscriptions.error} subsystem="The model gateway" failed="Subscriptions not loaded" onRetry={subscriptions.reload} />
+            ) : (
+              <LoadingView label="Loading subscriptions…" />
+            )}
+          </Panel>
+        )}
+
         {providers.data ? (
           <ProviderCards
-            providers={providers.data}
+            providers={providers.data.filter((p) => !p.subscription)}
             onChange={(update) => mutateProviders((current) => update(current ?? []))}
             onModelsChanged={reloadModels}
           />

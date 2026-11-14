@@ -286,6 +286,43 @@ export interface Provider {
   models: string[];
   status: string;
   lastError: string;
+  /** Set on a provider that serves signed-in subscription accounts. */
+  subscription?: SubscriptionKind;
+}
+
+export const SUBSCRIPTION_KINDS = ["claude", "codex"] as const;
+export type SubscriptionKind = (typeof SUBSCRIPTION_KINDS)[number];
+
+export interface SubscriptionAccount {
+  user: string;
+  plan: string;
+  enabled: boolean;
+  needsSignIn: boolean;
+}
+
+export interface Subscription {
+  kind: SubscriptionKind;
+  name: string;
+  /** Empty until an account is signed in. */
+  providerId: string;
+  enabled: boolean;
+  accounts: SubscriptionAccount[];
+  models: string[];
+}
+
+export type LoginState = "starting" | "installing" | "waiting" | "done" | "failed" | "canceled";
+
+/** A subscription sign-in under way; it never carries a token. */
+export interface SubscriptionLogin {
+  id: string;
+  kind: SubscriptionKind;
+  state: LoginState;
+  url: string;
+  userCode: string;
+  needsCode: boolean;
+  installing: string;
+  account: string;
+  error: string;
 }
 
 export interface CreateProviderRequest {

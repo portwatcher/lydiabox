@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AgentAction, AuditEntry } from "../api/types";
+import type { AgentAction, AuditEntry, SubscriptionLogin } from "../api/types";
 import { appendOlder, auditDetail, mergeNewer } from "./connectors/audit";
 import { initialOverlay, overlayReducer, PILL_MS, RIPPLE_MS, describeAction, formatKeys } from "./desktop/overlay";
 import { collectEntries } from "./files/collectFiles";
 import type { DirEntryLike, EntryLike, FileEntryLike } from "./files/collectFiles";
 import { emptyRouting, isDirty, routingReducer, validateGroups } from "./models/routing";
+import { initialSignIn, loginStep, pendingLoginId, setupTokenError, shouldPoll, signInReducer } from "./models/signin";
 
 function action(partial: Partial<AgentAction>): AgentAction {
   return {
@@ -139,5 +140,80 @@ describe("collectEntries", () => {
   it("walks dropped folders and keeps relative paths", async () => {
     const items = await collectEntries([dir("/photos", [file("/photos/a.jpg"), dir("/photos/2026", [file("/photos/2026/b.jpg")])]), file("/c.txt")]);
     expect(items.map((i) => i.name)).toEqual(["photos/a.jpg", "photos/2026/b.jpg", "c.txt"]);
+  });
+});
+
+describe("signInReducer", () => {
+  const login = (partial: Partial<SubscriptionLogin>): SubscriptionLogin => ({
+    id: "si1",
+    kind: "codex",
+    state: "waiting",
+    url: "https://auth.openai.com/codex/device",
+    userCode: "ABCD-1234",
+    needsCode: false,
+    installing: "",
+    account: "",
+    error: "",
+    ...partial,
+  });
+
+  it("follows a device-code sign-in to done", () => {
+    let s = signInReducer(initialSignIn, { type: "start" });
+    expect(shouldPoll(s)).toBe(false);
+    s = signInReducer(s, { type: "update", login: login({}) });
+    expect(s.phase).toBe("open");
+    expect(shouldPoll(s)).toBe(true);
+    expect(pendingLoginId(s)).toBe("si1");
+    s = signInReducer(s, { type: "update", login: login({ state: "done", account: "me@example.com" }) });
+    expect(s).toEqual({ phase: "done", account: "me@example.com" });
+    expect(pendingLoginId(s)).toBeNull();
+  });
+
+  it("ignores a stale poll and a poll after the dialog reset", () => {
+    let s = signInReducer(signInReducer(initialSignIn, { type: "start" }), { type: "update", login: login({}) });
+    expect(signInReducer(s, { type: "update", login: login({ id: "old", state: "done" }) })).toBe(s);
+    s = signInReducer(s, { type: "reset" });
+    expect(signInReducer(s, { type: "update", login: login({ state: "done" }) })).toBe(s);
+  });
+
+  it("pauses polling while a code is submitted and keeps a refusal", () => {
+    let s = signInReducer(signInReducer(initialSignIn, { type: "start" }), {
+      type: "update",
+      login: login({ kind: "claude", url: "https://claude.ai/oauth/authorize", userCode: "", needsCode: true }),
+    });
+    s = signInReducer(s, { type: "submit" });
+    expect(shouldPoll(s)).toBe(false);
+    s = signInReducer(s, { type: "codeRefused", error: "the code was refused" });
+    expect(s.phase === "open" && s.codeError).toBe("the code was refused");
+    expect(shouldPoll(s)).toBe(true);
+    // A poll keeps the refusal on screen until the next submit.
+    s = signInReducer(s, { type: "update", login: login({ kind: "claude", userCode: "", needsCode: true }) });
+    expect(s.phase === "open" && s.codeError).toBe("the code was refused");
+  });
+
+  it("reports failure and cancellation", () => {
+    const started = signInReducer(signInReducer(initialSignIn, { type: "start" }), { type: "update", login: login({ state: "installing" }) });
+    expect(signInReducer(started, { type: "update", login: login({ state: "failed", error: "installing Claude Code failed" }) })).toEqual({
+      phase: "failed",
+      error: "installing Claude Code failed",
+    });
+    expect(signInReducer(started, { type: "update", login: login({ state: "failed" }) })).toEqual({
+      phase: "failed",
+      error: "The sign-in did not finish. Try again.",
+    });
+    expect(signInReducer(started, { type: "update", login: login({ state: "canceled" }) })).toEqual(initialSignIn);
+  });
+
+  it("names the next step of an open sign-in", () => {
+    expect(loginStep(login({ state: "installing", url: "", userCode: "" }))).toBe("installing");
+    expect(loginStep(login({}))).toBe("device");
+    expect(loginStep(login({ userCode: "", needsCode: true }))).toBe("code");
+    expect(loginStep(login({ userCode: "" }))).toBe("browser");
+  });
+
+  it("checks a setup token before it is sent", () => {
+    expect(setupTokenError("  ")).toMatch(/Paste the token/);
+    expect(setupTokenError("sk-ant-oat01 x")).toMatch(/one line/);
+    expect(setupTokenError(" sk-ant-oat01-abc ")).toBeNull();
   });
 });
