@@ -41,6 +41,7 @@ type API struct {
 	Policies      map[string]cloudflare.Policy
 	Apps          map[string]cloudflare.Application
 	ServiceTokens map[string]cloudflare.ServiceToken
+	TURNKeys      map[string]cloudflare.TURNKey
 	Fail          map[string]int
 	calls         []string
 }
@@ -51,6 +52,7 @@ func New(t testing.TB) *API {
 		t: t, Tunnels: map[string]cloudflare.Tunnel{}, TunnelTokens: map[string]string{}, Configs: map[string]cloudflare.TunnelConfig{},
 		Zones: []cloudflare.Zone{{ID: "zone1", Name: "example.com"}}, Records: map[string]cloudflare.DNSRecord{},
 		Policies: map[string]cloudflare.Policy{}, Apps: map[string]cloudflare.Application{}, ServiceTokens: map[string]cloudflare.ServiceToken{}, Fail: map[string]int{},
+		TURNKeys: map[string]cloudflare.TURNKey{},
 	}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
@@ -205,6 +207,8 @@ func (f *API) serve(w http.ResponseWriter, r *http.Request) {
 		})
 	case strings.HasPrefix(p, acct+"/access/service_tokens"):
 		f.serveServiceTokens(w, r, parts[4:])
+	case strings.HasPrefix(p, acct+"/calls/turn_keys"):
+		f.serveTURNKeys(w, r, parts[4:])
 	default:
 		f.t.Errorf("fake API: unexpected %s", call)
 		writeResult(w, http.StatusNotFound, nil)
@@ -298,6 +302,36 @@ func (f *API) serveServiceTokens(w http.ResponseWriter, r *http.Request, rest []
 	case len(rest) == 1 && r.Method == http.MethodDelete:
 		delete(f.ServiceTokens, rest[0])
 		writeResult(w, 200, map[string]string{"id": rest[0]})
+	default:
+		writeResult(w, http.StatusNotFound, nil)
+	}
+}
+
+// serveTURNKeys follows the Realtime TURN key API: the 64-character
+// secret appears only in the create response.
+func (f *API) serveTURNKeys(w http.ResponseWriter, r *http.Request, rest []string) {
+	switch {
+	case len(rest) == 0 && r.Method == http.MethodGet:
+		out := make([]cloudflare.TURNKey, 0, len(f.TURNKeys))
+		for _, k := range values(f.TURNKeys) {
+			k.Secret = ""
+			out = append(out, k)
+		}
+		writeResult(w, 200, out)
+	case len(rest) == 0 && r.Method == http.MethodPost:
+		body := decode[map[string]string](r)
+		f.seq++
+		k := cloudflare.TURNKey{UID: fmt.Sprintf("%032x", f.seq), Name: body["name"], Secret: fmt.Sprintf("%064x", 1000+f.seq),
+			Created: "2026-11-14T00:00:00Z", Modified: "2026-11-14T00:00:00Z"}
+		f.TURNKeys[k.UID] = k
+		writeResult(w, 200, k)
+	case len(rest) == 1 && r.Method == http.MethodDelete:
+		if _, ok := f.TURNKeys[rest[0]]; !ok {
+			writeResult(w, http.StatusNotFound, nil)
+			return
+		}
+		delete(f.TURNKeys, rest[0])
+		writeResult(w, 200, map[string]any{})
 	default:
 		writeResult(w, http.StatusNotFound, nil)
 	}

@@ -219,6 +219,14 @@ func Teardown(ctx context.Context, c *Client, st State, progress func(string, ..
 			}
 		}
 	}
+	if err := removeTURN(ctx, c, n, progress); err != nil {
+		if st.TURNKeyID != "" {
+			keep(err)
+		} else {
+			// No stored key: the token may lack the Realtime permission.
+			progress("skipped the TURN key check: %v", err)
+		}
+	}
 	tunnel, err := c.FindTunnel(ctx, n.tunnel)
 	keep(err)
 	tunnelID := st.TunnelID

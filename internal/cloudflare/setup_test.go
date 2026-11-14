@@ -14,7 +14,7 @@ import (
 func params() cloudflare.SetupParams {
 	return cloudflare.SetupParams{
 		Hostname: "Agent.Example.com", Emails: []string{"Me@Example.com"},
-		OriginURL: "http://127.0.0.1:8080", ServiceToken: true,
+		OriginURL: "http://127.0.0.1:8080", ServiceToken: true, TURN: true,
 	}
 }
 
@@ -363,5 +363,92 @@ func TestNewClientValidates(t *testing.T) {
 	}
 	if _, err := cloudflare.NewClient(cloudflare.Options{Token: "t"}); err == nil {
 		t.Fatal("want account error")
+	}
+}
+
+func TestSetupTURNKey(t *testing.T) {
+	f := cloudflaretest.New(t)
+	c := f.Client(t)
+	ctx := context.Background()
+	// A key that the owner made by hand must survive every step.
+	f.TURNKeys["foreign"] = cloudflare.TURNKey{UID: "foreign", Name: "My TURN key"}
+
+	st, sec, err := cloudflare.Setup(ctx, c, params(), cloudflare.State{}, cloudflare.Secrets{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := f.TURNKeys[st.TURNKeyID]
+	if k.Name != "LydiaBox (agent.example.com)" || len(sec.TURNKeySecret) != 64 || sec.TURNKeySecret != k.Secret {
+		t.Fatalf("created key = %+v, secret %q", k, sec.TURNKeySecret)
+	}
+
+	// Reuse: the stored secret is kept and nothing is created.
+	st2, sec2, err := cloudflare.Setup(ctx, c, params(), st, sec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st2.TURNKeyID != st.TURNKeyID || sec2.TURNKeySecret != sec.TURNKeySecret || f.Calls("POST /accounts/acct1/calls/turn_keys") != 1 {
+		t.Fatalf("reuse: %q/%q, creates %d", st2.TURNKeyID, sec2.TURNKeySecret, f.Calls("POST /accounts/acct1/calls/turn_keys"))
+	}
+
+	// Lost local state: the secret cannot be read back, so the key is replaced.
+	st3, sec3, err := cloudflare.Setup(ctx, c, params(), cloudflare.State{}, cloudflare.Secrets{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st3.TURNKeyID == st.TURNKeyID || sec3.TURNKeySecret == "" || len(f.TURNKeys) != 2 {
+		t.Fatalf("replace: %+v, keys %d", st3, len(f.TURNKeys))
+	}
+
+	// -turn=false removes the key of setup and keeps the foreign one.
+	p := params()
+	p.TURN = false
+	st4, sec4, err := cloudflare.Setup(ctx, c, p, st3, sec3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st4.TURNKeyID != "" || sec4.TURNKeySecret != "" || len(f.TURNKeys) != 1 || f.TURNKeys["foreign"].Name == "" {
+		t.Fatalf("skip: %+v, keys %+v", st4, f.TURNKeys)
+	}
+
+	// Teardown deletes only the key that setup made.
+	st5, _, err := cloudflare.Setup(ctx, c, params(), st4, sec4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cloudflare.Teardown(ctx, c, st5, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.TURNKeys) != 1 || f.TURNKeys["foreign"].Name == "" {
+		t.Fatalf("teardown: keys %+v", f.TURNKeys)
+	}
+}
+
+func TestSetupTURNKeyFailure(t *testing.T) {
+	f := cloudflaretest.New(t)
+	f.Fail["POST /accounts/acct1/calls/turn_keys"] = http.StatusForbidden
+	_, _, err := cloudflare.Setup(context.Background(), f.Client(t), params(), cloudflare.State{}, cloudflare.Secrets{})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 403") || !strings.Contains(err.Error(), "turn_keys") {
+		t.Fatalf("err = %v", err)
+	}
+	// With -turn=false, setup and teardown work without the Realtime
+	// permission when no TURN key is stored.
+	p := params()
+	p.TURN = false
+	for _, k := range []string{"GET /accounts/acct1/calls/turn_keys", "POST /accounts/acct1/calls/turn_keys"} {
+		f.Fail[k] = http.StatusForbidden
+	}
+	st, _, err := cloudflare.Setup(context.Background(), f.Client(t), p, cloudflare.State{}, cloudflare.Secrets{})
+	if err != nil || st.TURNKeyID != "" {
+		t.Fatalf("setup -turn=false: %+v, %v", st, err)
+	}
+	f.Fail["GET /accounts/acct1/calls/turn_keys"] = http.StatusForbidden
+	if err := cloudflare.Teardown(context.Background(), f.Client(t), st, nil); err != nil {
+		t.Fatalf("teardown without a stored key: %v", err)
+	}
+	// With a stored key, a failed delete is an error.
+	f.Fail["GET /accounts/acct1/calls/turn_keys"] = http.StatusForbidden
+	if err := cloudflare.Teardown(context.Background(), f.Client(t), cloudflare.State{Hostname: "agent.example.com", TURNKeyID: "k"}, nil); err == nil {
+		t.Fatal("teardown with a stored key must report the failure")
 	}
 }

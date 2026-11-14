@@ -31,6 +31,8 @@ type SetupParams struct {
 	// clients that cannot send service token headers (WebDAV, S3) reach
 	// them with the admin token alone. Example: /webdav, /s3.
 	BypassPaths []string
+	// TURN creates a Cloudflare Realtime TURN key for the desktop stream.
+	TURN bool
 	// SessionDuration of an Access login (default 24h).
 	SessionDuration string
 	// Progress receives one line per change; nil discards them.
@@ -54,9 +56,11 @@ type State struct {
 	OwnerPolicyID  string   `json:"ownerPolicyId"`
 	ServiceTokenID string   `json:"serviceTokenId,omitempty"`
 	// ServiceTokenClientID is the CF-Access-Client-Id header value.
-	ServiceTokenClientID string    `json:"serviceTokenClientId,omitempty"`
-	BypassPaths          []string  `json:"bypassPaths,omitempty"`
-	UpdatedAt            time.Time `json:"updatedAt"`
+	ServiceTokenClientID string   `json:"serviceTokenClientId,omitempty"`
+	BypassPaths          []string `json:"bypassPaths,omitempty"`
+	// TURNKeyID is the Cloudflare Realtime TURN key of the desktop stream.
+	TURNKeyID string    `json:"turnKeyId,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Secrets are the secret results of Setup. LydiaBox stores them encrypted.
@@ -64,12 +68,14 @@ type Secrets struct {
 	TunnelToken string `json:"tunnelToken"`
 	// ServiceTokenSecret is the CF-Access-Client-Secret header value.
 	ServiceTokenSecret string `json:"serviceTokenSecret,omitempty"`
+	// TURNKeySecret is the bearer token of the TURN key.
+	TURNKeySecret string `json:"turnKeySecret,omitempty"`
 }
 
 // Resource names derived from the hostname, so a repeated Setup finds the
 // resources of the previous run even when the local state is lost.
 type names struct {
-	tunnel, app, owner, service, token, bypass string
+	tunnel, app, owner, service, token, bypass, turn string
 }
 
 // TunnelNameFor is the default tunnel name of a hostname.
@@ -88,6 +94,7 @@ func namesFor(hostname, tunnel string) names {
 		service: "LydiaBox service token (" + hostname + ")",
 		token:   "LydiaBox (" + hostname + ")",
 		bypass:  "LydiaBox bypass (" + hostname + ")",
+		turn:    "LydiaBox (" + hostname + ")",
 	}
 }
 
@@ -233,6 +240,16 @@ func Setup(ctx context.Context, c *Client, p SetupParams, prev State, prevSecret
 		}
 	}
 	if err := setupBypass(ctx, c, p, n, apps, policies); err != nil {
+		return st, sec, err
+	}
+	// Without -turn, only a key that the stored setup records is removed,
+	// so a token without the Realtime permission still works.
+	if p.TURN {
+		err = setupTURN(ctx, c, p, n, prev, prevSecrets, &st, &sec)
+	} else if prev.TURNKeyID != "" {
+		err = removeTURN(ctx, c, n, p.Progress)
+	}
+	if err != nil {
 		return st, sec, err
 	}
 	st.UpdatedAt = time.Now().UTC()
