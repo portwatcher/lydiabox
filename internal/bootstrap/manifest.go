@@ -1,7 +1,8 @@
 // Package bootstrap installs the external data-plane binaries (juicefs,
-// cloud-hypervisor, virtiofsd, magpie) into $DATA_DIR/runtime/bin on first
-// run. Download sources and SHA256 checksums are pinned in manifest.json,
-// which is the single file to edit when upgrading a binary.
+// cloud-hypervisor, virtiofsd, magpie, and the optional cloudflared) into
+// $DATA_DIR/runtime/bin on first run. Download sources and SHA256 checksums
+// are pinned in manifest.json, which is the single file to edit when
+// upgrading a binary.
 package bootstrap
 
 import (

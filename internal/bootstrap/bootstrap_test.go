@@ -316,7 +316,7 @@ func TestEmbeddedManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"juicefs", "cloud-hypervisor", "virtiofsd", "magpie"} {
+	for _, name := range []string{"juicefs", "cloud-hypervisor", "virtiofsd", "magpie", "cloudflared"} {
 		bin, ok := m.Lookup(name)
 		if !ok {
 			t.Fatalf("manifest lacks %s", name)
@@ -336,6 +336,10 @@ func TestEmbeddedManifest(t *testing.T) {
 				t.Errorf("%s %s: undocumented checksumSource %q", name, plat, a.ChecksumSource)
 			}
 		}
+	}
+	// cloudflared is optional: Ensure must not download it for any driver.
+	if cf, _ := m.Lookup("cloudflared"); cf.Required("chv") || cf.Required("docker") {
+		t.Error("cloudflared must be optional")
 	}
 	if _, err := ParseManifest([]byte(`{"schemaVersion":2}`)); err == nil {
 		t.Fatal("unknown schema version must fail")
