@@ -181,7 +181,8 @@ func TestLifecycleThroughTheGuestLink(t *testing.T) {
 
 func TestOperationConflictIsWaitedFor(t *testing.T) {
 	e := newEnv(t)
-	d := e.driver(t)
+	// The snapshot can also be named.
+	d := e.driver(t, func(o *vmmib.Options) { o.Snapshot = "lydiabox-desktop" })
 	boot(t, d)
 	id := e.machineID(t)
 	ctx := context.Background()

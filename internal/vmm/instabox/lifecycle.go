@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	ib "github.com/lydiabox/lydiabox/internal/instabox"
@@ -74,8 +75,12 @@ func (d *Driver) Create(ctx context.Context, tid string, spec vmm.Spec) error {
 			return err
 		}
 	}
+	snap, err := d.snapshotID(ctx)
+	if err != nil {
+		return err
+	}
 	req := ib.CreateMachineRequest{
-		Name: rec.Name, SnapshotID: d.opts.Snapshot, VCPUs: spec.CPUs, MemMiB: spec.MemMB,
+		Name: rec.Name, SnapshotID: snap, VCPUs: spec.CPUs, MemMiB: spec.MemMB,
 		DesiredState: ib.StateRunning, Metadata: map[string]string{MetadataTenant: tid},
 	}
 	idle := int(d.opts.IdlePause / time.Second)
@@ -97,6 +102,22 @@ func (d *Driver) Create(ctx context.Context, tid string, spec vmm.Spec) error {
 	}
 	d.gate.record(tid, nil)
 	return nil
+}
+
+// snapshotID returns the configured snapshot ID; a name (not "sn_...") is
+// looked up.
+func (d *Driver) snapshotID(ctx context.Context) (string, error) {
+	if strings.HasPrefix(d.opts.Snapshot, "sn_") {
+		return d.opts.Snapshot, nil
+	}
+	sn, err := d.opts.Client.FindSnapshot(ctx, d.opts.Snapshot)
+	if errors.Is(err, ib.ErrNotFound) {
+		return "", fmt.Errorf("%w: the InstaBox snapshot %q does not exist (LYDIABOX_INSTABOX_SNAPSHOT)", vmm.ErrUnavailable, d.opts.Snapshot)
+	}
+	if err != nil {
+		return "", err
+	}
+	return sn.ID, nil
 }
 
 // findMachine returns the live machine with the tenant's metadata, or nil.
