@@ -95,6 +95,10 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_GPU_PCI_ADDR` | empty | VFIO PCI address for GPU passthrough (`chv`) |
 | `LYDIABOX_IDLE_TIMEOUT` | `20m` | Pause the VM after this long without sessions or viewers (`0` disables) |
 | `LYDIABOX_WEBRTC_UDP_PORT` | `50000` | UDP port of the desktop stream (`0` disables forwarding) |
+| `LYDIABOX_TENANT_ID` | `default` | Tenant of this process (cell mode) |
+| `LYDIABOX_MAGPIE_ADDR`, `_WEB_ADDR` | `127.0.0.1:3425`, `127.0.0.1:3426` | Host magpie gateway and its admin web API |
+| `LYDIABOX_VM_SUBNET_INDEX` | `auto` | Guest subnet `172.30.<n>.0/24` (`chv`); `auto` reads it from the state database |
+| `LYDIABOX_VM_TAP`, `LYDIABOX_VM_NFT_TABLE` | from the tenant ID | TAP device and nftables table (`chv`) |
 | `LYDIABOX_STUN_URLS` | Google STUN | STUN URLs of the desktop stream (`none` disables) |
 | `LYDIABOX_TURN_URLS` | empty | TURN URLs (`turn:`, `turn:...?transport=tcp`, `turns:`) |
 | `LYDIABOX_TURN_USERNAME`, `_PASSWORD` | empty | Static TURN credentials |
@@ -108,7 +112,7 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_DOCKER_IMAGE` | `lydiabox/guest:latest` | Guest image of the `docker` driver |
 | `LYDIABOX_GUEST_BINARY` | found next to `lydiabox` | Linux `lydiabox-guest` injected into the VM |
 | `LYDIABOX_ROOTFS_URL` | empty | Base URL of prebuilt guest images (`chv`) |
-| `LYDIABOX_GATEWAY_UPSTREAM` | `http://127.0.0.1:3425` | LLM gateway that guest traffic goes to |
+| `LYDIABOX_GATEWAY_UPSTREAM` | `http://` + `LYDIABOX_MAGPIE_ADDR` | LLM gateway that guest traffic goes to |
 | `LYDIABOX_OAUTH_RELAY_URL` | empty | Optional OAuth relay for connectors |
 | `LYDIABOX_<PROVIDER>_CLIENT_ID`, `_CLIENT_SECRET` | empty | OAuth apps: `GITHUB`, `GDRIVE`, `NOTION`, `SLACK` |
 | `LYDIABOX_MIRROR_<BINARY>`, `_SHA256` | pinned | Download mirror for a runtime binary |
@@ -147,6 +151,32 @@ shared through virtio-fs. The guest has the address `172.30.0.2/24`
 behind NAT and cannot reach private networks of the host. Other tenants
 get their own subnet, `172.30.<n>.0/24` (n = 1 to 254, kept in the state
 database).
+
+### Several processes on one host (cell mode)
+
+One `lydiabox up` process serves one tenant. To run several on one host
+(one "cell" for each tenant), give each process its own
+`LYDIABOX_TENANT_ID`, `LYDIABOX_DATA_DIR`, and host addresses:
+`LYDIABOX_LISTEN_ADDR`, `LYDIABOX_S3_GATEWAY_ADDR`, `LYDIABOX_MAGPIE_ADDR`,
+`LYDIABOX_MAGPIE_WEB_ADDR`, and `LYDIABOX_WEBRTC_UDP_PORT` (or `0`). With
+`chv`, also set `LYDIABOX_VM_SUBNET_INDEX`: each process has its own state
+database, so `auto` gives every non-default tenant index 1. The TAP name
+and the nftables table come from the tenant ID; `LYDIABOX_VM_TAP` and
+`LYDIABOX_VM_NFT_TABLE` override them.
+
+### Remote guest link
+
+A remote VM driver reaches a guest that has no vsock and no shared socket
+(a hosted machine behind an HTTPS proxy) through one WebSocket that the
+host dials. Start the guest daemon with
+`lydiabox-guest serve -listen ws://0.0.0.0:<port>[/path]` and the link
+secret in `LYDIABOX_LINK_SECRET` (or a file in
+`LYDIABOX_LINK_SECRET_FILE`, 16 bytes or more). Both ends prove the secret
+before the link carries the RPC (port 9000) and, in the other direction,
+the connector broker (9001) and the LLM gateway tunnel (9002). Inside the
+guest, local UNIX sockets (`/run/lydiabox/host-9001.sock` and
+`host-9002.sock`) bridge to the host ports. The host end is the Go package
+`internal/vmm/link`; no driver in this repository uses it yet.
 
 To boot and check the `chv` driver on a KVM host (also nested in Lima on a Mac), see [docs/kvm-test.md](docs/kvm-test.md).
 For an amd64 host, see [step 9](docs/kvm-test.md#9-amd64-kvm-host); to check GPU passthrough, use the checklist in [docs/kvm-test.md](docs/kvm-test.md#10-gpu-passthrough-vfio).
@@ -322,7 +352,7 @@ pinned `cloudflared` on first use.
 
 ## Models and sessions
 
-`lydiabox up` runs magpie on `127.0.0.1:3425`. Add providers, routing
+`lydiabox up` runs magpie on `127.0.0.1:3425` (`LYDIABOX_MAGPIE_ADDR`). Add providers, routing
 groups, and the default model of each harness in the Models page. Upstream
 keys stay in `$LYDIABOX_DATA_DIR/state/magpie`. Inside the VM, harnesses
 use the gateway at `http://127.0.0.1:3425` with a placeholder token; the

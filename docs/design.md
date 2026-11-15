@@ -182,6 +182,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      - `devices`: Include `[{"path": "/sys/bus/pci/devices/" + gpuAddr}]` if `LYDIABOX_GPU_PCI_ADDR` is configured.
    - Boot via `PUT /api/v1/vm.boot`. Support `PUT /api/v1/vm.pause`, `PUT /api/v1/vm.resume`, and `PUT /api/v1/vm.shutdown`.
    - **Cloud Hypervisor Vsock Dialing Protocol**: To connect from Host to Guest port `P` (e.g., `9000`), dial UNIX socket `$RUN_DIR/vsock.sock`, write `"CONNECT 9000\n"`, and expect `"OK <host_port>\n"` before starting multiplexed RPC/HTTP2/yamux framing. For Guest-to-Host connections (e.g., port `9001`), listen on UNIX socket `$RUN_DIR/vsock.sock_9001`! Implement both directions accurately.
+   - **Remote guest link** (added for hosted machines without vsock): `lydiabox-guest serve -listen ws://<host>:<port>` accepts one host-dialed WebSocket, both ends prove `LYDIABOX_LINK_SECRET` with HMAC, and one yamux session carries host-to-guest port `9000` and guest-to-host ports `9001`/`9002` (each stream starts with a 4-byte port). `internal/vmm/link` is the reconnecting host end for a remote `vmm.Driver`; drivers report remote behavior with `vmm.Capabilities` and `vmm.StateWatcher`.
 
 2. **Guest Initramfs (`deploy/initramfs/init`)**:
    - Mount `/dev/vda` (`rootfs.squashfs`) to `/mnt/ro` and `/dev/vdc` (`root-upper.img`) to `/mnt/rw`.

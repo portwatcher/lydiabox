@@ -35,8 +35,8 @@ Status legend:
   time is `"0001-01-01T00:00:00Z"` and means "never".
 - JSON request bodies are limited to 1 MiB unless a route says otherwise.
   Unknown fields and trailing data are rejected with `400`.
-- The tenant is implicit. In self-hosted mode it is always `"default"`; a
-  future multi-tenant deployment derives it from the credential. No route
+- The tenant is implicit: one process serves one tenant, `"default"` unless
+  `LYDIABOX_TENANT_ID` sets another (cell mode, see the README). No route
   takes a tenant parameter.
 - Errors use one envelope and a stable `code`:
 
@@ -724,7 +724,8 @@ Binding:      { "harness": "codex", "model": "deepseek/deepseek-v4-pro", "config
 
 Details:
 
-- The gateway is a supervised `magpie serve` on `127.0.0.1:3425` with data in
+- The gateway is a supervised `magpie serve` on `LYDIABOX_MAGPIE_ADDR`
+  (default `127.0.0.1:3425`) with data in
   `$LYDIABOX_DATA_DIR/state/magpie`; it restarts with backoff (1 s to 30 s).
   `GET /api/v1/models/gateway` answers `200` in every state. The other
   provider, model, and routing routes answer `503 unavailable` while magpie
@@ -905,9 +906,11 @@ authentication (section 5b).
 The host broker (`internal/connector/broker`) serves plain HTTP/1.1 on the
 guest's vsock port 9001 and, for the docker driver and for development, on
 the `0600` UNIX socket `$LYDIABOX_DATA_DIR/run/host-9001.sock`. It has no
-authentication: only the tenant's guest can reach these listeners. Inside the
+authentication: only the tenant's guest can reach these listeners. A remote
+guest reaches it through the authenticated guest link instead. Inside the
 guest, `LYDIABOX_HOST_ADDR` is `vsock://2:9001` or
-`unix:///run/lydiabox/host-9001.sock`.
+`unix:///run/lydiabox/host-9001.sock` (docker, and the local bridge of the
+guest link).
 
 | Endpoint | Request | Response |
 | :--- | :--- | :--- |
