@@ -170,7 +170,7 @@ The `juicefs` mode above is unchanged.
 | A file request takes a `files` lease and wakes the machine; `503` after the wake timeout | done | `internal/agentfs/remotefs` | `TestFileAPIWakeTimeout`, `TestWakeTimeoutAndContext` |
 | Session discovery and purge in the guest; cached list in the state database while the machine is paused or stopped (`cached: true`) | done | `internal/harness/discovery_guest.go`, `internal/guest/rpc/daemon/harness.go`, `internal/store/discovery_cache.go` | `TestGuestDiscoveryMatchesLocal`, `TestGuestDiscoveryCacheWhileStopped`, `TestGuestPurge`, `TestDiscoveryCache` |
 | Config wirers and connector file tools through the seam; only the placeholder gateway token is written | done | `internal/magpie/wire`, `internal/connector/broker` | `TestWirersProviderMatchesLocal` |
-| Run on a hosted machine (InstaBox) | missing | | Needs the InstaBox driver and image |
+| Run on a hosted machine (InstaBox) | done against the fake API; not run on the real service | `internal/vmm/instabox`, `internal/instabox/instaboxtest/fakeguest` | `TestInstaboxCellEndToEnd` (files on the machine disk through the guest, wake on demand); real service: [instabox.md](instabox.md#first-check-with-a-real-account) steps 13 to 18 |
 
 ## 4.3 Serverless agent VM engine
 
@@ -188,13 +188,15 @@ The `juicefs` mode above is unchanged.
 | `EnsureRunning` singleflight wake from terminal, session, desktop, MCP | done | `internal/vmm/controller.go` | `TestEnsureRunningIsSingleflight`; E2E (`wake`, session start) |
 | Leases (PTY, desktop), idle timeout, `sync`, pause | done | `internal/vmm/controller.go` | `TestIdleTimerHibernatesWithoutLeases`; E2E (idle pause) |
 | `docker` driver: same image and protocol over a bind-mounted UNIX socket, persistent root | done | `internal/vmm/docker` | `TestDockerLifecycleAndSockets`, `TestStopKeepsContainer`; E2E (steps 35 to 38) |
-| InstaBox (addition, LydiaBox Cloud): API client (lifecycle, operations, idle pause, exec with SSE and keepalive, files, private ports, snapshots, CLI import) and the `linux/amd64` guest image for `instabox snapshot import` | client and image done; the `instabox` driver is a later task; nothing is checked against the real service ([instabox.md](instabox.md#first-check-with-a-real-account)) | `internal/instabox`, `internal/instabox/instaboxtest`, `deploy/instabox` | client tests against the fake (`TestLifecycleStates`, `TestIdempotencyReplayAndConflict`, `TestRetryDisconnectReplaysCreate`, `TestExecRetriesOnlyWhenNotStarted`, `TestExecStream`, `TestFiles`, `TestPorts`, `TestSnapshots`, `TestImportSnapshot`, `TestAPIKeyNeverShown`); `TestOpenAPIDrift` against the live document; `deploy/instabox/test.sh` on the full and slim images (Docker, amd64 emulated on arm64): X11, Xfce, guest as UID 1000, `TestImageLink` over the real host link before and after a restart |
+| InstaBox (addition, LydiaBox Cloud): API client (lifecycle, operations, idle pause, exec with SSE and keepalive, files, private ports, snapshots, CLI import) and the `linux/amd64` guest image for `instabox snapshot import` | client and image done; nothing is checked against the real service ([instabox.md](instabox.md#first-check-with-a-real-account)) | `internal/instabox`, `internal/instabox/instaboxtest`, `deploy/instabox` | client tests against the fake (`TestLifecycleStates`, `TestIdempotencyReplayAndConflict`, `TestRetryDisconnectReplaysCreate`, `TestExecRetriesOnlyWhenNotStarted`, `TestExecStream`, `TestFiles`, `TestPorts`, `TestSnapshots`, `TestImportSnapshot`, `TestAPIKeyNeverShown`); `TestOpenAPIDrift` against the live document; `deploy/instabox/test.sh` on the full and slim images (Docker, amd64 emulated on arm64): X11, Xfce, guest as UID 1000, `TestImageLink` over the real host link before and after a restart |
+| `instabox` VM driver (addition, LydiaBox Cloud): idempotent create or adoption, start, pause, wake, resume, stop, state mapping, private link port with its token, `guest.env` through the file API, activity lease while attached, state watcher for a self-pause, clear account errors with a 30 s block, no delete; `lydiabox instabox status` and `destroy -confirm`; `auto` selects it in the provider mode | done against the fake API; nothing is checked against the real service ([instabox.md](instabox.md#first-check-with-a-real-account), steps 13 to 18) | `internal/vmm/instabox`, `internal/cli/wire_instabox.go`, `internal/cli/instabox.go`, `internal/config/instabox.go` | `TestCreateIsIdempotentAcrossRestarts`, `TestCreateReplaysTheSavedKey`, `TestLifecycleThroughTheGuestLink`, `TestOperationConflictIsWaitedFor`, `TestAccountErrorsAreClearAndStopRetries`, `TestDeletedMachineGivesAClearStateAndNoNewMachine`, `TestSelfPauseIsReportedAndWokenOnUse`, `TestChangedGuestSettingsRestartTheGuest`, `TestInstaboxCommand`, `TestInstaboxSettings`; end to end: `TestInstaboxCellEndToEnd` (cell on a UNIX socket, PTY session, desktop signaling, 9001 and 9002, idle hibernate, self-pause, restart, no goroutine leak under `-race`) |
+| Cell contract (addition): `LYDIABOX_CELL_MODE`, `_FILE` forms of the admin token, master key, and InstaBox key, `unix:` listen address, `GET /api/v1/ready`; a remote machine stays up at `SIGTERM` | done | `internal/config/cell.go`, `internal/api/server.go`, `internal/api/routes_core.go`, `internal/vmm/controller.go` | `TestCellModeAndUnixListener`, `TestUnixListenerAndReady`, `TestCloseLeavesARemoteMachineRunning`; gaps: [cloud-design.md §4.6](cloud-design.md#46-gaps-in-the-core) |
 
 ### Implementation notes against the design text
 
 The design text of section 4.3 is kept as written. Cloud Hypervisor 54 and
 virtiofsd 1.14 need three changes to the `vm.create` payload. The code
-makes these changes; the row above is `done` with them.
+makes these changes; the `vm.create` row above is `done` with them.
 
 | Design text | What Cloud Hypervisor 54 and virtiofsd 1.14 require | What the code does | Test |
 | :--- | :--- | :--- | :--- |
@@ -841,3 +843,18 @@ the full-image run, and again after the fixes of the amd64 run: all pass.
 
 No Go, TypeScript, script, HTML, or CSS source file has more than 600
 lines (largest: `internal/vmm/controller.go`, 477 lines).
+
+### After the `instabox` driver (2026-11-15)
+
+On macOS arm64 with Go 1.24.1 and Node.js 24:
+
+| Command | Result |
+| :--- | :--- |
+| `CGO_ENABLED=0 go build ./...`, `go vet ./...` | pass, no findings |
+| `CGO_ENABLED=0 go test -race -count=1 ./...` | pass, 41 packages with tests (new: `internal/vmm/instabox`); `internal/cli`, `internal/vmm/...`, and `internal/instabox/...` also three times in a row |
+| `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build ./...` and `arm64` | pass |
+| `make lint` (vet, gofmt, staticcheck, shellcheck) | pass, no findings |
+| `make build` | pass |
+| `cd web && npm ci && npm run typecheck && npm run lint && npm run test && npm run build` | pass, 53 tests, no lint warnings |
+
+Largest source file: `internal/vmm/controller.go`, 504 lines.

@@ -13,7 +13,7 @@ Status legend:
 
 | Area | Routes | Status |
 | :--- | :--- | :--- |
-| Health and status | `/api/v1/health`, `/api/v1/status` | Implemented (Phase 1) |
+| Health and status | `/api/v1/health`, `/api/v1/ready`, `/api/v1/status` | Implemented (Phase 1; `ready` for cells) |
 | Session auth | `/api/v1/auth/*` | Implemented (Phase 1) |
 | File Manager | `/api/v1/fs/*` | Implemented (Phase 1) |
 | WebDAV gateway | `/webdav/` | Implemented (Phase 1) |
@@ -29,6 +29,8 @@ Status legend:
 ## 1. Conventions
 
 - Base URL: `http://<LYDIABOX_LISTEN_ADDR>`. All API routes are under `/api/v1`.
+  With `LYDIABOX_LISTEN_ADDR=unix:/path` the server listens on that UNIX
+  socket (mode `0660`) instead; the Host header is not checked.
 - Request and response bodies are JSON (`application/json; charset=utf-8`)
   unless a route says otherwise. Field names are `camelCase`.
 - Times are RFC 3339 strings in UTC (`"2026-11-10T06:30:00.123Z"`). A zero
@@ -161,6 +163,13 @@ The UI calls this on load to decide between the login screen and the app.
 ### `GET /api/v1/health` — public, implemented
 
 Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
+
+### `GET /api/v1/ready` — public, implemented
+
+Response `200`: `{ "status": "ready", "tenantId": "alice" }`. The server
+serves only after every subsystem has started, so an answer means the
+cell is ready; a cell host checks the tenant ID to be sure that it reached
+the right cell. The VM can be stopped or paused: it wakes on the first use.
 
 ### `GET /api/v1/status` — implemented
 
@@ -486,7 +495,15 @@ always lists `pty` (running guest PTYs) and `desktop` (open desktop
 sockets). In the `provider` storage mode, `files` counts File API requests
 and downloads in progress (it is listed while it is not zero). After `idleTimeoutSeconds` without leases the VM is synced and
 paused (`PAUSED`). `gpu` and `lastError` are omitted when empty;
-`lastError` holds the last failed boot or transition.
+`lastError` holds the last failed boot, transition, or state read, for
+example `InstaBox refused the API key: check LYDIABOX_INSTABOX_API_KEY
+(InstaBox invalid_key)`; the web status bar shows it while the VM is not
+running. `driver` is `chv`, `docker`, or `instabox`. With the `instabox`
+driver, `PAUSED` also reports a pause that InstaBox made by itself (an idle
+pause); the next request wakes the machine. A provider refusal (key,
+payment, scope, quota, no capacity) answers `503` from `wake` and from the
+routes that wake the VM, and the driver waits 30 seconds (or the
+provider's `Retry-After`) before it tries again.
 
 | Route | Effect | Response |
 | :--- | :--- | :--- |

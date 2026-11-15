@@ -1,6 +1,8 @@
 # LydiaBox Cloud on InstaBox: supplier facts and mapping
 
-Status: proposal (2026-11-15), not implemented. Read it with
+Status: proposal (2026-11-15). The `instabox` driver of section 3
+(`internal/vmm/instabox`) is implemented and tested against a fake
+InstaBox API, not against the real service. Read it with
 [cloud-design.md](cloud-design.md), which gives the decision, the
 architecture, and the phases.
 
@@ -105,30 +107,43 @@ move the data with the backup of
 
 ## 3. `vmm.Driver` mapping
 
-The interface is in [internal/vmm/driver.go](../internal/vmm/driver.go).
+The interface is in [internal/vmm/driver.go](../internal/vmm/driver.go);
+the driver is [internal/vmm/instabox](../internal/vmm/instabox).
 `<id>` is the InstaBox machine ID. Each lifecycle call sends an
 `Idempotency-Key` and follows the operation with `GET /v1/operations/{id}`
-until it is `succeeded` or `failed`.
+until it is `succeeded` or `failed`. The cell keeps a record of the machine
+in the state database (`vm_machines`): the machine ID, the name, a pending
+create key, the link URL, and the hash of the guest settings; the link
+secret and the port token are encrypted with the master key.
 
 | Method | InstaBox calls | Notes |
 | :--- | :--- | :--- |
 | `Name` | none | Returns `"instabox"`. |
-| `Create` | `GET /v1/machines` (find the machine by the metadata `lydiabox_tenant`). If none: `POST /v1/machines` with `name`, `snapshotId`, `vcpus`, `memMiB`, `metadata`, `autoSuspendAfterSeconds`, `env` (the link key), and `desiredState: stopped`. | The name is `lbx-` and a hash of the tenant ID, because tenant IDs allow characters that names do not. The link key can be an environment variable: it only keeps callers outside the machine from the guest. `Spec.Kernel`, `Initramfs`, `Rootfs`, `RootUpper`, `HomeDir`, `WorkspaceDir`, and `GPUPCIAddr` are not used. `Spec.WebRTCPort` must be `0`. |
-| `Boot` | `POST /v1/machines/{id}/start`; then `GET /v1/machines/{id}/ports`, and `POST /v1/machines/{id}/ports` with `{"port": 9000, "access": "private"}` if the port is missing | Keep the port token encrypted in the store. Dial the guest link until the guest answers. Retry `no_capacity` with backoff. |
-| `Pause` | `POST /v1/machines/{id}/suspend` | An explicit pause: the machine does not wake on use, and its activity leases end. |
-| `Resume` | `POST /v1/machines/{id}/resume`, or `POST /v1/machines/{id}/wake` when `autoSuspendedAt` is set | Waits up to 45 seconds; retry `409 operation_conflict`. If memory is lost, the guest starts fresh; the controller treats it as a boot. |
-| `Shutdown` | `POST /v1/machines/{id}/stop`; with `force`, a short `timeoutSeconds` | A paused machine must resume first. `Shutdown` keeps the machine and its disk; only the control plane deletes a machine. |
-| `State` | `GET /v1/machines/{id}` | `running` to running; `creating`, `starting`, `resuming` to booting; `suspending`, `suspended` to paused; `stopping`, `stopped` to stopped; `error`, `deleted` to stopped with an error in the VM detail. |
-| `DialGuest` | none (guest link) | Opens a stream to a guest port inside the guest link. The link dials `wss://9000-<id without m_>.<port domain>/` with the port token. |
+| `Create` | `GET /v1/machines/{id}` for a recorded machine; else `GET /v1/machines?metadata=lydiabox_tenant:<tenant>` (adopt it); else `POST /v1/machines` with `name`, `snapshotId`, `vcpus`, `memMiB`, `metadata`, `autoSuspendAfterSeconds`, and `desiredState: running` | The name is `lbx-` and 16 hex characters of a hash of the tenant ID. The `Idempotency-Key` is saved in the record before the call, so that a restart after a crash replays the same create; the machine ID is saved from the answer. A recorded machine that is gone is an error (`ErrMachineGone`); the driver never makes a new machine in its place. `Spec.Kernel`, `Initramfs`, `Rootfs`, `RootUpper`, `HomeDir`, `WorkspaceDir`, and `GPUPCIAddr` are not used. No machine `env`: the settings go in a file (below). |
+| `Boot` | `GET /v1/machines/{id}`; `POST .../start` (stopped or error), `.../resume` (paused by a client), or `.../wake` (self-paused); then the attach steps below | Waits for a transition that runs; retries `409 operation_conflict`. |
+| attach | `POST /v1/machines/{id}/ports` with `{"port": 9000, "access": "private"}` when no token is recorded; `GET /v1/machines/{id}/files/content?path=/data/.lydiabox/guest.env`, `PUT /v1/machines/{id}/files` when it differs, and `POST .../exec` with `sudo supervisorctl ... restart lydiabox-guest` when an old file was replaced; `PUT /v1/machines/{id}/activity-leases/lydiabox-cell` (TTL 15 minutes, renewed every 5 minutes) | Then the guest link dials the port URL (`wss://`, path `/`) with `Authorization: Bearer <port token>`. A `401` from the port clears the token; the next attach publishes the port again (a new token). |
+| `Pause` | Close the link, end the lease renewal; `POST /v1/machines/{id}/suspend` | An explicit pause: the machine does not wake on use, and its activity leases end. |
+| `Resume` | As `Boot` | `wake` for a self-paused machine (`autoSuspendedAt` set), else `resume`. If memory is lost, the guest starts fresh; the controller probes it as after a boot. |
+| `Shutdown` | Close the link; `POST /v1/machines/{id}/resume` first for a paused machine; `POST /v1/machines/{id}/stop` (with `force`: `timeoutSeconds` 5) | `Shutdown` keeps the machine and its disk. Only `lydiabox instabox destroy -confirm <id>` deletes a machine. |
+| `State` | `GET /v1/machines/{id}` | `running` to running; `creating`, `starting`, `resuming` to booting; `suspending`, `suspended` to paused; `stopping`, `stopped`, `error` to stopped; `deleting`, `deleted`, or `404` to an error that names the deleted machine. No recorded machine is stopped. |
+| `DialGuest` | none (guest link) | The first dial after a start of the cell attaches to a running machine. While this cell paused or stopped the machine, a dial fails at once with `ErrUnavailable`. |
 | `ListenGuestPort` | none (guest link) | Registers a reverse channel for port 9001 or 9002. It works before boot; streams arrive when the link connects. |
+| `Capabilities` | none | `Remote`, `SelfPause`, and a probe of 60 seconds (a wake can wait 45 seconds). |
+| `WatchState` | `GET /v1/machines/{id}` every 30 seconds, and at once when the link drops or a lease renewal fails | Reports a pause, resume, or stop that the cell did not make; on a self-pause it closes the link (a reconnect would wake the machine) and ends the lease. |
 
-Not in the interface, but used by the driver or the controller:
+Errors: `401` (key), `402` or `credit_exhausted` (payment), `403`
+(scope or plan), `429` (quota or rate), and `no_capacity` become a clear
+message in `lastError` of `GET /api/v1/vm/status` and in the web status
+bar, and the API answers `503`. After such an error the driver makes no
+call for the tenant for 30 seconds (longer when `Retry-After` says so),
+so that requests that wake the machine do not repeat it.
 
-- `PUT` and `DELETE /v1/machines/{id}/activity-leases/{taskID}` for
-  `task` leases ([§5](#5-online-247)).
-- `PATCH /v1/machines/{id}` with `autoSuspendAfterSeconds`.
-- Webhooks to `lbx-control` for state changes that the cell did not
-  cause, such as an idle pause or an error.
+Not in the interface, but used by the controller and the cell:
+
+- At `SIGTERM` the controller leaves a remote machine as it is; the driver
+  closes the link and deletes its activity lease, so that the idle pause
+  applies.
+- Webhooks are not used (see [cloud-design.md §4.6](cloud-design.md#46-gaps-in-the-core)).
 
 ## 4. Desktop options
 
@@ -189,17 +204,25 @@ machine. Phase I1 must show option A from a network without UDP.
 1. The cell controller owns the power state. After
    `LYDIABOX_IDLE_TIMEOUT` (for example 10 minutes) with no lease, it
    closes the guest link and calls `suspend`.
-2. Keep the InstaBox idle pause at 30 minutes as a safety net, for a
-   cell that stopped without a pause.
-3. Before each dial, the cell reads the state and calls `resume`,
-   `wake`, or `start` as necessary. This works for both kinds of pause.
-4. For a `task` lease, hold an InstaBox activity lease with a TTL of 15
-   minutes and renew it every 5 minutes.
-5. Do not stop machines to save cost: a paused machine costs the same
+2. While the cell is attached to a running machine, the driver holds the
+   activity lease `lydiabox-cell` (TTL 15 minutes, renewed every 5
+   minutes). Thus InstaBox does not pause a machine that the cell uses,
+   also if a quiet WebSocket does not count as activity (fact 4 of §8).
+3. Keep the InstaBox idle pause (`LYDIABOX_INSTABOX_IDLE_PAUSE`, default
+   30 minutes) as a safety net, for a cell that stopped without a pause:
+   the lease ends at most 15 minutes later, then the idle pause applies.
+4. Before each use, the cell reads the state and calls `resume`, `wake`,
+   or `start` as necessary. This works for both kinds of pause. When
+   InstaBox pauses the machine by itself, the state watcher reports it,
+   and the cell does not reconnect until the next use.
+5. For a `task` lease, hold an InstaBox activity lease with a TTL of 15
+   minutes and renew it every 5 minutes (not implemented: no task API).
+6. Do not stop machines to save cost: a paused machine costs the same
    as a stopped one. Stop only to suspend a tenant or to repair a
    machine.
 
-"Always running" is a paid option: idle pause off and no cell pause.
+"Always running" is a paid option: `LYDIABOX_INSTABOX_IDLE_PAUSE=0` and
+`LYDIABOX_IDLE_TIMEOUT=0`.
 
 ### 5.3 Cost for one tenant
 

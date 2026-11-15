@@ -1,16 +1,17 @@
-# InstaBox: API client and guest image
+# InstaBox: API client, guest image, and VM driver
 
 LydiaBox Cloud v1 runs each guest on an [InstaBox](https://instabox.sh)
 machine: a hosted Firecracker microVM (`linux/amd64`) with a persistent
-disk at `/data`. The core reaches it through a remote `vmm.Driver` (a
-later task; [cloud-instabox.md](cloud-instabox.md) maps the driver and
-[cloud-design.md](cloud-design.md) the service). This page covers the two
-parts that driver builds on:
+disk at `/data`. The core reaches it through the `instabox` VM driver
+([cloud-instabox.md](cloud-instabox.md) maps the driver and
+[cloud-design.md](cloud-design.md) the service). This page covers:
 
 - `internal/instabox`: a typed Go client for the InstaBox REST API, with a
   fake server (`internal/instabox/instaboxtest`) for tests.
 - `deploy/instabox`: the LydiaBox desktop image that InstaBox imports as a
   snapshot.
+- `internal/vmm/instabox`: the `instabox` VM driver
+  ([Driver](#driver)), and the operator command `lydiabox instabox`.
 
 Nothing here was checked against the real service: no account was used.
 [What the documentation does not state](#what-the-documentation-does-not-state)
@@ -120,10 +121,19 @@ The API key goes only into the `X-API-Key` header. `Client` prints as
 and attempt, and `*APIError` holds no headers. `ImportSnapshot` passes
 the key to the CLI in its environment, never on its command line.
 
-The fake (`instaboxtest.New(Options{APIKey, OpDelay, MaxMachines, MaxSnapshots, FreePlan, Exec})`)
+The fake (`instaboxtest.New(Options{APIKey, OpDelay, MaxMachines, MaxSnapshots, FreePlan, Exec, Guest})`)
 keeps its own JSON types. Test hooks: `InjectError`, `InjectDisconnect`,
 `FailNextCreate`, `FailNextExecAfterStart`, `IdlePause`, `State`,
-`Requests`, `Replays`, `File`, `PortToken`, `Leases`.
+`Requests`, `Replays`, `File`, `PortToken`, `Leases`, `AddSnapshot`,
+`Machines`, `Wakes`, `ProxyURL`. With a `GuestRunner` (`Guest`), each
+machine runs a program from its create or start to its stop (a pause keeps
+it), and the published ports are served by a port proxy at `ProxyURL`:
+a private port needs its token (`401` without it, and no wake), a request
+wakes a self-paused machine, a machine that a client paused or stopped
+answers `503 machine_not_running`, and a pause closes the connections.
+An explicit lifecycle operation ends the activity leases.
+`instaboxtest/fakeguest` is a `GuestRunner` that runs the real guest
+daemon in the test process from the `guest.env` that the driver writes.
 
 ## Image
 
@@ -239,6 +249,82 @@ Without Docker it prints `SKIP` and exits 0; without Go it skips only the
 probe. Docker is not systemd: the test does not cover
 `instabox-image.service` or the overlay on an `agent-browser` machine.
 
+## Driver
+
+### Settings
+
+| Variable | Default | Meaning |
+| :--- | :--- | :--- |
+| `LYDIABOX_VM_DRIVER` | `auto` | `instabox`; in the provider storage mode `auto` selects it when the API key or the snapshot is set |
+| `LYDIABOX_STORAGE_MODE` | `juicefs` | Must be `provider` |
+| `LYDIABOX_INSTABOX_API_KEY`, `LYDIABOX_INSTABOX_API_KEY_FILE` | none | The API key (`ibk_...`, scopes `machines:read` and `machines:write`; `machines:delete` only for `destroy`). Environment only: not in `lydiabox.yaml`, never logged, never written to the machine |
+| `LYDIABOX_INSTABOX_SNAPSHOT` | none | ID (`sn_...`) or name of the imported guest image snapshot (`instabox.snapshot`) |
+| `LYDIABOX_INSTABOX_API_URL` | `https://api.instabox.sh` | The API, a key broker, or the fake in tests (`instabox.api_url`) |
+| `LYDIABOX_INSTABOX_IDLE_PAUSE` | `30m` | `autoSuspendAfterSeconds` of a new machine: 5m to 30m in whole minutes, or `0` (off, paid plans) (`instabox.idle_pause`) |
+| `LYDIABOX_VM_CPUS`, `LYDIABOX_VM_MEM_MB` | `4`, `8192` | An InstaBox size: 2/4096, 4/8192, 8/16384, 16/32768, 32/65536 (the plan limits the choice) |
+| `LYDIABOX_IDLE_TIMEOUT` | `20m` | The cell pauses the machine after this long without sessions or viewers |
+| `LYDIABOX_WEBRTC_UDP_PORT` | `0` | Must be `0` or unset: a machine gets no inbound UDP |
+| `LYDIABOX_TURN_URLS` or `LYDIABOX_CLOUDFLARE_TURN_KEY_ID`, and `LYDIABOX_WEBRTC_RELAY_ONLY=true` | none | The desktop stream relays through TURN on TCP or TLS; `lydiabox up` warns when no relay is set |
+
+InstaBox has no region setting; the platform places machines. Start
+validation refuses the `juicefs` mode, a missing key or snapshot, a size
+that is not an InstaBox size, a GPU, and a UDP port.
+
+### What the driver does
+
+- The first use makes the machine `lbx-<16 hex of sha256(tenant)>` from
+  the snapshot with the metadata `lydiabox_tenant=<tenant>`. The record in
+  the state database keeps the machine ID; the create's
+  `Idempotency-Key` is saved before the call. A second `lydiabox up` (also
+  with a lost record: it finds the metadata) attaches to the same machine.
+- At boot it publishes port 9000 as a private port, writes
+  `/data/.lydiabox/guest.env` (mode `0600`) with the link secret, the
+  file roots, and UDP port `0`, and dials
+  `wss://9000-<id>.<domain>/` with `Authorization: Bearer <port token>`.
+  The link secret and the port token are encrypted in the state database.
+  When an adopted machine has other settings, the driver replaces the file
+  and restarts the guest daemon through `exec`.
+- While the cell is attached, it holds the activity lease `lydiabox-cell`;
+  the cell's idle timeout pauses the machine (`suspend`). A pause that
+  InstaBox makes by itself is seen within 30 seconds (at once when the
+  link drops) and shown as `PAUSED`; the next use wakes the machine.
+- At `SIGTERM` the machine continues; the lease is released, so the idle
+  pause applies.
+- Quota, capacity, payment, scope, and key errors show in `lastError` of
+  `GET /api/v1/vm/status` and in the web status bar; the driver waits 30
+  seconds (or `Retry-After`) before it calls the API again for the tenant.
+- A deleted machine is an error that names it. The driver never deletes a
+  machine.
+
+### Operator command
+
+```bash
+lydiabox instabox status                       # machine, state, size, idle pause, link URL
+lydiabox instabox destroy                      # prints what it would delete, and stops
+lydiabox instabox destroy -confirm m_...       # deletes the machine and its /data disk
+lydiabox instabox destroy -forget              # removes the record of a machine that is gone
+```
+
+Stop `lydiabox up` for the tenant first. Snapshots of the machine stay.
+The command uses the same environment as the cell (data directory, master
+key, API key).
+
+### Tests
+
+- `internal/vmm/instabox`: each driver method against the fake API with
+  the real guest daemon in the test process
+  (`internal/instabox/instaboxtest/fakeguest`): an idempotent create across
+  a crash and a restart, adoption by metadata, `409 operation_conflict`,
+  account errors, a deleted machine, a self-pause, and a guest restart
+  after changed settings.
+- `internal/cli` (`TestInstaboxCellEndToEnd`): `lydiabox up` as a cell on a
+  UNIX socket, the driver selected by `auto`, and the fake port proxy
+  (token check, wake of a self-paused machine, refusal of a paused one):
+  wake on demand, files, a PTY session, desktop signaling, the LLM gateway
+  and connector broker channels, idle hibernate and resume, a self-pause
+  with the link open, and a restart that adopts the same machine, with a
+  goroutine leak check.
+
 ## What the documentation does not state
 
 Each item needs a check with a real account (see the checklist below).
@@ -329,4 +415,33 @@ result in `docs/conformance.md`.
 12. Errors: a wrong key (401), a stopped machine's exec (409
     `machine_not_running`), a delete without `X-Confirm-Delete` via curl
     (409), a second create with the same `Idempotency-Key` (replay).
-13. Clean up: `DeleteMachine`, `DeleteSnapshot`, and revoke the key.
+13. Driver, first start. Delete the machines of steps 4 to 12. Start a cell
+    with the [driver settings](#settings) (`LYDIABOX_CELL_MODE=true`,
+    `LYDIABOX_LISTEN_ADDR=unix:...`, a TURN key,
+    `LYDIABOX_IDLE_TIMEOUT=10m`). Check that `lydiabox instabox status`
+    shows no machine, that the first file request makes one machine
+    `lbx-...` (record the time to the first answer), and that
+    `/data/.lydiabox/guest.env` has mode `0600` and no API key, LLM key, or
+    refresh token: a search for `ibk_` in `/data` and `/run/instabox`
+    finds nothing.
+14. Driver, sessions: a Studio session through the magpie gateway, a file
+    upload in the Files page, and the desktop through TURN from a network
+    without UDP.
+15. Driver, power: leave the cell idle for `LYDIABOX_IDLE_TIMEOUT`; check
+    that the machine is `suspended` without `autoSuspendedAt`, and that
+    the next request resumes it (record the time). Check the activity
+    lease `lydiabox-cell` while a session is open.
+16. Driver, self-pause: stop the cell with `kill -9` (no lease release),
+    wait for the lease TTL (15 minutes) and the idle pause; start the cell
+    again; check `PAUSED` in `GET /api/v1/vm/status`, and that a request
+    wakes the machine with `wake`.
+17. Driver, restart: send `SIGTERM` to the cell, start it again, and check
+    that it attaches to the same machine (no second `POST /v1/machines`)
+    and that the activity lease was released at the stop.
+18. Driver, errors: start a cell with a revoked key; check the clear
+    message in the web status bar and that the cell makes at most one
+    InstaBox call every 30 seconds while the page is open. Delete the
+    machine in the InstaBox console; check the message, then
+    `lydiabox instabox destroy -forget` and a new machine on the next use.
+19. Clean up: `lydiabox instabox destroy -confirm <id>`, `DeleteSnapshot`,
+    and revoke the key.

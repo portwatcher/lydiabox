@@ -77,8 +77,10 @@ of a hosted machine) instead of a JuiceFS volume. LydiaBox then:
   present (it logs one warning at start when they are absent).
 
 The `docker` driver keeps the trees in the named volumes
-`lydiabox-<tenant>-home` and `lydiabox-<tenant>-workspace`. The `chv` driver
-needs the `juicefs` mode (`auto` selects `docker`). In the guest,
+`lydiabox-<tenant>-home` and `lydiabox-<tenant>-workspace`; the `instabox`
+driver keeps them on the `/data` disk of the machine. The `chv` driver
+needs the `juicefs` mode (`auto` selects `instabox` when InstaBox settings
+are set, else `docker`). In the guest,
 `LYDIABOX_GUEST_HOME_ROOT` and `LYDIABOX_GUEST_WORKSPACE_ROOT` set the root
 directories (default `/home/agent` and `/workspace`); file operations run
 as the agent user (`LYDIABOX_GUEST_FS_USER`, default `agent`) when the
@@ -110,21 +112,26 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_S3_SECRET_KEY` | required (`juicefs`) | Secret access key |
 | `LYDIABOX_S3_REGION` | `auto` | Region (AWS needs the bucket region) |
 | `LYDIABOX_S3_BUCKET_URL` | derived | JuiceFS `--bucket` URL override |
-| `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` (`127.0.0.1:8080` with a tunnel) | Web UI, API, WebSocket, `/webdav`, and the S3 gateway (`/s3`) |
+| `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` (`127.0.0.1:8080` with a tunnel) | Web UI, API, WebSocket, `/webdav`, and the S3 gateway (`/s3`); `unix:/path` listens on a UNIX socket (mode 0660) |
 | `LYDIABOX_S3_GATEWAY_ADDR` | `127.0.0.1:8090` | Backend of the S3 gateway (empty or `off` disables it) |
-| `LYDIABOX_AUTH_TOKEN` | generated | Admin password (16 characters or more) |
-| `LYDIABOX_MASTER_KEY` | generated | 64 hex characters; encrypts connector tokens |
+| `LYDIABOX_AUTH_TOKEN` | generated | Admin password (16 characters or more); `LYDIABOX_AUTH_TOKEN_FILE` reads it from a file |
+| `LYDIABOX_MASTER_KEY` | generated | 64 hex characters; encrypts connector tokens; `LYDIABOX_MASTER_KEY_FILE` reads it from a file |
 | `LYDIABOX_DATA_DIR` | `~/.lydiabox` | Runtime, caches, metadata, and the mount |
 | `LYDIABOX_CONFIG` | `./lydiabox.yaml` | YAML configuration file |
 | `LYDIABOX_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
 | `LYDIABOX_META_SYNC_INTERVAL` | `60s` | Metadata backup interval (minimum 5s) |
-| `LYDIABOX_VM_DRIVER` | `auto` | `chv` when `/dev/kvm` is accessible, else `docker` |
+| `LYDIABOX_VM_DRIVER` | `auto` | `chv` when `/dev/kvm` is accessible, else `docker`; in the provider storage mode `instabox` when InstaBox settings are set, else `docker` |
 | `LYDIABOX_VM_CPUS` | `4` | Guest vCPUs |
 | `LYDIABOX_VM_MEM_MB` | `8192` | Guest RAM in MiB |
 | `LYDIABOX_GPU_PCI_ADDR` | empty | VFIO PCI address for GPU passthrough (`chv`) |
 | `LYDIABOX_IDLE_TIMEOUT` | `20m` | Pause the VM after this long without sessions or viewers (`0` disables) |
 | `LYDIABOX_WEBRTC_UDP_PORT` | `50000` | UDP port of the desktop stream (`0` disables forwarding) |
 | `LYDIABOX_TENANT_ID` | `default` | Tenant of this process (cell mode) |
+| `LYDIABOX_CELL_MODE` | `false` | A cell of a control plane: the tenant ID, admin token, and master key must come from it; no tunnel, no UDP forward |
+| `LYDIABOX_INSTABOX_API_KEY`, `_API_KEY_FILE` | empty | InstaBox API key (`ibk_...`) of the `instabox` driver (environment only) |
+| `LYDIABOX_INSTABOX_SNAPSHOT` | empty | Snapshot ID (or name) of the imported guest image |
+| `LYDIABOX_INSTABOX_API_URL` | `https://api.instabox.sh` | InstaBox API (or a key broker) |
+| `LYDIABOX_INSTABOX_IDLE_PAUSE` | `30m` | Idle pause of the machine when no cell holds it awake (5m to 30m, `0` off) |
 | `LYDIABOX_MAGPIE_ADDR`, `_WEB_ADDR` | `127.0.0.1:3425`, `127.0.0.1:3426` | Host magpie gateway and its admin web API |
 | `LYDIABOX_VM_SUBNET_INDEX` | `auto` | Guest subnet `172.30.<n>.0/24` (`chv`); `auto` reads it from the state database |
 | `LYDIABOX_VM_TAP`, `LYDIABOX_VM_NFT_TABLE` | from the tenant ID | TAP device and nftables table (`chv`) |
@@ -187,7 +194,14 @@ One `lydiabox up` process serves one tenant. To run several on one host
 (one "cell" for each tenant), give each process its own
 `LYDIABOX_TENANT_ID`, `LYDIABOX_DATA_DIR`, and host addresses:
 `LYDIABOX_LISTEN_ADDR`, `LYDIABOX_S3_GATEWAY_ADDR`, `LYDIABOX_MAGPIE_ADDR`,
-`LYDIABOX_MAGPIE_WEB_ADDR`, and `LYDIABOX_WEBRTC_UDP_PORT` (or `0`). With
+`LYDIABOX_MAGPIE_WEB_ADDR`, and `LYDIABOX_WEBRTC_UDP_PORT` (or `0`).
+`LYDIABOX_CELL_MODE=true` marks a cell of a control plane: it refuses to
+start without `LYDIABOX_TENANT_ID`, the admin token, and the master key
+(the `_FILE` forms keep them out of the environment), never generates or
+prints a secret, never runs cloudflared, and forwards no UDP port by
+default. `GET /api/v1/ready` answers with the tenant ID when the cell
+serves; `LYDIABOX_LISTEN_ADDR=unix:/run/lbx/<tenant>.sock` keeps the cell
+off the network. With
 `chv`, also set `LYDIABOX_VM_SUBNET_INDEX`: each process has its own state
 database, so `auto` gives every non-default tenant index 1. The TAP name
 and the nftables table come from the tenant ID; `LYDIABOX_VM_TAP` and
@@ -205,7 +219,35 @@ before the link carries the RPC (port 9000) and, in the other direction,
 the connector broker (9001) and the LLM gateway tunnel (9002). Inside the
 guest, local UNIX sockets (`/run/lydiabox/host-9001.sock` and
 `host-9002.sock`) bridge to the host ports. The host end is the Go package
-`internal/vmm/link`; no driver in this repository uses it yet.
+`internal/vmm/link`; the `instabox` driver uses it.
+
+### InstaBox machines (`instabox`)
+
+The `instabox` driver runs the guest on an [InstaBox](https://instabox.sh)
+machine: a hosted Firecracker VM (`linux/amd64`) with the agent files on
+its persistent `/data` disk. It needs `LYDIABOX_STORAGE_MODE=provider`,
+an API key, and the snapshot of the imported guest image
+([docs/instabox.md](docs/instabox.md)):
+
+```sh
+LYDIABOX_STORAGE_MODE=provider LYDIABOX_VM_DRIVER=instabox \
+LYDIABOX_INSTABOX_API_KEY_FILE=~/.instabox-key LYDIABOX_INSTABOX_SNAPSHOT=sn_... \
+LYDIABOX_VM_CPUS=2 LYDIABOX_VM_MEM_MB=4096 \
+LYDIABOX_CLOUDFLARE_TURN_KEY_ID=... LYDIABOX_CLOUDFLARE_TURN_API_TOKEN=... LYDIABOX_WEBRTC_RELAY_ONLY=true \
+./dist/lydiabox up
+```
+
+The first use makes the machine `lbx-<hash of the tenant>` from the
+snapshot; later starts find it again. The driver writes the guest settings
+to `/data/.lydiabox/guest.env`, publishes the link port as a private port,
+and reaches the guest over the guest link with the port token. The API
+key, LLM keys, and refresh tokens never go to the machine. The cell pauses
+the machine after `LYDIABOX_IDLE_TIMEOUT`; while the cell uses it, an
+InstaBox activity lease keeps InstaBox's own idle pause away. The size is
+an InstaBox size (2/4096, 4/8192, 8/16384, 16/32768, 32/65536). A machine
+gets no inbound UDP, so the desktop stream needs a TURN relay on TCP or TLS.
+`lydiabox instabox status` shows the machine; only
+`lydiabox instabox destroy -confirm <machine ID>` deletes it and its disk.
 
 To boot and check the `chv` driver on a KVM host (also nested in Lima on a Mac), see [docs/kvm-test.md](docs/kvm-test.md).
 For an amd64 host, see [step 9](docs/kvm-test.md#9-amd64-kvm-host); to check GPU passthrough, use the checklist in [docs/kvm-test.md](docs/kvm-test.md#10-gpu-passthrough-vfio).
@@ -462,7 +504,7 @@ npm run typecheck && npm run lint && npm run test
 | Connectors | Done; tested against fake provider APIs; full real-provider checklist passed on GitHub ([results](docs/conformance.md#connector-run-github-real-provider)); real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 | Remote access (Cloudflare Zero Trust) | Done; tested against a fake Cloudflare API, a fake JWKS, and a fake cloudflared; real-account checklist in [docs/remote-access-manual-test.md](docs/remote-access-manual-test.md) |
-| InstaBox client and image (LydiaBox Cloud) | Client tested against a fake InstaBox API; image built for linux/amd64 and container-tested with Docker; not checked against the real service; checklist in [docs/instabox.md](docs/instabox.md#first-check-with-a-real-account) |
+| InstaBox client, image, and `instabox` driver (LydiaBox Cloud) | Client and driver tested against a fake InstaBox API whose machines run the real guest daemon (`lydiabox up` as a cell, end to end); image built for linux/amd64 and container-tested with Docker; not checked against the real service; checklist in [docs/instabox.md](docs/instabox.md#first-check-with-a-real-account) |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).
 
@@ -476,7 +518,7 @@ internal/store          SQLite state database, AES-256-GCM secrets
 internal/bootstrap      runtime binary downloader, guest image fetcher
 internal/storage        JuiceFS supervisor, S3 metadata backup, WebDAV and S3 proxies, File API
 internal/agentfs        filesystem seam of the guest trees: host mount (os.Root) or guest RPC (remotefs)
-internal/vmm            VM driver interface, auto-wake and idle controller (chv, docker)
+internal/vmm            VM driver interface, auto-wake and idle controller (chv, docker, instabox, guest link)
 internal/magpie         magpie supervisor, admin client, harness config wirers
 internal/harness        session manager, terminal rooms, adapters
 internal/connector      OAuth, tokens, refresh, audit, guest broker
