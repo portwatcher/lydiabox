@@ -18,7 +18,10 @@ See [docs/design.md](docs/design.md) for the architecture,
 [docs/api.md](docs/api.md) for the HTTP and WebSocket API, and
 [docs/conformance.md](docs/conformance.md) for the implementation status.
 [docs/cloud-design.md](docs/cloud-design.md) is a proposal for a hosted
-service (LydiaBox Cloud) on top of this core.
+service (LydiaBox Cloud) on top of this core. Its first version runs each
+agent VM on InstaBox ([docs/cloud-instabox.md](docs/cloud-instabox.md));
+[docs/cloud-own-compute.md](docs/cloud-own-compute.md) is the later design
+for KVM hosts that the service operates.
 
 ## Quick start
 

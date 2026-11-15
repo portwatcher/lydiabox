@@ -1,599 +1,452 @@
 # LydiaBox Cloud: design proposal
 
-Status: proposal (2026-11-14), not implemented. The owner must make the
-decisions in [section 12](#12-open-decisions) before Phase C0 starts.
+Status: proposal, revised on 2026-11-15 for the InstaBox-first decision.
+Not implemented. The first version of this proposal (2026-11-14) assumed
+that the service operates its own KVM hosts.
+
+This proposal has three documents:
+
+- This document: the decision, the architecture, the contract between
+  the control plane and a cell, secrets, the open decisions, and the
+  phases.
+- [cloud-instabox.md](cloud-instabox.md): the InstaBox facts with their
+  sources, the `vmm.Driver` mapping, provider storage, the desktop, the
+  24/7 behavior, the cost, and the supplier risks.
+- [cloud-own-compute.md](cloud-own-compute.md): the design for the
+  service's own KVM hosts. It is now the later phase.
 
 LydiaBox Cloud is a hosted service on top of the open-source LydiaBox core.
-A user signs up, configures a harness, and gets a personal agent that is
+A user signs in, configures a harness, and gets a personal agent that is
 always reachable. The user can observe and take over the agent desktop,
-and the agent filesystem persists.
+and the agent files persist.
 
-Terms: the **core** is the code in this repository, as
-[design.md](design.md) specifies it. A **cell** is one core process for one
-tenant on one KVM host, with its children and its VM. The **host agent** is
-a new privileged daemon on each KVM host that starts, stops, and moves
-cells. The **control plane** is the new central service for accounts,
-billing, placement, routing, and triggers.
+Terms:
 
-## 1. Goals, non-goals, and user journey
+- The **core** is the code in this repository, as [design.md](design.md)
+  specifies it.
+- A **cell** is one core process (`lydiabox up`) for one tenant, with its
+  children (magpie) and its agent VM.
+- A **cell host** is one process that starts and supervises many cells.
+- The **control plane** is the central service for accounts, tenants,
+  routing, and the dashboard.
+- A **machine** is one InstaBox Firecracker VM. On the InstaBox path, the
+  machine is the agent VM of one tenant.
+- The **guest link** is a WebSocket that the cell dials to the guest. It
+  replaces vsock on backends that have no vsock.
+- **Provider storage mode** keeps the agent home and workspace on the
+  disk of the VM provider, not on JuiceFS.
 
-### 1.1 Present system
+## 1. Decision record
+
+| Item | Value |
+| :--- | :--- |
+| Date | 2026-11-15 |
+| Decided by | The owner |
+| Decision | Build LydiaBox Cloud first on InstaBox machines. Examine own compute later. |
+| Replaces | The 2026-11-14 plan to operate KVM hosts with the `chv` driver, a host agent, JuiceFS on a service bucket, and a shared PostgreSQL metadata engine. That design moves to [cloud-own-compute.md](cloud-own-compute.md). It is not deleted. |
+| Also decided | First login: Cloudflare Access email verification on `lydiabox.com`. Repository: a separate private repository, `lydiabox-cloud`. |
+| Deployment | The private infra repository `example/infra`, to a Kubernetes cluster with GitOps |
+
+Reasons:
+
+1. The service does not buy, operate, or patch KVM hosts.
+2. Each tenant gets a Firecracker VM, so the hypervisor is the tenant
+   boundary ([cloud-instabox.md §1](cloud-instabox.md#1-instabox-facts-used-in-this-design)).
+3. InstaBox gives a persistent disk, pause that keeps memory, custom image
+   import, private HTTPS ports with WebSocket, and an exec and file API.
+
+Rule for all core changes: own compute later must be only a driver swap.
+Thus each core change is generic. The core does not know the name
+InstaBox outside the `instabox` driver.
+
+## 2. Goals, non-goals, and user journey
+
+### 2.1 Present system
 
 One `lydiabox up` process is the trusted control plane for one tenant:
 
 - `serve` builds one store, one storage supervisor, one authenticator, and
   one API server for `cfg.TenantID` ([internal/cli/up.go](../internal/cli/up.go)).
-- `cfg.TenantID` is always `"default"`. No environment variable or YAML
-  key sets it ([internal/config/config.go](../internal/config/config.go),
-  [internal/config/sources.go](../internal/config/sources.go)).
-- All internal services accept a `tenantID`. The `chv` driver gives each
-  tenant its own subnet `172.30.<n>.0/24` and TAP device
-  ([internal/store/vmnet.go](../internal/store/vmnet.go),
-  [internal/vmm/chv/payload.go](../internal/vmm/chv/payload.go)).
-- Authentication is one admin token per process
-  ([internal/api/auth.go](../internal/api/auth.go), [api.md](api.md#2-authentication)).
-- The VM pauses after `LYDIABOX_IDLE_TIMEOUT` (default 20 minutes) without
-  a PTY or desktop lease. Pause keeps the guest RAM allocated
-  ([internal/vmm/controller.go](../internal/vmm/controller.go)).
-- Only a person in the web UI or the API can start work. There is no
-  scheduler, webhook, or chat channel.
+- `cfg.TenantID` is always `"default"`. No setting changes it
+  ([internal/config/config.go](../internal/config/config.go)).
+- The VM drivers are `chv` and `docker` ([internal/vmm/driver.go](../internal/vmm/driver.go)).
+  The host reaches the guest over vsock ports 9000 (guest RPC), 9001
+  (host broker), and 9002 (LLM gateway) ([internal/guest/rpc/addr.go](../internal/guest/rpc/addr.go)).
+- The home and the workspace are on a JuiceFS mount in the user's S3
+  bucket. The host shares them into the VM with `virtiofsd`.
+- Cloudflare Access login, the TURN relay for the desktop stream, and
+  harness subscription login are on `main`
+  ([remote-access-manual-test.md](remote-access-manual-test.md),
+  [turn-manual-test.md](turn-manual-test.md),
+  [subscriptions-manual-test.md](subscriptions-manual-test.md)).
 
-Planned inputs from parallel tasks (not done): Cloudflare Tunnel with
-Access email login, a TURN relay for the desktop stream, and subscription
-login for Claude Code and Codex on the host.
-
-### 1.2 Goals
+### 2.2 Goals
 
 1. A user gets a working agent without a server, a bucket, or a KVM host.
-2. The agent is always reachable. Work starts without an open browser.
-3. The user observes and takes over the desktop, as in the core. Files,
-   the root overlay, and sessions persist across sleep and host failure.
-4. One tenant cannot read, change, or slow down another tenant. Operators
-   cannot read user secrets during normal operation.
-5. The core stays a complete self-hosted product. The cloud adds code
-   around it and makes only small, opt-in changes to it.
+2. The agent is always reachable. Work can start without an open browser.
+3. The user observes and takes over the desktop, as in the core.
+4. One tenant cannot read, change, or slow down another tenant.
+5. LLM keys, connector tokens, and the InstaBox API key never go into an
+   InstaBox machine.
+6. The core stays a complete self-hosted product. Each cloud change in the
+   core is opt-in, and the defaults keep self-hosted behavior.
 
-### 1.3 Non-goals
+### 2.3 Non-goals for the InstaBox path
 
 - Teams, shared agents, and roles. One account has one agent.
-- GPU passthrough. It is not verified in the core ([conformance.md](conformance.md#summary)).
-- The `docker` VM driver. A container shares the host kernel, so it is not
-  a sufficient tenant boundary. The cloud uses `chv` only.
-- More than one region at launch, a new guest image, or a new harness.
+- GPU passthrough, the `docker` driver, and `arm64` guests. InstaBox
+  imports `linux/amd64` images only.
+- A choice of region. InstaBox does not let a client select one.
+- Public sign-up and billing. The first users are people whose email the
+  owner adds to the Cloudflare Access policy.
 
-### 1.4 User journey
+### 2.4 User journey (first version)
 
-1. **Sign up** with email, Google, or GitHub. The control plane makes an
-   account and a tenant ID.
-2. **Configure** a harness and an LLM endpoint (base URL, API key, model).
-   Subscription login is possible only if decision 7 permits it.
-3. **Provision.** The control plane makes the storage, keys, and DNS name,
-   and places a cell. The cell formats the volume.
-4. **Use** `https://<tenant>.<cloud domain>/`: the core web UI of the cell.
-5. **Observe and take over** the desktop through the TURN relay.
-6. **Work without a browser.** A schedule, webhook, or email starts a
-   task. The cell wakes the VM, runs the task, and lets the VM sleep.
-7. **Persist, export, delete.** Data persists until the user deletes it.
+1. The owner adds the email of the user to the Access policy.
+2. The user opens `https://lydiabox.com/`. Cloudflare Access sends a code
+   to the email and admits the user.
+3. The dashboard makes the tenant. The control plane starts a cell, and
+   the cell makes the machine from the guest image snapshot.
+4. The user opens `https://<tenant>.lydiabox.com/`, the core web UI of
+   the cell, and sets the LLM endpoint.
+5. The user runs harness sessions and takes over the desktop through TURN.
+6. The machine pauses when idle and wakes on the next use.
 
-## 2. Tenancy model
+## 3. Architecture
 
-### 2.1 Options
+```text
+Browser ──HTTPS──> Cloudflare (Access; lydiabox.com, *.lydiabox.com)
+                       │ Cloudflare Tunnel
+                       ▼
+Kubernetes:  lbx-router ──HTTP──> lbx-cellhost pod ──Unix socket──> cell
+       lbx-control                                (lydiabox up in cell mode,
+       (accounts, tenants)                         magpie with the LLM keys)
+                                                    │                │
+                                  InstaBox API (HTTPS)   guest link (WSS to
+                                                    │    a private port)
+                                                    ▼                ▼
+InstaBox:                         machine of the tenant: lydiabox-guest,
+                                  harnesses, desktop
+                                                    │ desktop media,
+                                                    ▼ TURN on TCP/TLS 443
+Browser <──────────────────────── Cloudflare Realtime TURN
+```
 
-- **A. Process per tenant (cells).** Each tenant gets its own core
-  process, store, master key, magpie, JuiceFS mount, and VM. A host agent
-  starts the cells. A control plane routes to them.
-- **B. One multi-tenant process per host.** One core process serves all
-  tenants of a host. It gets the tenant from the identity of each request.
+### 3.1 Core changes in this repository
 
-### 2.2 Comparison
+Parallel tasks make these changes. Each change is opt-in.
 
-| Criterion | A. Process per tenant | B. Multi-tenant process |
+| Change | Function | Default |
 | :--- | :--- | :--- |
-| Isolation | OS process boundary. A bug in one cell affects one tenant. Each cell can run as its own Unix user. | One address space. `tenant.FromContext` returns `"default"` when the context has no tenant ([internal/tenant/tenant.go](../internal/tenant/tenant.go)), so a missing tenant fails open. A crash stops all tenants of the host. |
-| Secret exposure | A cell holds only its own master key, LLM keys, and OAuth tokens. | The process holds the keys of all tenants of the host. One memory disclosure exposes all of them. |
-| Magpie | One magpie per tenant, as tested. | magpie has one gateway with named keys ([internal/magpie/gatewaykey.go](../internal/magpie/gatewaykey.go)) and no separation of provider keys by tenant. One magpie per tenant is option A for this part. |
-| JuiceFS | One volume and mount per tenant. | Also one volume (`lydiabox-<tenant>`) and mount per tenant. No saving. |
-| Memory per tenant | Go process, magpie, WebDAV and S3 gateway children: estimate 150 to 300 MiB, to measure in Phase C1. | Saves most of that memory. |
-| Dominant cost | Guest RAM (default 8192 MiB) and vCPUs. Same for both. | Same. |
-| Operations | Many small processes. Restart, upgrade, canary, and move one tenant at a time. | Fewer processes. An upgrade or a crash affects all tenants of a host. A move needs a per-tenant export from a shared process. |
-| Change to the tested core | Small opt-in settings (section 10). The KVM runs stay valid. | Large: per-request identity, per-tenant S3 credentials, master keys, magpie, and connector clients, and a new test matrix. |
+| Guest link | A WebSocket that the host dials to a TCP port of the guest. One stream multiplexer carries host-to-guest streams (`DialGuest`) and guest-to-host reverse channels (`ListenGuestPort`, ports 9001 and 9002). A link key from the cell authenticates the host to the guest. | vsock |
+| Provider storage mode | The home and the workspace stay on the machine disk. The host reaches the files through guest RPC file methods. No JuiceFS mount and no S3 settings. WebDAV and `/s3` are off. | JuiceFS |
+| Cell mode | Many core processes on one host: the tenant ID from a setting, a per-tenant data directory, a Unix socket or loopback listener, no host-wide resources (UDP port, tunnel), and no bootstrap token output | off |
+| `instabox` VM driver | `vmm.Driver` on the InstaBox API and the guest link ([mapping](cloud-instabox.md#3-vmmdriver-mapping)) | not selected |
+| Guest image for InstaBox | The guest root filesystem as a `linux/amd64` OCI image, which InstaBox imports as a snapshot | none |
 
-### 2.3 Recommendation
+The tasks that implement these changes set the final names of settings
+and routes. [api.md](api.md) and [README.md](../README.md) document them
+when they land. Section 4 gives the names as proposals.
 
-Use option A. The coordinator recommended it, and the analysis supports
-it:
+### 3.2 Cloud repository components
 
-1. The density gain of B is small. The guest VM is more than 90 percent of
-   the memory of a running tenant (estimate), and both options need one
-   JuiceFS mount per tenant.
-2. A keeps a bug or a secret leak to one tenant. B puts the secrets of
-   all tenants of a host in one process.
-3. A uses the core as a binary with settings. Go does not permit another
-   module to import the core `internal/` packages, and A does not need it.
-
-Option A needs core changes. Today two cells on one host collide, because
-each process uses the tenant `"default"`:
-
-- Both get subnet index 0 and the same TAP name `lbx<hash("default")>`.
-- Both use the nftables table `lydiabox_<tap>` and DNAT the same host UDP
-  port for WebRTC (`LYDIABOX_WEBRTC_UDP_PORT`, default 50000,
-  [internal/vmm/chv/network.go](../internal/vmm/chv/network.go)).
-- `chv` needs root or `CAP_NET_ADMIN` for TAP and NAT
-  ([README.md](../README.md#cloud-hypervisor-chv-linux-with-kvm)). A cell
-  that runs as root weakens the process boundary.
-
-Section 10.3 removes these collisions. To lower the cost of dormant
-tenants, the host agent stops the whole cell (not only the VM) after a
-long idle time. A request or a trigger starts it again.
-
-## 3. Control plane
-
-### 3.1 Components
+The private repository `lydiabox-cloud` holds the control
+plane. It runs the core as a pinned binary and imports no core
+`internal/` package.
 
 | Component | Function |
 | :--- | :--- |
-| Accounts | Sign-up, login, email verification, deletion. Uses a hosted identity provider. |
-| Dashboard | Harness and LLM setup, triggers, usage, billing, export. Links to the cell web UI. |
-| Tenant registry | Tenant ID, state, placement, storage location, wrapped keys, plan, quotas. PostgreSQL. |
-| Scheduler | Selects a KVM host for each cell from free RAM, free vCPU, and host health. |
-| Host agent | Starts and stops cells; owns TAP devices and nftables; reports capacity and usage. |
-| Router | Public HTTPS and WebSocket entry. Authenticates the user and forwards to the cell. |
-| TURN service | Relays desktop media with short-lived credentials for each tenant. |
-| Trigger service | Schedules, webhooks, inbound email, chat (section 6.2). |
-| OAuth relay | Service-owned OAuth clients for connectors (section 5.4). |
-| Metering and billing | Usage records to the billing provider (section 8). |
+| `lbx-control` | Accounts (identity: the Access email), tenant registry, tenant lifecycle, assignment of tenants to cell hosts, custody of the InstaBox API key and the tenant master keys |
+| `lbx-cellhost` | Starts, supervises, and stops the cells of its tenants. Keeps each cell data directory on a persistent volume. Forwards requests from `lbx-router` to the Unix socket of each cell. Reports cell health to `lbx-control`. |
+| `lbx-router` | Routes `<tenant>.lydiabox.com` to the cell of the tenant. Checks the Access identity. Keeps WebSocket routes open without buffering. |
+| Dashboard | Tenant creation, tenant state, link to the cell web UI |
+| Registry database | PostgreSQL: accounts, tenants, cell host assignment, machine IDs, wrapped keys |
 
-### 3.2 Login and request routing
+Later components: a trigger service, an OAuth relay for connectors, and
+metering and billing ([cloud-own-compute.md §3.1](cloud-own-compute.md#31-components)).
 
-1. The user logs in at the control plane, which sets a session cookie for
-   its own domain.
-2. Each tenant has its own subdomain. The core cookie has `Path=/`, and the
-   core accepts a cookie state change only when `Origin` equals `Host`
-   ([api.md](api.md#2-authentication)). A subdomain for each tenant keeps
-   these rules correct without a change.
-3. The router verifies the session, finds the cell in the registry, and
-   forwards the request with a signed short-lived JWT (tenant ID, user
-   ID). It removes all identity headers from the client.
-4. The cell verifies the JWT in a new trusted-proxy auth mode and checks
-   that the tenant claim equals its own tenant ID. The Cloudflare Access
-   task adds a check of `Cf-Access-Jwt-Assertion`. Use one verifier with a
-   configured issuer, audience, and key set for both.
-5. If the cell is stopped, the router asks the host agent to start it and
-   holds the request for up to 30 seconds, then shows a wait page.
+TURN is the Cloudflare Realtime TURN service. The core already mints
+short-lived credentials for it (`LYDIABOX_CLOUDFLARE_TURN_KEY_ID`,
+[README.md](../README.md#desktop-stream-through-a-turn-relay)).
 
-WebSocket routes (`/api/v1/sessions/{id}/ws`, `/api/v1/desktop/ws`) use the
-same router, which must keep long connections and not buffer frames.
+### 3.3 Deployment
 
-### 3.3 WebRTC media
+- `example/infra` holds the Kubernetes manifests. GitOps syncs them to
+  Kubernetes. The CI of `lydiabox-cloud` builds the images.
+- `lbx-cellhost` is a StatefulSet. Each replica has its own persistent
+  volume for the cell data directories. A NetworkPolicy lets only
+  `lbx-router` and `lbx-control` reach it.
+- `cloudflared` runs in the cluster. One Cloudflare Tunnel serves
+  `lydiabox.com` and `*.lydiabox.com`.
+- One Cloudflare Access application covers `lydiabox.com` and
+  `*.lydiabox.com` with an email policy.
+- The InstaBox webhook endpoint of `lbx-control` needs an Access bypass
+  for its path. `lbx-control` verifies the HMAC signature of each call
+  ([source](https://instabox.sh/docs/integrations/webhooks.md)).
+- Kubernetes Secrets hold the InstaBox API key, the TURN key, the
+  database credentials, and the key that wraps the tenant master keys.
+  Follow the secret handling of `example/infra`.
+- Cell data directories hold the store, the master key, and the magpie
+  state. Back them up to object storage (decision 19).
 
-Today the guest sends media through one host UDP port that the host DNATs
-to the guest ([internal/guest/webrtc/streamer.go](../internal/guest/webrtc/streamer.go)).
-The `hello` message gives the browser Google STUN only
-([internal/desktop/relay.go](../internal/desktop/relay.go)). In the cloud:
+## 4. Contract between the control plane and a cell
 
-- Send all desktop media through the planned TURN relay. The guest
-  connects out to TURN, so a cell needs no public UDP port (port `0`).
-- The control plane issues TURN credentials with a time limit (TURN REST
-  style: username `<expiry>:<tenant>`, HMAC password). The cell sends them
-  in `hello`.
-- TURN denies relay to private ranges and counts bytes for each username.
+### 4.1 Start
 
-### 3.4 Tenant lifecycle
+1. `lbx-control` assigns the tenant to a cell host and sends a start
+   command with the tenant ID.
+2. `lbx-cellhost` makes the data directory `/cells/<tenant>` (mode
+   `0700`) if it does not exist. It writes the secret files of
+   section 4.2 with mode `0600`.
+3. `lbx-cellhost` starts `lydiabox up` as a child process with the
+   settings of section 4.2. It never puts a secret on the command line.
+4. On its first start, the cell makes the machine (section 3 of
+   [cloud-instabox.md](cloud-instabox.md#3-vmmdriver-mapping)). On a
+   later start, the cell finds the existing machine and attaches to it.
+5. The cell is ready when `GET /api/v1/status` answers `200`. The VM can
+   stay paused or stopped: the cell wakes it on the first use.
 
-| Operation | Steps |
+### 4.2 Configuration
+
+Names in italics are proposals. Existing names are in plain code style.
+
+| Setting | Value | Source |
+| :--- | :--- | :--- |
+| *`LYDIABOX_TENANT_ID`* | The tenant ID | `lbx-control` |
+| *`LYDIABOX_CELL_MODE`* | `true` | Fixed |
+| `LYDIABOX_DATA_DIR` | `/cells/<tenant>` | `lbx-cellhost` |
+| `LYDIABOX_LISTEN_ADDR` | *`unix:/run/lbx/<tenant>.sock`* (proposed form) | `lbx-cellhost` |
+| `LYDIABOX_VM_DRIVER` | *`instabox`* | Fixed |
+| *`LYDIABOX_STORAGE_MODE`* | *`provider`* | Fixed |
+| `LYDIABOX_VM_CPUS`, `LYDIABOX_VM_MEM_MB` | The plan size, for example `2` and `4096` | `lbx-control` |
+| `LYDIABOX_IDLE_TIMEOUT` | For example `10m` | `lbx-control` |
+| *`LYDIABOX_INSTABOX_API_URL`* | `https://api.instabox.sh`, or a broker URL later (decision 17) | Fixed |
+| *`LYDIABOX_INSTABOX_API_KEY_FILE`* | A file with the InstaBox API key | `lbx-control` |
+| *`LYDIABOX_INSTABOX_SNAPSHOT`* | The snapshot ID of the guest image version | `lbx-control` |
+| `LYDIABOX_MASTER_KEY` | The tenant master key, unwrapped (a file form is a proposal) | `lbx-control` |
+| `LYDIABOX_AUTH_TOKEN` | A service token for `lbx-cellhost` and `lbx-control` | `lbx-control` |
+| `LYDIABOX_ACCESS_TEAM_DOMAIN`, `_AUD`, `_EMAILS` | The Access team domain and audience; the email of the tenant owner | `lbx-control` |
+| `LYDIABOX_CLOUDFLARE_TUNNEL` | `off` (the cluster runs the tunnel) | Fixed |
+| `LYDIABOX_CLOUDFLARE_TURN_KEY_ID`, `_API_TOKEN` | The TURN key of the service | `lbx-control` |
+| `LYDIABOX_WEBRTC_RELAY_ONLY`, `LYDIABOX_WEBRTC_UDP_PORT` | `true`, `0` | Fixed |
+
+The cell does not get S3 settings in provider storage mode.
+
+### 4.3 Health
+
+| Check | Route | Use |
+| :--- | :--- | :--- |
+| Liveness | `GET /api/v1/health` ([api.md](api.md#get-apiv1health--public-implemented)) | The process answers |
+| Readiness and state | `GET /api/v1/status` ([api.md](api.md#get-apiv1status--implemented)) | Store, storage, and VM state |
+| VM detail | `GET /api/v1/vm/status` ([api.md](api.md#7-vm-power--implemented-phase-2)) | Power state of the machine |
+
+`lbx-cellhost` calls `/api/v1/health` every 10 seconds through the
+socket. After 3 failures, it stops the cell and starts it again with an
+increasing delay. It sends the state of each cell to `lbx-control` every
+30 seconds. A cell that fails at start 5 times goes to the state
+`failed`, and an operator examines it.
+
+### 4.4 How the proxy authenticates to the cell
+
+First version (no new code in the core):
+
+1. Cloudflare Access admits only allowed emails and adds the
+   `Cf-Access-Jwt-Assertion` header.
+2. `lbx-router` verifies the Access JWT. It finds the tenant from the
+   host name and checks in the registry that the email owns the tenant.
+   Else it answers `403`.
+3. `lbx-router` forwards the request with the Access JWT unchanged to
+   the cell host of the tenant, which forwards it to the Unix socket of
+   the cell. `lbx-router` removes other identity headers.
+4. The cell verifies the same JWT in its existing Access login mode
+   ([api.md](api.md#21-cloudflare-access--implemented)). `LYDIABOX_ACCESS_EMAILS`
+   contains only the owner email, so a JWT of another user fails.
+
+The cell listens only on a Unix socket in its cell host pod. Thus only
+the cell host, and through it `lbx-router` and `lbx-control`, reach it.
+`lbx-control` uses the service token of section 4.2 for service calls.
+
+Later: when login moves from Access to a hosted identity provider
+(decision 9), `lbx-router` signs a short-lived JWT, and the cell verifies
+it with the same verifier ([internal/cloudflare/accessjwt](../internal/cloudflare/accessjwt))
+and a configured issuer, audience, and key set.
+
+### 4.5 Stop
+
+| Reason | Steps |
 | :--- | :--- |
-| Provision | Make the tenant ID, the storage prefix and its scoped credentials, the metadata database, and the tenant data key. Place the cell; it formats the volume and makes `root-upper.img`. Push the LLM configuration. |
-| Suspend | Stop triggers. Stop the VM with flush (`POST /api/v1/vm/stop`), stop the cell, keep all data. For unpaid accounts and abuse. |
-| Resume | Place and start the cell. The volume mounts from the shared metadata engine. |
-| Export | Start a cell without a VM if necessary. Give a time-limited archive of `/workspace` and `/home/agent`, and `root-upper.img` on request. No secrets. |
-| Delete | Suspend. Revoke connector tokens at the providers. Delete the tenant objects, the metadata database, and the registry entry. Destroy the wrapped data key last, so copies in backups cannot be decrypted. Keep a deletion record without content. |
+| Upgrade or move of a cell | `lbx-cellhost` sends `SIGTERM`. The cell closes the guest link and exits. The machine continues; its idle pause applies. The new cell attaches to the same machine. |
+| Suspend a tenant | `lbx-control` calls `POST /api/v1/vm/stop` on the cell, which stops the machine with a clean shutdown. Then `SIGTERM`. The data stays. |
+| Delete a tenant | Suspend. Revoke connector tokens. `lbx-control` deletes the machine and its snapshots through the InstaBox API, then the backups, the cell data directory, and the registry entry. It destroys the wrapped master key last. |
 
-### 3.5 Placement, host failure, and migration
+If a cell does not exit 30 seconds after `SIGTERM`, `lbx-cellhost`
+sends `SIGKILL`.
 
-- Place a cell on the healthy host with the most free guest RAM that has
-  the guest images of the current version.
-- The host agent sends a heartbeat every 10 seconds. After 60 seconds
-  without one, the control plane fences the host (the host agent stops its
-  cells on self-fence; the metadata engine revokes the host's sessions)
-  and places its cells on other hosts.
-- Drain: stop the VM with flush, stop the cell, start it on the new host.
-  Only one cell can mount a volume at a time, because `root-upper.img` is
-  an ext4 image on JuiceFS
-  ([design.md](design.md#43-serverless-agent-vm-engine-internalvmm--deploy)).
-  Two writers corrupt it.
-- No live migration. A drained tenant sees a VM restart. Running PTYs end;
-  transcripts stay and can be resumed ([api.md](api.md#post-apiv1sessions)).
+## 5. Secrets on the InstaBox path
 
-### 3.6 Control plane to cell API
+| Secret | Where it is | Never |
+| :--- | :--- | :--- |
+| LLM keys, subscription tokens | magpie in the cell data directory | In the machine. The guest gets only the revocable gateway key, which the host side of channel 9002 adds. |
+| Connector tokens | Cell store, encrypted with the tenant master key | In the machine. The guest asks for a short-lived token over channel 9001. |
+| Tenant master key | Registry, wrapped with a control-plane key; a `0600` file for the cell | In the machine |
+| InstaBox API key | `lbx-control`; a `0600` file for each cell in the first version | In the machine |
+| Private port token | Cell store, encrypted | In a log |
+| Link key | Cell store, encrypted; the machine environment (it protects only the guest) | In a log |
 
-The host agent calls the cell over a Unix socket with a service
-credential, which never leaves the host. It uses existing routes where
-possible:
+Do not use InstaBox Org Secrets or machine environment variables for
+these secrets. Every process in a machine can read its environment
+variables ([source](https://instabox.sh/docs/machines/environment.md)).
 
-| Use | Existing route |
+The supplier can read what is in the machine: the files on its disk and
+the memory of the VM. This is true of every VM host. The privacy policy
+must say it. The secrets above are not in the machine.
+
+## 6. Harness authorization, triggers, and metering
+
+- **Harness authorization.** The default is an LLM endpoint with an API
+  key, stored in magpie. Do not offer subscription login in the cloud
+  until a legal review of each provider's terms permits it (decision 7,
+  [subscriptions-manual-test.md](subscriptions-manual-test.md)).
+- **Triggers.** A schedule, a webhook, an email, or a chat message starts
+  a headless task through a new `POST /api/v1/tasks` route. The task
+  holds a `task` lease. On InstaBox, the driver also holds an InstaBox
+  activity lease for the task
+  ([cloud-instabox.md §5](cloud-instabox.md#5-online-247)).
+- **Metering.** InstaBox reports compute use for each machine
+  (`GET /v1/machines/{id}/usage`, `GET /v1/usage/machines`,
+  [OpenAPI](https://api.instabox.sh/v1/openapi.json)). The control plane
+  reads it for each tenant.
+
+The trigger design is in [cloud-own-compute.md §6.2](cloud-own-compute.md#62-trigger-layer).
+It applies to both paths.
+
+## 7. Security model on the InstaBox path
+
+The guest is not trusted: it runs code from LLMs and the internet.
+
+| Threat | Control |
 | :--- | :--- |
-| Health and state | `GET /api/v1/health`, `GET /api/v1/status` |
-| VM power | `POST /api/v1/vm/wake`, `/hibernate`, `/stop` ([api.md](api.md#7-vm-power--implemented-phase-2)) |
-| LLM configuration | `/api/v1/models/providers`, `/api/v1/models/bindings/{harness}` ([api.md](api.md#10-models-and-magpie--implemented-phase-3)) |
-| Export | `/api/v1/fs/*`, `/webdav/` |
-
-New routes (section 10.3): `POST /api/v1/tasks` (a headless harness run
-with a prompt, which holds a new `task` lease), `GET /api/v1/metering`
-(counters since a cursor), and `PUT /api/v1/desktop/ice-servers`.
-
-## 4. Storage
-
-### 4.1 Present system
-
-- One bucket per process. JuiceFS objects go under the volume name
-  `lydiabox-<tenant>`; backups go under `.lydiabox-system/tenants/<tenant>/`
-  ([internal/storage/objectstore.go](../internal/storage/objectstore.go)).
-- Metadata is local SQLite. A ticker uploads `jfs-meta.json.gz` and
-  `lydiabox.db.gz` every 60 seconds when dirty
-  ([internal/storage/metasync.go](../internal/storage/metasync.go)).
-- The mount uses `--writeback`
-  ([internal/storage/juicefs.go](../internal/storage/juicefs.go)): writes go
-  to the local cache first and upload later.
-- The backup does not include `state/magpie`
-  ([internal/config/layout.go](../internal/config/layout.go)), so LLM
-  provider keys are lost with the host disk.
-
-On host loss, the core can lose up to 60 seconds of metadata and all
-writeback data that did not upload. One self-hosted server can accept
-this risk. A service that moves tenants cannot.
-
-### 4.2 Bucket and prefix
-
-| Option | Advantages | Disadvantages |
-| :--- | :--- | :--- |
-| Service bucket, prefix per tenant | Simple provisioning, quotas, deletion, one lifecycle policy | Each tenant credential needs an IAM policy for its prefix. Bucket limits are shared. |
-| Service bucket per tenant | Strong separation, simple deletion | Account limits on the bucket count |
-| User-owned bucket | Matches the core pillar "the user owns the data" | No quota control, no availability guarantee, the service holds user credentials |
-
-Recommendation: a service bucket with a prefix and scoped credentials for
-each tenant. Put the volume objects and the backups under one root,
-`tenants/<tenant>/`, so one IAM statement covers both. Offer a user-owned
-bucket later.
-
-### 4.3 Metadata engine
-
-| Option | Loss on host failure | Migration | Cost and risk |
-| :--- | :--- | :--- | :--- |
-| Local SQLite + 60 s backup (today) | Up to 60 s of metadata | Restore the dump; slow for large volumes | No new service; tested |
-| PostgreSQL, one database per tenant | None for committed metadata (synchronous replica) | Mount on the new host; seconds | Network latency on each metadata operation |
-| Redis | Depends on persistence settings | Mount on the new host | Weaker durability |
-| TiKV | None | Mount on the new host | Highest operational cost; for very large scale |
-
-Recommendation: managed PostgreSQL with high availability, one database
-and one database user per tenant. Keep SQLite for self-hosted mode;
-select the engine with a setting. Measure `git status` and `npm install`
-in Phase C3, and tune the JuiceFS metadata cache if necessary. Also turn
-off or bound `--writeback` in the cloud, so a host loss loses no
-acknowledged write (decision 5).
-
-### 4.4 Quotas and deletion
-
-Set a JuiceFS capacity quota (`juicefs quota`) from the plan. Count the
-allocated bytes of the 40 GiB sparse `root-upper.img`, not its size. The
-cache (`--cache-size`, 10240 MiB today) is per cell: put it on local NVMe
-and count it in placement. Delete a large prefix as a background job.
-
-## 5. Secrets
-
-### 5.1 Present system
-
-- `LYDIABOX_MASTER_KEY` (32 bytes) encrypts connector tokens with
-  AES-256-GCM ([internal/store/crypto.go](../internal/store/crypto.go)). It
-  is a `0600` file in `state/` ([internal/config/secrets.go](../internal/config/secrets.go)).
-- magpie keeps the upstream LLM keys in its data directory on the host.
-  The guest gets only a revocable gateway key, which the host side of the
-  vsock tunnel adds ([internal/magpie/gatewaykey.go](../internal/magpie/gatewaykey.go),
-  [internal/guest/credproxy](../internal/guest/credproxy)).
-
-### 5.2 Keys for each tenant
-
-Use envelope encryption with a key management service (KMS):
-
-1. The KMS keeps one key-encryption key for each region. It never leaves
-   the KMS.
-2. Each tenant has a 32-byte data key. The registry stores it only
-   wrapped, with the tenant ID as encryption context.
-3. Only host-agent identities can unwrap, and only for tenants placed on
-   their host. The host agent gives the key to the cell as
-   `LYDIABOX_MASTER_KEY` in a memory-only file, never on a command line.
-4. The control plane keeps the LLM configuration, encrypted with the data
-   key, as the source of truth. The host agent pushes it through
-   `/api/v1/models/providers` at each cell start. This removes the magpie
-   loss of section 4.1 without a magpie change.
-
-### 5.3 LLM keys and subscription tokens
-
-API keys follow section 5.2 and stay on the host. Subscription tokens
-(if decision 7 permits them) are encrypted in the cell store.
-
-### 5.4 Connector OAuth with service-owned clients
-
-The core supports a relay. With `LYDIABOX_OAUTH_RELAY_URL` set and no
-local client, authorize goes to `<relay>/v1/<provider>/authorize` and the
-code exchange posts to `<relay>/v1/<provider>/token`
-([internal/connector/manager.go](../internal/connector/manager.go),
-[internal/connector/oauth.go](../internal/connector/oauth.go)). The client
-secret stays in the relay. The cloud relay must also:
-
-- **Own the redirect.** Providers accept only registered redirect URIs.
-  The relay registers one callback per provider, keeps the tenant
-  `redirect_uri` in a short-lived record keyed by `state`, and then
-  redirects the browser to the tenant callback with the code and state.
-- **Allow-list redirects.** Accept only `redirect_uri` values on the
-  tenant domains. Else it is an open redirect.
-- **Authenticate cells.** The core sends no credential to the relay
-  today. Add a relay token for each cell.
-- **Refresh** through the relay token endpoint (it needs the secret).
-
-Tokens stay encrypted in the cell. The relay does not store them.
-
-### 5.5 What operators can and cannot read
-
-| Data | Control-plane operator | Root on a KVM host |
-| :--- | :--- | :--- |
-| Email, plan, usage | Can read | Cannot |
-| Wrapped keys, LLM configuration | Cannot unwrap without a KMS permission that operators do not have | Can read the keys of cells on that host |
-| Bucket objects | Can read the chunks; JuiceFS encryption blocks this | Can read the mounted files of cells on that host |
-| Guest screen and memory | Cannot | Can |
-
-Software cannot stop root on a host from reading the cells on it, except
-with confidential VMs (AMD SEV-SNP, Intel TDX), which Cloud Hypervisor
-supports only in part. Say this in the privacy policy. Lower the risk: no
-standing root access, two-person break-glass with an audit record, and
-hosts rebuilt from an image.
-
-## 6. Online 24/7
-
-### 6.1 Cost of an always-running VM
-
-Most personal agents are idle most of the day. A running or paused VM
-occupies its full guest RAM (`Pause` in
-[internal/vmm/controller.go](../internal/vmm/controller.go)).
-
-| Mode | Host RAM while idle | Time to first response |
-| :--- | :--- | :--- |
-| Always running | Full guest RAM | None |
-| Paused (today) | Full guest RAM | Resume (not measured) |
-| Snapshot to local disk (new: Cloud Hypervisor `vm.snapshot`, `vm.restore`) | None | Restore; depends on RAM size and disk speed |
-| VM stopped (today) | None | Wake from `STOPPED` in 3.7 s on amd64 ([conformance.md](conformance.md#integration-run-chv-on-kvm-amd64)), plus desktop start |
-| Cell stopped (new) | None, no cell processes | Cell start, mount, then VM wake |
-
-Recommendation: "online 24/7" means "always reachable", not "always
-running". Use a ladder: pause after 5 minutes idle, stop the VM after 1
-hour, stop the cell after 24 hours. Each request or trigger wakes the
-tenant. Sell "always running" as a paid option.
-
-### 6.2 Trigger layer
-
-Today no work starts without a person, and a session is an interactive
-PTY. The trigger layer is new:
-
-| Trigger | Entry | Action |
-| :--- | :--- | :--- |
-| Schedule | Trigger service (cron) | Calls `POST /api/v1/tasks` at the time |
-| Webhook | `https://hooks.<cloud domain>/<secret path>` | Verifies the secret or signature, starts a task with the payload |
-| Inbound email | One address per tenant | Accepts mail from verified user addresses only; starts a task |
-| Chat (Slack, Telegram) | Trigger service | Maps the chat user to a tenant, starts a task, posts the result |
-
-`POST /api/v1/tasks` runs the harness in its headless mode (for example
-`claude -p` or `codex exec`) in a PTY. It holds a `task` lease until the
-run ends and keeps the transcript, so the user can open it in the Studio.
-The trigger service limits concurrent tasks for each tenant and reaches
-the cell through the host agent (section 3.6).
-
-## 7. Harness authorization
-
-The dashboard offers two paths:
-
-1. **LLM endpoint (default).** Provider kind, base URL, API key, and
-   model. The control plane stores it (section 5.2) and pushes it to
-   magpie, which serves all five harnesses
-   ([design.md](design.md#44-magpie-integration--multi-harness-sessions-internalmagpie--internalharness)).
-   API keys are for programmatic use by the key owner, so this is the safe
-   default.
-2. **Subscription login (optional).** The user signs in to a Claude or
-   ChatGPT subscription. The planned host-login task adds this for
-   self-hosted use, where the user runs the software.
-
-Risk of path 2 in a hosted service: consumer subscriptions are for
-personal use in the provider's clients. Their terms can forbid use through
-a third-party service, credential sharing, or automated use. In the cloud,
-the service holds the credentials and runs the client. A provider can
-block the accounts or the service. Do not offer path 2 in the cloud until
-a legal review of each provider's current terms permits it, or a provider
-offers a supported partner path (decision 7).
-
-## 8. Metering, abuse controls, and egress
-
-### 8.1 Metering inputs
-
-| Input | Source | State |
-| :--- | :--- | :--- |
-| VM time (vCPU and GiB seconds, by state) | Controller state changes; cgroup counters | State changes exist; export is new |
-| Cell time | Host agent | New |
-| Storage bytes | JuiceFS used space; object bytes of the prefix | New |
-| Guest egress bytes | nftables counters on the tenant TAP | New rules in `lydiabox_<tap>` |
-| TURN relay bytes | TURN accounting by username | New |
-| LLM tokens | magpie usage; billed only if the service sells LLM access | Usage exists in sessions ([api.md](api.md#8-sessions-and-pty--implemented-phase-3)) |
-| Tasks | Trigger service | New |
-
-The host agent sends usage records with an idempotency key every minute.
-
-### 8.2 Abuse controls
-
-Require email verification and a payment method before the first VM
-boot; a trial gets small limits. Set plan limits for vCPU, RAM, storage,
-egress, concurrent tasks, and TURN bytes. Suspend on sustained full CPU
-with no session (mining). Rate-limit sign-ups and webhooks. Suspension
-keeps the data.
-
-### 8.3 Guest egress policy
-
-The `chv` rules drop guest traffic to the host and to `10.0.0.0/8`,
-`172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `100.64.0.0/10`, and
-`127.0.0.0/8` ([internal/vmm/chv/network.go](../internal/vmm/chv/network.go)).
-This already blocks `169.254.169.254` and the other tenants' subnets on the
-host. Add in the cloud:
-
-- Drop outbound TCP port 25. Drop traffic to the control-plane and
-  management networks. Drop IPv6, or apply the same rules to it.
-- Rate-limit new outbound connections for each tenant, and use a separate
-  egress IP pool for guests.
-
-## 9. Security model and threats
-
-The guest is not trusted: it runs code from LLMs and the internet. Trust
-boundaries are browser, router, control plane, host agent, cell, guest.
-
-| Threat | Present controls | Cloud controls |
-| :--- | :--- | :--- |
-| Guest escape through KVM or Cloud Hypervisor | Hardware virtualization; no host secrets in the guest | Cloud Hypervisor and `virtiofsd` as the cell Unix user, with seccomp, own cgroup and mount namespace; patched host kernel |
-| Guest escape through virtio-fs | `virtiofsd` shares only `home/agent` and `workspace` | `virtiofsd` in namespace sandbox mode as the cell user |
-| Guest to host services | nftables drop on the TAP input | magpie and the cell API on loopback or Unix sockets only |
-| Guest to other guests or the metadata service | Private-range drop covers `172.30.0.0/16` and `169.254.0.0/16` | Test in every release (Phase C0 gate) |
-| Cell to cell on one host | Not applicable (one process per host) | One Unix user per cell; no root in cells; host agent owns TAP and nftables; data directories `0700` |
-| Stolen guest gateway key | Revocable; valid only through the host tunnel | Rotate at each cell start |
-| Wrong-tenant routing or forged identity header | One token per process | Router derives the cell from the verified session only and removes client identity headers; cell verifies signature, issuer, audience, expiry, and tenant claim |
-| Control-plane compromise | Not applicable | Cannot unwrap tenant keys; separate deploy credentials; signed host-agent commands; audit log in a separate account |
-| Host-agent compromise | Not applicable | Exposes one host's tenants; KMS unwrap limited to placed tenants; frequent host rebuilds |
-| OAuth relay or TURN misuse | Not applicable | Redirect allow-list, cell tokens, short-lived state (section 5.4); TURN credentials with a time limit, no private peers, byte limits |
-| Prompt injection through webhook or email | Not applicable | Treat trigger content as untrusted data; show the trigger source in the session; let the user limit connectors per trigger |
-
-## 10. Code: what stays, what changes, what is new
-
-### 10.1 Repository
-
-Put the control plane, host agent, router, trigger service, OAuth relay,
-and dashboard in a separate private repository (for example
-`lydiabox-cloud`). The cloud runs the core as a pinned binary, so it does
-not need the core `internal/` packages. The core stays complete without
-cloud code. Billing and abuse rules change often and do not help
-self-hosters.
-
-Keep the changes of section 10.3 in this repository. Each one is an
-opt-in setting whose default keeps self-hosted behavior. The existing
-tests and the [KVM checklist](kvm-test.md) must pass unchanged. Document
-the cell contract (settings and routes) in [api.md](api.md).
-
-### 10.2 Core code that stays the same
-
-`internal/storage/files`, `internal/magpie`, `internal/guest/*`,
-`cmd/lydiabox-guest`, `deploy/`, `web/`, and most of `internal/storage`,
-`internal/harness`, and `internal/desktop`.
-
-### 10.3 Core code that changes (opt-in)
-
-| Package | Change |
-| :--- | :--- |
-| `internal/config` | `LYDIABOX_TENANT_ID`; `LYDIABOX_META_URL` (JuiceFS metadata URL, default local SQLite); `LYDIABOX_JUICEFS_WRITEBACK`; `LYDIABOX_VM_NETWORK` (TAP, subnet, host IP from the host agent); `LYDIABOX_OAUTH_RELAY_TOKEN`; a `unix:` form of `LYDIABOX_LISTEN_ADDR` |
-| `internal/vmm/chv` | With `LYDIABOX_VM_NETWORK`, use the host agent's TAP and skip nftables, so the cell needs no root. `vm.snapshot` and `vm.restore`. |
-| `internal/vmm` | `task` lease kind; configurable pause, stop, and snapshot times |
-| `internal/storage` | Use `LYDIABOX_META_URL`; skip the SQLite dump with a shared engine but keep the `lydiabox.db` backup; object prefix setting |
-| `internal/api` | Trusted-proxy JWT auth (shared with the Cloudflare Access check); Unix-socket listener |
-| `internal/connector` | Send the relay token to the relay |
-| `internal/desktop` | Route to replace the ICE servers |
-| `internal/harness` | Headless task runs, `POST /api/v1/tasks` |
-| `internal/cli` | Wire the settings; `GET /api/v1/metering` |
-
-### 10.4 New code (cloud repository)
-
-| Package | Function |
-| :--- | :--- |
-| `cmd/lbx-control` | Control-plane API, registry, scheduler, KMS client |
-| `cmd/lbx-hostagent` | Cells, TAP and nftables, usage export, fencing |
-| `cmd/lbx-router` | HTTPS and WebSocket router, identity JWTs |
-| `cmd/lbx-trigger` | Schedules, webhooks, email, chat |
-| `cmd/lbx-oauthrelay` | OAuth relay (section 5.4) |
-| `internal/billing` | Usage records, billing provider |
-| `web-dashboard/` | Sign-up, harness setup, triggers, usage |
-
-TURN uses an existing server (for example coturn), set up by the TURN task.
-
-## 11. Phased plan and verification gates
+| Guest escape to another tenant | Firecracker VM per tenant (supplier control) |
+| Guest reads host secrets | No secret in the machine (section 5) |
+| Someone else reaches the guest link | Private port: a request without the token gets `401`. The guest also checks the link key. |
+| Wrong-tenant routing or forged identity | Access JWT, owner check in `lbx-router`, email allow-list in the cell, Unix socket listener, NetworkPolicy on the cell hosts |
+| Cell compromise | Exposes one tenant, and the InstaBox API key in the first version (decision 17) |
+| Control-plane compromise | Exposes all tenants. No standing operator shell access; audit the deploy credentials. |
+| Supplier compromise or failure | Backups outside InstaBox (decision 19); see [cloud-instabox.md §7](cloud-instabox.md#7-supplier-risks) |
+| Prompt injection through triggers | Treat trigger content as untrusted data; show the trigger source in the session |
+
+## 8. Open decisions
+
+**R** is the recommendation. Numbers 1 to 15 are from the 2026-11-14
+proposal.
+
+Decided by the owner on 2026-11-15:
+
+- **Compute (new, 16).** InstaBox first; own compute later.
+- **2. Cloud code location.** A separate private repository,
+  `lydiabox-cloud`. The core seams stay here.
+- **9. Login.** First login is Cloudflare Access email verification on
+  `lydiabox.com`. A hosted identity provider is for public sign-up later.
+
+Still open:
+
+1. **Tenancy model.** (a) Process per tenant; (b) one multi-tenant
+   process. **R**: (a). The InstaBox path implements (a) as cells.
+3. **Core license.** (a) MIT or Apache-2.0; (b) AGPL-3.0; (c)
+   source-available. **R**: decide before public launch.
+4. **Bucket ownership** (own compute). **R**: (a) service bucket with a
+   prefix per tenant, [cloud-own-compute.md](cloud-own-compute.md#42-bucket-and-prefix).
+5. **Metadata engine and writeback** (own compute). **R**: PostgreSQL
+   with writeback off.
+6. **"Online 24/7".** (a) Always running; (b) always reachable, wake on
+   use; (c) (b) by default, (a) as a paid option. **R**: (c). On InstaBox
+   a paused machine costs only its disk.
+7. **Subscription credentials in the cloud.** **R**: never at launch;
+   then only after a legal review of each provider's terms.
+8. **LLM supply.** **R**: the user brings a key or endpoint; later the
+   service sells LLM access through magpie.
+10. **Tenant address.** **R**: a subdomain per tenant
+    (`<tenant>.lydiabox.com`), so the core cookie and `Origin` rules work
+    unchanged.
+11. **Sleep ladder** (own compute). **R**: pause, stop VM, stop cell.
+12. **First trigger channels.** **R**: schedule and webhook, then email,
+    then chat.
+13. **Guest egress.** InstaBox controls the machine network. **R**: accept
+    the InstaBox defaults for the first version.
+14. **Operator access** (own compute). **R**: no standing root access.
+15. **Default VM size.** (a) 4 vCPU, 8 GiB; (b) 2 vCPU, 4 GiB with an
+    upgrade. **R**: (b), if phase I1 shows that Chrome and a harness run
+    well in it.
+17. **InstaBox API key custody.** (a) Each cell holds the workspace key;
+    (b) a broker in `lbx-control` holds it and lets each cell act only on
+    its own machine. **R**: (a) in phases I1 and I2 (few trusted users),
+    (b) before users that the owner does not know. The driver takes the
+    API URL as a setting, so (b) needs no core change.
+18. **InstaBox plan.** **R**: Pro for phases I1 to I3; Builder or Team
+    when more than 100 machines must run at once.
+19. **Backups outside InstaBox.** (a) None; (b) a host-driven backup of
+    the home and the workspace to a service bucket; (c) (b) to a bucket
+    of the user. **R**: (b) daily, (c) later as an option.
+20. **Desktop transport.** (a) LydiaBox WebRTC through TURN on TCP; (b)
+    InstaBox VNC. **R**: (a), see
+    [cloud-instabox.md §4](cloud-instabox.md#4-desktop-options).
+21. **Registry database.** (a) Managed PostgreSQL; (b) PostgreSQL in the
+    cluster. **R**: (a), so that backups and failover are the provider's.
+
+## 9. Phased plan and verification gates (InstaBox path)
 
 Do the phases in sequence. Start a phase after the previous gate passes.
 
-- **Phase C0 — Core seams in this repository**: the settings and routes
-  of section 10.3.
-  - *Verification*: `CGO_ENABLED=0 go test -race ./...`, `go vet ./...`,
-    and the KVM checklist pass with default settings. On one KVM host, two
-    non-root cells with different tenant IDs run at the same time. A guest
-    cannot reach the other guest, its host IP, or `169.254.169.254`.
-- **Phase C1 — Host agent and cells on one host**, from a static list.
-  - *Verification*: 10 cells on one host. A killed cell does not stop the
-    others and restarts with no data loss. The C0 isolation tests pass for
-    each pair. Cell memory without a VM and with a paused VM is recorded.
-- **Phase C2 — Control plane, router, and dashboard**: accounts, registry,
-  scheduler, router, trusted-proxy auth, TURN credentials, LLM setup.
-  - *Verification*: A new user signs up, enters an LLM endpoint, runs a
-    harness session, and takes over the desktop through TURN from a
-    network without inbound UDP. A forged identity header and a request
-    for another tenant fail with `401` or `403`.
-- **Phase C3 — Durable storage, keys, and migration**: shared metadata
-  engine, scoped credentials, KMS keys, writeback policy, drain, recovery.
-  - *Verification*: Write a file and cut the host power; the tenant runs
-    on another host within 5 minutes with the file. Drain a host with 10
-    tenants. Record `git status` and `npm install` times against SQLite. A
-    tenant credential cannot list another tenant prefix.
-- **Phase C4 — Triggers and 24/7**: task API, sleep ladder, snapshot,
-  schedules, webhooks, email.
-  - *Verification*: A scheduled task runs with no browser, its transcript
-    shows in the Studio, and the VM sleeps again. A webhook without a
-    valid secret starts no task. Trigger-to-harness time is recorded for
-    each sleep level.
-- **Phase C5 — Connector relay, metering, billing, abuse**.
-  - *Verification*: GitHub connects through the relay for two tenants. A
-    relay call without a cell token fails, and so does a `redirect_uri`
-    outside the tenant domains. Usage records match a controlled workload
-    within 2 percent. Port 25 is blocked.
-- **Phase C6 — Security review and private beta**: external penetration
-  test of guest escape, cross-tenant paths, router, and relay.
-  - *Verification*: No open high or critical findings. Deletion removes
-    all objects, the metadata database, and the wrapped key of a test
-    tenant. An export opens on another machine.
-
-## 12. Open decisions
-
-**R** is the recommendation.
-
-1. **Tenancy model.** (a) Process per tenant behind a control plane; (b)
-   one multi-tenant process per host. **R**: (a), see section 2.3.
-2. **Cloud code location.** (a) Separate private repository that runs a
-   pinned core binary; (b) `cloud/` here. **R**: (a), core seams here.
-3. **Core license.** There is no license file. (a) MIT or Apache-2.0; (b)
-   AGPL-3.0; (c) source-available. **R**: decide before launch; (b) to
-   stop other hosted copies, (a) for adoption.
-4. **Bucket ownership.** (a) Service bucket, prefix per tenant; (b) bucket
-   per tenant; (c) user-owned bucket. **R**: (a), later (c) as an option.
-5. **Metadata engine and writeback.** (a) SQLite with backup; (b)
-   PostgreSQL, one database per tenant; (c) TiKV; writeback on, off, or
-   bounded. **R**: (b) with writeback off, if C3 latency is acceptable.
-6. **"Online 24/7".** (a) VM always running; (b) always reachable, wake on
-   request and triggers; (c) (b) by default, (a) as a paid plan. **R**: (c).
-7. **Subscription credentials in the cloud.** (a) Never, self-hosted only;
-   (b) after a legal review of each provider's terms; (c) at launch.
-   **R**: (a) at launch, then (b). The LLM endpoint is the default.
-8. **LLM supply.** (a) User brings a key or endpoint; (b) the service
-   sells LLM access through its magpie. **R**: (a), later (b).
-9. **Login.** (a) Hosted identity provider (email links, Google, GitHub);
-   (b) own passwords; (c) Cloudflare Access for all. **R**: (a); keep
-   Cloudflare Access for self-hosted users.
-10. **Tenant address.** (a) Subdomain per tenant; (b) path prefix. **R**:
-    (a), so the core cookie and `Origin` rules work unchanged.
-11. **Sleep ladder.** (a) Pause only (today); (b) pause, stop VM, stop
-    cell; (c) pause, snapshot, stop cell. **R**: (b) in C2, (c) after C4.
-12. **First trigger channels.** Schedule, webhook, email, Slack, Telegram.
-    **R**: schedule and webhook, then email, then chat.
-13. **Guest egress default.** (a) Open internet with the block list of
-    section 8.3; (b) domain allow-list. **R**: (a) with rate limits.
-14. **Operator access.** (a) Standing root on hosts; (b) no standing
-    access, two-person audited break-glass; (c) (b) plus confidential VMs.
-    **R**: (b); examine (c) when Cloud Hypervisor SEV-SNP or TDX matures.
-15. **Default VM size.** (a) 4 vCPU, 8 GiB (core default); (b) 2 vCPU,
-    4 GiB with a paid upgrade. **R**: (b), if C1 shows that Chrome and a
-    harness run well in it.
+- **Phase I0: core seams.** Guest link, provider storage mode, cell mode,
+  the `instabox` driver, and the guest image.
+  - *Verification*: `CGO_ENABLED=0 go test -race ./...` and `go vet ./...`
+    pass. The [KVM checklist](kvm-test.md) passes with default settings.
+    Driver tests against a fake InstaBox API cover each `vmm.Driver`
+    method and the errors `409 operation_conflict` and `no_capacity`.
+    Guest link tests carry RPC, 9001, and 9002 traffic over one
+    WebSocket, reconnect after a cut, and refuse a wrong link key. In
+    provider storage mode, the file API works through the guest, and
+    `/webdav` and `/s3` answer `404`.
+- **Phase I1: one tenant on real InstaBox.** One cell on a workstation
+  with a real InstaBox key and the imported guest image.
+  - *Verification*: Create, boot, a harness session through the magpie
+    gateway, pause, wake on a request, stop, and start all work. Files in
+    the home and the workspace stay after stop and start. The desktop
+    works through Cloudflare TURN over TCP from a network without UDP. No
+    LLM key is in the machine environment, on its disk, or in
+    `/run/instabox/env`. A request to the private port without the token
+    gets `401`. Record the wake time from paused and the start time from
+    stopped.
+- **Phase I2: cloud repository and deployment.** `lbx-control`,
+  `lbx-cellhost`, `lbx-router`, and the dashboard on Kubernetes through
+  `example/infra`, behind Access.
+  - *Verification*: An allowed email makes a tenant and uses
+    `https://<tenant>.lydiabox.com/`. Access stops an email that is not
+    allowed. A second allowed user gets `403` on the first tenant. A
+    request with a forged identity header fails. After a restart of a
+    cell host, its cells attach to their machines with no data loss.
+- **Phase I3: durability.** Host-driven backup to S3, InstaBox
+  snapshots, backup of the cell data directories, and a restore drill.
+  - *Verification*: Delete the machine of a test tenant. Restore the
+    backup into a new machine; the checksums of all files match. Restore
+    a cell data directory on a new volume; the LLM configuration and the
+    connector tokens work.
+- **Phase I4: 24/7 and triggers.** Task API with activity leases,
+  schedules, and webhooks.
+  - *Verification*: A scheduled task runs with no browser. Its transcript
+    shows in the Studio, and the machine pauses after it. A webhook
+    without a valid secret starts no task. Record the time from trigger
+    to first output from a paused and from a stopped machine.
+- **Phase I5: private beta.** Metering from InstaBox usage, the API key
+  broker (decision 17), the connector relay, and an external security
+  review.
+  - *Verification*: Metered cost matches the InstaBox bill within 2
+    percent. A cell cannot act on another tenant's machine. Deletion
+    removes the machine, snapshots, backups, cell data, and the wrapped
+    key of a test tenant. No high or critical finding stays open.
+- **Later phase O: own compute.** Do it when the cost, a supplier risk,
+  or a need (UDP, `arm64`, a region) makes it necessary. The phases C0 to
+  C6 in [cloud-own-compute.md §11](cloud-own-compute.md#11-phased-plan-and-verification-gates)
+  apply. The cell contract of section 4 stays the same.
+  - *Verification*: The phase I1 checks pass with the `chv` driver. One
+    tenant moves from InstaBox to an own host through backup and restore.
