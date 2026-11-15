@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/bootstrap"
 	"github.com/lydiabox/lydiabox/internal/config"
@@ -72,7 +73,7 @@ func wireCell(t *testing.T, cfg *config.Config) cellResources {
 	}
 	stor := dirStorage{home: filepath.Join(cfg.MountDir(), "home", "agent"), ws: filepath.Join(cfg.MountDir(), "workspace")}
 	d := &deps{Config: cfg, Driver: config.DriverCHV, Logger: slog.New(slog.DiscardHandler), Store: st, Bootstrap: boot,
-		Storage: stor, Auth: api.NewAuthenticator("test-admin-token-0123456789abcdef"),
+		Storage: stor, Files: agentfs.NewLocal(stor, agentfs.LocalOptions{}), Auth: api.NewAuthenticator("test-admin-token-0123456789abcdef"),
 		VMStatus: api.StaticVMStatus{State: api.VMStopped, Driver: config.DriverCHV}}
 	vm, err := wireVM(ctx, d)
 	if err != nil {
