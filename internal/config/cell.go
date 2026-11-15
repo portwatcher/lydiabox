@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -46,6 +47,7 @@ type MagpieConfig struct {
 // the vm section.
 type cellFile struct {
 	TenantID *string `yaml:"tenant_id"`
+	CellMode *bool   `yaml:"cell_mode"`
 	Magpie   struct {
 		Addr    *string `yaml:"addr"`
 		WebAddr *string `yaml:"web_addr"`
@@ -62,6 +64,9 @@ type vmCellFile struct {
 
 func applyCellFile(cfg *Config, fc *fileConfig) {
 	setStr(&cfg.TenantID, fc.Cell.TenantID)
+	if fc.Cell.CellMode != nil {
+		cfg.CellMode = *fc.Cell.CellMode
+	}
 	setStr(&cfg.Magpie.Addr, fc.Cell.Magpie.Addr)
 	setStr(&cfg.Magpie.WebAddr, fc.Cell.Magpie.WebAddr)
 	if fc.VM.WebRTCPort != nil {
@@ -86,6 +91,18 @@ func applyCellEnv(cfg *Config, env map[string]string) []error {
 	str("LYDIABOX_VM_TAP", &cfg.VM.Tap)
 	str("LYDIABOX_VM_NFT_TABLE", &cfg.VM.NftTable)
 	var errs []error
+	if v := strings.TrimSpace(env["LYDIABOX_CELL_MODE"]); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("LYDIABOX_CELL_MODE: %q is not a boolean", v))
+		} else {
+			cfg.CellMode = b
+		}
+	}
+	if cfg.CellMode {
+		// The control plane runs the tunnel; a cell never starts cloudflared.
+		cfg.Remote.Tunnel = TunnelOff
+	}
 	if v := strings.TrimSpace(env["LYDIABOX_WEBRTC_UDP_PORT"]); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil {
@@ -145,6 +162,26 @@ func (c *Config) validateCell() []error {
 	}
 	if c.VM.NftTable != "" && !tablePattern.MatchString(c.VM.NftTable) {
 		errs = append(errs, fmt.Errorf("LYDIABOX_VM_NFT_TABLE %q must match %s", c.VM.NftTable, tablePattern))
+	}
+	return errs
+}
+
+// validateCellServe checks the settings that a cell of a control plane
+// must get from it: the cell does not generate secrets of its own, and it
+// serves one named tenant.
+func (c *Config) validateCellServe() []error {
+	if !c.CellMode {
+		return nil
+	}
+	var errs []error
+	if c.TenantID == DefaultTenantID {
+		errs = append(errs, errors.New("LYDIABOX_CELL_MODE needs LYDIABOX_TENANT_ID: a cell serves one named tenant"))
+	}
+	if c.AuthToken == "" {
+		errs = append(errs, errors.New("LYDIABOX_CELL_MODE needs LYDIABOX_AUTH_TOKEN or LYDIABOX_AUTH_TOKEN_FILE from the control plane"))
+	}
+	if c.MasterKey == "" {
+		errs = append(errs, errors.New("LYDIABOX_CELL_MODE needs LYDIABOX_MASTER_KEY or LYDIABOX_MASTER_KEY_FILE from the control plane"))
 	}
 	return errs
 }

@@ -18,7 +18,8 @@ import (
 // plane can reuse them without refactoring.
 const DefaultTenantID = "default"
 
-// VM driver identifiers accepted by LYDIABOX_VM_DRIVER.
+// VM driver identifiers accepted by LYDIABOX_VM_DRIVER (DriverInstabox is
+// in instabox.go).
 const (
 	DriverAuto   = "auto"
 	DriverCHV    = "chv"
@@ -69,6 +70,11 @@ type Config struct {
 	Remote RemoteAccessConfig
 	// Magpie holds the host magpie addresses (cell.go).
 	Magpie MagpieConfig
+	// CellMode marks one cell of a hosted control plane (cell.go): the
+	// secrets come from the control plane, and host-wide resources are off.
+	CellMode bool
+	// Instabox holds the instabox VM driver settings (instabox.go).
+	Instabox InstaboxConfig
 
 	// AuthTokenGenerated and MasterKeyGenerated report whether EnsureSecrets
 	// created the secret during this run (the CLI prints new tokens once).
@@ -98,7 +104,7 @@ const DefaultS3GatewayAddr = "127.0.0.1:8090"
 
 // VMConfig holds the guest VM settings consumed by internal/vmm.
 type VMConfig struct {
-	// Driver is the configured value: auto, chv, or docker.
+	// Driver is the configured value: auto, chv, docker, or instabox.
 	Driver      string
 	CPUs        int
 	MemMB       int
@@ -146,6 +152,7 @@ func Defaults(homeDir string) *Config {
 		TenantID:         DefaultTenantID,
 		Remote:           RemoteAccessConfig{Tunnel: TunnelAuto},
 		Magpie:           MagpieConfig{Addr: DefaultMagpieAddr, WebAddr: DefaultMagpieWebAddr},
+		Instabox:         InstaboxConfig{IdlePause: DefaultInstaboxIdlePause},
 	}
 }
 

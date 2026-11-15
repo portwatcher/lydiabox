@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -24,7 +25,11 @@ const MinAuthTokenLength = 16
 // Validate checks settings that every command depends on.
 func (c *Config) Validate() error {
 	var errs []error
-	if _, _, err := net.SplitHostPort(c.ListenAddr); err != nil {
+	if path, ok := UnixListenPath(c.ListenAddr); ok {
+		if !filepath.IsAbs(path) {
+			errs = append(errs, fmt.Errorf("LYDIABOX_LISTEN_ADDR %q: the socket path must be absolute (unix:/path/to.sock)", c.ListenAddr))
+		}
+	} else if _, _, err := net.SplitHostPort(c.ListenAddr); err != nil {
 		errs = append(errs, fmt.Errorf("LYDIABOX_LISTEN_ADDR %q: %w", c.ListenAddr, err))
 	}
 	if c.S3.GatewayAddr != "" {
@@ -44,9 +49,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("tenant ID %q must match %s", c.TenantID, tenantPattern))
 	}
 	switch c.VM.Driver {
-	case DriverAuto, DriverCHV, DriverDocker:
+	case DriverAuto, DriverCHV, DriverDocker, DriverInstabox:
 	default:
-		errs = append(errs, fmt.Errorf("LYDIABOX_VM_DRIVER %q must be auto, chv, or docker", c.VM.Driver))
+		errs = append(errs, fmt.Errorf("LYDIABOX_VM_DRIVER %q must be auto, chv, docker, or instabox", c.VM.Driver))
 	}
 	if c.VM.CPUs < 1 || c.VM.CPUs > 256 {
 		errs = append(errs, fmt.Errorf("LYDIABOX_VM_CPUS %d must be between 1 and 256", c.VM.CPUs))
@@ -80,6 +85,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.Remote.validate()...)
 	errs = append(errs, c.validateCell()...)
 	errs = append(errs, c.Storage.validate()...)
+	errs = append(errs, c.Instabox.validate()...)
 	for name, m := range c.Mirrors {
 		if m.SHA256 != "" {
 			if b, err := hex.DecodeString(m.SHA256); err != nil || len(b) != 32 {
@@ -115,8 +121,12 @@ func (c *Config) ValidateServe() error {
 		}
 	}
 	if c.ProviderStorage() && c.VM.Driver == DriverCHV {
-		errs = append(errs, errors.New("LYDIABOX_VM_DRIVER=chv needs LYDIABOX_STORAGE_MODE=juicefs; the provider storage mode runs with the docker driver"))
+		errs = append(errs, errors.New("LYDIABOX_VM_DRIVER=chv needs LYDIABOX_STORAGE_MODE=juicefs; the provider storage mode runs with the docker or instabox driver"))
 	}
+	if c.EffectiveVMDriver() == DriverInstabox {
+		errs = append(errs, c.validateInstabox()...)
+	}
+	errs = append(errs, c.validateCellServe()...)
 	if c.S3.Endpoint != "" {
 		if err := checkHTTPURL(c.S3.Endpoint); err != nil {
 			errs = append(errs, fmt.Errorf("LYDIABOX_S3_ENDPOINT: %w", err))
@@ -131,6 +141,19 @@ func (c *Config) ValidateServe() error {
 		errs = append(errs, fmt.Errorf("LYDIABOX_S3_BUCKET %q must be a bare bucket name", c.S3.Bucket))
 	}
 	return joinErrs(errs)
+}
+
+// UnixListenPath returns the socket path of a UNIX listen address
+// ("unix:/path" or "unix:///path"); ok is false for a TCP address.
+func UnixListenPath(addr string) (path string, ok bool) {
+	rest, ok := strings.CutPrefix(addr, "unix:")
+	if !ok {
+		return "", false
+	}
+	if p, ok := strings.CutPrefix(rest, "//"); ok {
+		rest = p
+	}
+	return rest, true
 }
 
 func checkHTTPURL(raw string) error {
@@ -181,10 +204,14 @@ func ResolveVMDriver(configured string, kvmAvailable func() bool) string {
 }
 
 // EffectiveVMDriver resolves the configured driver against /dev/kvm. The
-// provider storage mode resolves "auto" to docker: the chv driver shares the
-// guest trees from the host JuiceFS mount.
+// provider storage mode resolves "auto" to instabox when an InstaBox API
+// key or snapshot is set, else to docker: the chv driver shares the guest
+// trees from the host JuiceFS mount.
 func (c *Config) EffectiveVMDriver() string {
 	if c.ProviderStorage() && c.VM.Driver == DriverAuto {
+		if c.Instabox.Configured() {
+			return DriverInstabox
+		}
 		return DriverDocker
 	}
 	return ResolveVMDriver(c.VM.Driver, func() bool { return KVMAccessible(KVMDevice) })

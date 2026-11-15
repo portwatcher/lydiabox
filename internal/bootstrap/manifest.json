@@ -90,7 +90,7 @@
       "name": "magpie",
       "version": "0.1.3531",
       "release": "https://github.com/yetone/magpie/releases/tag/v0.1.3531",
-      "requiredFor": ["chv", "docker"],
+      "requiredFor": ["chv", "docker", "instabox"],
       "notes": "Uses the headless magpie-cli build (no desktop dependencies).",
       "platforms": {
         "linux/amd64": {

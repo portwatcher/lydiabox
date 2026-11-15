@@ -27,7 +27,7 @@ const installRecordFile = ".installed.json"
 type Options struct {
 	// BinDir is $DATA_DIR/runtime/bin.
 	BinDir string
-	// Driver is the resolved VM driver (chv or docker); it selects which
+	// Driver is the resolved VM driver (chv, docker, or instabox); it selects which
 	// binaries are required.
 	Driver string
 	// Skip names binaries that are not required in this configuration (for
@@ -60,8 +60,8 @@ func New(opts Options) (*Bootstrapper, error) {
 	if opts.BinDir == "" {
 		return nil, errors.New("bootstrap: BinDir is required")
 	}
-	if opts.Driver != config.DriverCHV && opts.Driver != config.DriverDocker {
-		return nil, fmt.Errorf("bootstrap: driver must be resolved to chv or docker, got %q", opts.Driver)
+	if opts.Driver != config.DriverCHV && opts.Driver != config.DriverDocker && opts.Driver != config.DriverInstabox {
+		return nil, fmt.Errorf("bootstrap: driver must be resolved to chv, docker, or instabox, got %q", opts.Driver)
 	}
 	if opts.GOOS == "" {
 		opts.GOOS = runtime.GOOS

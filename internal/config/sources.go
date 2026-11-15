@@ -56,6 +56,8 @@ type fileConfig struct {
 	Cell cellFile `yaml:",inline"`
 	// Storage is the storage mode section (storage.go).
 	Storage storageFile `yaml:"storage"`
+	// Instabox is the instabox driver section (instabox.go).
+	Instabox instaboxFile `yaml:"instabox"`
 }
 
 func applyFile(cfg *Config, path string, explicit bool, home string) error {
@@ -112,6 +114,9 @@ func applyFile(cfg *Config, path string, explicit bool, home string) error {
 	applyRemoteFile(cfg, &fc)
 	applyCellFile(cfg, &fc)
 	applyStorageFile(cfg, &fc.Storage)
+	if err := applyInstaboxFile(&cfg.Instabox, &fc.Instabox); err != nil {
+		return err
+	}
 	return applyWebRTCFile(&cfg.WebRTC, &fc.WebRTC)
 }
 
@@ -149,8 +154,18 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 		}
 	}
 	str("LYDIABOX_LISTEN_ADDR", &cfg.ListenAddr)
-	str("LYDIABOX_AUTH_TOKEN", &cfg.AuthToken)
-	str("LYDIABOX_MASTER_KEY", &cfg.MasterKey)
+	var errs []error
+	for _, sec := range []struct {
+		key string
+		dst *string
+	}{{"LYDIABOX_AUTH_TOKEN", &cfg.AuthToken}, {"LYDIABOX_MASTER_KEY", &cfg.MasterKey}} {
+		v, err := secretEnv(env, sec.key)
+		if err != nil {
+			errs = append(errs, err)
+		} else if v != "" {
+			*sec.dst = v
+		}
+	}
 	if v := strings.TrimSpace(env["LYDIABOX_DATA_DIR"]); v != "" {
 		cfg.DataDir = expandHome(v, home)
 	}
@@ -171,7 +186,6 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 	str("LYDIABOX_ROOTFS_URL", &cfg.RootfsURL)
 	str("LYDIABOX_LOG_LEVEL", &cfg.LogLevel)
 
-	var errs []error
 	intVar := func(key string, dst *int) {
 		if v := strings.TrimSpace(env[key]); v != "" {
 			n, err := strconv.Atoi(v)
@@ -211,6 +225,7 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 	applyRemoteEnv(cfg, env)
 	errs = append(errs, applyCellEnv(cfg, env)...)
 	applyStorageEnv(cfg, env)
+	errs = append(errs, applyInstaboxEnv(&cfg.Instabox, env)...)
 	if len(errs) > 0 {
 		return fmt.Errorf("config: %w", errors.Join(errs...))
 	}

@@ -119,6 +119,9 @@ func (r RemoteAccessConfig) validate() []error {
 
 // LoopbackListenAddr returns addr with its host replaced by 127.0.0.1.
 func LoopbackListenAddr(addr string) string {
+	if _, ok := UnixListenPath(addr); ok {
+		return addr
+	}
 	_, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return addr
@@ -128,6 +131,10 @@ func LoopbackListenAddr(addr string) string {
 
 // IsLoopbackAddr reports whether a listen address binds only loopback.
 func IsLoopbackAddr(addr string) bool {
+	if _, ok := UnixListenPath(addr); ok {
+		// Only processes on this host reach a UNIX socket.
+		return true
+	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return false
