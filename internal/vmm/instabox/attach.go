@@ -168,6 +168,15 @@ func (d *Driver) ensureGuestEnv(ctx context.Context, tid, id string, rec Record,
 // detach closes the link and ends the activity lease before a pause or a
 // stop: a reconnect or a lease renewal would wake the machine again.
 func (d *Driver) detach(tid string) {
+	d.markDown(tid)
+	if l, err := d.links.For(tid); err == nil {
+		l.Suspend()
+	}
+}
+
+// markDown records that the machine is not usable without a boot, and
+// ends the lease renewal.
+func (d *Driver) markDown(tid string) {
 	t := d.tenant(tid)
 	d.mu.Lock()
 	t.attached, t.down = false, true
@@ -176,9 +185,6 @@ func (d *Driver) detach(tid string) {
 	d.mu.Unlock()
 	if lease != nil {
 		lease.stop(false)
-	}
-	if l, err := d.links.For(tid); err == nil {
-		l.Suspend()
 	}
 }
 
@@ -236,7 +242,8 @@ func (d *Driver) startLease(tid, id string) {
 }
 
 // linkState reacts to a link that went down without a detach: the
-// machine may have paused itself, so the watcher looks now.
+// machine may have paused itself, so the driver looks now, in the link's
+// goroutine, before the link reconnects.
 func (d *Driver) linkState(tid string, s link.Status) {
 	if s.State != link.StateDown {
 		return
@@ -254,7 +261,7 @@ func (d *Driver) linkState(tid string, s link.Status) {
 		t.attached = false
 		d.mu.Unlock()
 	}
-	d.poke()
+	d.checkLink(tid)
 }
 
 // poke asks the watcher for an early round.

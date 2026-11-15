@@ -63,7 +63,7 @@ func (d *Driver) pollAll(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		st, ok := d.poll(ctx, tid, id)
+		st, ok := d.poll(ctx, tid, id, false)
 		if ok && fn != nil {
 			fn(tid, st)
 		}
@@ -71,8 +71,9 @@ func (d *Driver) pollAll(ctx context.Context) {
 }
 
 // poll reads one machine. ok is true when its power state changed since
-// the last report.
-func (d *Driver) poll(ctx context.Context, tid, id string) (vmm.State, bool) {
+// the last report. inLink is true when the link's own goroutine calls it
+// (linkState): the link is then closed in the background.
+func (d *Driver) poll(ctx context.Context, tid, id string, inLink bool) (vmm.State, bool) {
 	if d.gate.check(tid, d.opts.Now()) != nil {
 		return "", false
 	}
@@ -109,7 +110,34 @@ func (d *Driver) poll(ctx context.Context, tid, id string) (vmm.State, bool) {
 		// because its reconnects would wake the machine again, and end the
 		// lease; the next use resumes the machine through the controller.
 		d.opts.Logger.Info("instabox: the machine changed without this cell", "tenant", tid, "state", st)
-		d.detach(tid)
+		if inLink {
+			d.markDown(tid)
+			if l, err := d.links.For(tid); err == nil {
+				// Suspend waits for the link's goroutine, which runs this
+				// call; it stops before its next reconnect.
+				go l.Suspend()
+			}
+		} else {
+			d.detach(tid)
+		}
 	}
 	return st, changed
+}
+
+// checkLink reads the machine at once when the link dropped, before the
+// link reconnects: a reconnect through the port would wake a machine that
+// paused itself.
+func (d *Driver) checkLink(tid string) {
+	t := d.tenant(tid)
+	d.mu.Lock()
+	id, down, fn, closed := t.machineID, t.down, d.watch, d.closed
+	d.mu.Unlock()
+	if id == "" || down || closed {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if st, ok := d.poll(ctx, tid, id, true); ok && fn != nil {
+		fn(tid, st)
+	}
 }
