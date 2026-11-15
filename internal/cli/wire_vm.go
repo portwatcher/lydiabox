@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/bootstrap"
@@ -45,10 +44,10 @@ type vmRuntime struct {
 func wireVM(ctx context.Context, d *deps) (*component, error) {
 	cfg := d.Config
 	log := d.Logger.With("component", "vmm")
-	webrtcPort, err := webRTCPort(defaultWebRTCPort(d))
-	if err != nil {
+	if err := vmm.ValidTenantID(cfg.TenantID); err != nil {
 		return nil, err
 	}
+	webrtcPort := webRTCPort(d)
 	drv, err := newDriver(d, log)
 	if err != nil {
 		return nil, err
@@ -75,7 +74,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 	}
 	guest.SetWaker(ctl)
 	guest.SetLeaser(ctl)
-	gw, err := credproxy.NewHostGateway(os.Getenv(envGatewayUpstream))
+	gw, err := credproxy.NewHostGateway(gatewayUpstream(cfg))
 	if err != nil {
 		return nil, err
 	}
@@ -132,16 +131,42 @@ func defaultWebRTCPort(d *deps) int {
 	return rpc.DefaultWebRTCPort
 }
 
-func webRTCPort(def int) (int, error) {
-	v := os.Getenv(rpc.EnvWebRTCPort)
-	if v == "" {
-		return def, nil
+// webRTCPort is the host UDP port forwarded to the guest: the configured
+// one (config validates it), else the default.
+func webRTCPort(d *deps) int {
+	if d.Config != nil && d.Config.VM.WebRTCPortSet {
+		return d.Config.VM.WebRTCPort
 	}
-	p, err := strconv.Atoi(v)
-	if err != nil || p < 0 || p > 65535 {
-		return 0, fmt.Errorf("%s must be a UDP port (0 disables forwarding), got %q", rpc.EnvWebRTCPort, v)
+	return defaultWebRTCPort(d)
+}
+
+// gatewayUpstream is the host magpie gateway that the guest LLM tunnel
+// forwards to: LYDIABOX_GATEWAY_UPSTREAM, else the configured magpie
+// address.
+func gatewayUpstream(cfg *config.Config) string {
+	if v := os.Getenv(envGatewayUpstream); v != "" {
+		return v
 	}
-	return p, nil
+	return "http://" + cfg.Magpie.Addr
+}
+
+// guestNetwork returns the chv guest network of a tenant: the configured
+// subnet index, TAP name, and nftables table, else the stored subnet index
+// and the names derived from the tenant ID.
+func guestNetwork(ctx context.Context, d *deps, tid string) (chv.Network, error) {
+	n := d.Config.VM.SubnetIndex
+	if n == config.SubnetAuto {
+		var err error
+		if n, err = d.Store.TenantSubnet(ctx, tid); err != nil {
+			return chv.Network{}, err
+		}
+	}
+	nw := chv.TenantNetwork(tid, n)
+	if d.Config.VM.Tap != "" {
+		nw.Tap = d.Config.VM.Tap
+	}
+	nw.Table = d.Config.VM.NftTable
+	return nw, nil
 }
 
 func newDriver(d *deps, log interface{ Warn(string, ...any) }) (vmm.Driver, error) {
@@ -159,14 +184,9 @@ func newDriver(d *deps, log interface{ Warn(string, ...any) }) (vmm.Driver, erro
 		return chv.New(chv.Options{
 			RunDir: cfg.RunDir(), CloudHypervisor: resolve("cloud-hypervisor"), Virtiofsd: resolve("virtiofsd"),
 			Runner: runner, Logger: d.Logger.With("component", "chv"),
-			// "default" keeps 172.30.0.0/24; other tenants get a stable 172.30.<n>.0/24.
-			Network: func(ctx context.Context, tid string) (chv.Network, error) {
-				n, err := d.Store.TenantSubnet(ctx, tid)
-				if err != nil {
-					return chv.Network{}, err
-				}
-				return chv.TenantNetwork(tid, n), nil
-			},
+			// "default" keeps 172.30.0.0/24; other tenants get a stable
+			// 172.30.<n>.0/24 unless LYDIABOX_VM_SUBNET_INDEX sets it.
+			Network: func(ctx context.Context, tid string) (chv.Network, error) { return guestNetwork(ctx, d, tid) },
 		})
 	}
 	return docker.New(docker.Options{RunDir: cfg.RunDir(), Image: os.Getenv(envDockerImage), Runner: runner,

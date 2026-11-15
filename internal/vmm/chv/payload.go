@@ -151,9 +151,11 @@ type Network struct {
 	// Disabled leaves the guest without a NIC.
 	Disabled bool
 	Tap      string
-	HostIP   string // 172.30.0.1
-	GuestIP  string // 172.30.0.2
-	Prefix   int    // 24
+	// Table is the nftables table (default lydiabox_<Tap>).
+	Table   string
+	HostIP  string // 172.30.0.1
+	GuestIP string // 172.30.0.2
+	Prefix  int    // 24
 }
 
 // DefaultNetwork returns the network of docs/design.md section 4.3

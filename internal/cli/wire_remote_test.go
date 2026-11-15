@@ -170,8 +170,8 @@ func TestWireRemoteStoredTURN(t *testing.T) {
 	if w.CloudflareTURNKeyID != "turnkey1" || w.CloudflareTURNAPIToken != "turnsecret" || !w.RelayOnly || !d.StoredTURN {
 		t.Fatalf("stored TURN not used: %+v StoredTURN=%v", w, d.StoredTURN)
 	}
-	if p, err := webRTCPort(defaultWebRTCPort(d)); err != nil || p != 0 {
-		t.Fatalf("UDP port = %d, %v; want 0 with the stored TURN key", p, err)
+	if p := webRTCPort(d); p != 0 {
+		t.Fatalf("UDP port = %d; want 0 with the stored TURN key", p)
 	}
 	if prov, err := desktopICE(w, d.Logger); err != nil || prov == nil {
 		t.Fatalf("desktop ICE provider: %v %v", prov, err)
@@ -211,7 +211,7 @@ func TestWireRemoteTURNPrecedence(t *testing.T) {
 			if w.CloudflareTURNKeyID != "turnkey1" || w.RelayOnly || d.StoredTURN {
 				t.Fatalf("want stored key without relay-only: %+v StoredTURN=%v", w, d.StoredTURN)
 			}
-			if p, _ := webRTCPort(defaultWebRTCPort(d)); p != 50000 {
+			if p := webRTCPort(d); p != 50000 {
 				t.Fatalf("UDP port = %d, want the default forward", p)
 			}
 		}},

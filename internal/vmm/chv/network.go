@@ -19,14 +19,21 @@ type Firewall struct {
 	LookPath func(string) (string, error)
 }
 
-func tableName(nw Network) string { return "lydiabox_" + nw.Tap }
+// TableName returns the nftables table of the guest network: Table when
+// set, else lydiabox_<tap>.
+func TableName(nw Network) string {
+	if nw.Table != "" {
+		return nw.Table
+	}
+	return "lydiabox_" + nw.Tap
+}
 
 // NftScript returns the nftables ruleset: masquerade guest traffic, drop
 // guest traffic to private networks and to the host itself, and forward
 // the WebRTC UDP port to the guest.
 func NftScript(nw Network, webrtcPort int) string {
 	var b strings.Builder
-	t := tableName(nw)
+	t := TableName(nw)
 	fmt.Fprintf(&b, "table ip %s {\n", t)
 	fmt.Fprintf(&b, "\tchain postrouting {\n\t\ttype nat hook postrouting priority srcnat; policy accept;\n")
 	fmt.Fprintf(&b, "\t\tip saddr %s oifname != %q masquerade\n\t}\n", nw.Subnet(), nw.Tap)
@@ -136,7 +143,7 @@ func (f Firewall) Teardown(ctx context.Context, nw Network, webrtcPort int) erro
 				_ = f.Runner.Run(ctx, storage.Command{Path: ipt, Args: append([]string{"-w"}, r...)})
 			}
 		}
-		err := f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"delete", "table", "ip", tableName(nw)}})
+		err := f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"delete", "table", "ip", TableName(nw)}})
 		if err != nil && !strings.Contains(err.Error(), "No such file") {
 			return err
 		}

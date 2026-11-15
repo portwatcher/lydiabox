@@ -65,6 +65,8 @@ type Config struct {
 	// Remote configures remote access through Cloudflare Zero Trust
 	// (remote.go).
 	Remote RemoteAccessConfig
+	// Magpie holds the host magpie addresses (cell.go).
+	Magpie MagpieConfig
 
 	// AuthTokenGenerated and MasterKeyGenerated report whether EnsureSecrets
 	// created the secret during this run (the CLI prints new tokens once).
@@ -100,6 +102,18 @@ type VMConfig struct {
 	MemMB       int
 	GPUPCIAddr  string
 	IdleTimeout time.Duration
+	// SubnetIndex is the guest subnet 172.30.<n>.0/24 of the chv driver
+	// (SubnetAuto: from the state database). Tap and NftTable override the
+	// TAP device name and the nftables table (cell.go).
+	SubnetIndex int
+	Tap         string
+	NftTable    string
+	// WebRTCPort is the host UDP port forwarded to the guest for the
+	// desktop stream (0 disables the forward). WebRTCPortSet reports that
+	// LYDIABOX_WEBRTC_UDP_PORT or vm.webrtc_udp_port set it; without it
+	// the CLI picks the default (cell.go).
+	WebRTCPort    int
+	WebRTCPortSet bool
 }
 
 // OAuthClient is a self-hosted OAuth application registration.
@@ -121,13 +135,14 @@ func Defaults(homeDir string) *Config {
 		ListenAddr:       "0.0.0.0:8080",
 		DataDir:          filepath.Join(homeDir, ".lydiabox"),
 		S3:               S3Config{Region: "auto", GatewayAddr: DefaultS3GatewayAddr},
-		VM:               VMConfig{Driver: DriverAuto, CPUs: 4, MemMB: 8192, IdleTimeout: 20 * time.Minute},
+		VM:               VMConfig{Driver: DriverAuto, CPUs: 4, MemMB: 8192, IdleTimeout: 20 * time.Minute, SubnetIndex: SubnetAuto},
 		OAuthClients:     map[string]OAuthClient{},
 		Mirrors:          map[string]Mirror{},
 		MetaSyncInterval: 60 * time.Second,
 		LogLevel:         "info",
 		TenantID:         DefaultTenantID,
 		Remote:           RemoteAccessConfig{Tunnel: TunnelAuto},
+		Magpie:           MagpieConfig{Addr: DefaultMagpieAddr, WebAddr: DefaultMagpieWebAddr},
 	}
 }
 

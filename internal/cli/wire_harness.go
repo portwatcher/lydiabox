@@ -25,7 +25,8 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	log := d.Logger.With("component", "harness")
 	tid := cfg.TenantID
 
-	opts := magpie.Options{TenantID: tid, DataDir: cfg.MagpieDir(), Secrets: d.Store, Logger: d.Logger}
+	opts := magpie.Options{TenantID: tid, DataDir: cfg.MagpieDir(), Addr: cfg.Magpie.Addr, WebAddr: cfg.Magpie.WebAddr,
+		Secrets: d.Store, Logger: d.Logger}
 	if bin, err := d.Bootstrap.Resolve("magpie"); err != nil {
 		opts.BinaryError = err.Error()
 	} else {

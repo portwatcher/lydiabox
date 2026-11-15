@@ -42,6 +42,7 @@ type fileConfig struct {
 		MemMB       *int    `yaml:"mem_mb"`
 		GPUPCIAddr  *string `yaml:"gpu_pci_addr"`
 		IdleTimeout *string `yaml:"idle_timeout"`
+		vmCellFile  `yaml:",inline"`
 	} `yaml:"vm"`
 	Connectors map[string]struct {
 		ClientID     string `yaml:"client_id"`
@@ -51,6 +52,8 @@ type fileConfig struct {
 	WebRTC webrtcFile `yaml:"webrtc"`
 	// RemoteAccess is the Cloudflare Zero Trust section (remote.go).
 	RemoteAccess remoteFile `yaml:"remote_access"`
+	// Cell holds the cell-mode keys (cell.go).
+	Cell cellFile `yaml:",inline"`
 }
 
 func applyFile(cfg *Config, path string, explicit bool, home string) error {
@@ -105,6 +108,7 @@ func applyFile(cfg *Config, path string, explicit bool, home string) error {
 		cfg.OAuthClients[strings.ToLower(provider)] = OAuthClient{ClientID: c.ClientID, ClientSecret: c.ClientSecret}
 	}
 	applyRemoteFile(cfg, &fc)
+	applyCellFile(cfg, &fc)
 	return applyWebRTCFile(&cfg.WebRTC, &fc.WebRTC)
 }
 
@@ -202,6 +206,7 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 	applyMirrors(cfg, env)
 	errs = append(errs, applyWebRTCEnv(&cfg.WebRTC, env)...)
 	applyRemoteEnv(cfg, env)
+	errs = append(errs, applyCellEnv(cfg, env)...)
 	if len(errs) > 0 {
 		return fmt.Errorf("config: %w", errors.Join(errs...))
 	}
