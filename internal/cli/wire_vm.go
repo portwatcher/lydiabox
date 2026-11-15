@@ -127,7 +127,11 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 		},
 		Stop: func(ctx context.Context) error {
 			gwCancel()
-			return ctl.Close(ctx)
+			err := ctl.Close(ctx)
+			if c, ok := drv.(io.Closer); ok {
+				err = errors.Join(err, c.Close())
+			}
+			return err
 		},
 	}, nil
 }
@@ -144,6 +148,11 @@ func defaultWebRTCPort(d *deps) int {
 // webRTCPort is the host UDP port forwarded to the guest: the configured
 // one (config validates it), else the default.
 func webRTCPort(d *deps) int {
+	if d.Driver == config.DriverInstabox || (d.Config != nil && d.Config.CellMode && !d.Config.VM.WebRTCPortSet) {
+		// No host-wide UDP port: a remote machine gets no forward, and a
+		// cell shares the host with other cells.
+		return 0
+	}
 	if d.Config != nil && d.Config.VM.WebRTCPortSet {
 		return d.Config.VM.WebRTCPort
 	}
@@ -182,6 +191,9 @@ func guestNetwork(ctx context.Context, d *deps, tid string) (chv.Network, error)
 func newDriver(d *deps, log interface{ Warn(string, ...any) }) (vmm.Driver, error) {
 	cfg := d.Config
 	runner := storage.OSRunner{}
+	if d.Driver == config.DriverInstabox {
+		return newInstaboxDriver(d)
+	}
 	if d.Driver == config.DriverCHV {
 		resolve := func(name string) string {
 			p, err := d.Bootstrap.Resolve(name)
@@ -207,6 +219,10 @@ func newDriver(d *deps, log interface{ Warn(string, ...any) }) (vmm.Driver, erro
 // LYDIABOX_ROOTFS_URL when they are missing (chv).
 func vmSpec(ctx context.Context, d *deps, tid string, webrtcPort int) (vmm.Spec, error) {
 	cfg := d.Config
+	if d.Driver == config.DriverInstabox {
+		// The guest image snapshot holds the guest daemon and the desktop.
+		return vmm.Spec{CPUs: cfg.VM.CPUs, MemMB: cfg.VM.MemMB}, nil
+	}
 	// In the provider storage mode the guest trees are on the machine disk:
 	// no host directories are shared (the docker driver uses volumes).
 	var home, ws, rootUpper string

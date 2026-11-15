@@ -1,5 +1,5 @@
 // Package cli implements the lydiabox host command line: up, status,
-// runtime, cloudflare, and version. cmd/lydiabox/main.go only calls Main.
+// runtime, cloudflare, instabox, and version. cmd/lydiabox/main.go only calls Main.
 package cli
 
 import (
@@ -30,6 +30,7 @@ var commands = map[string]command{
 	"status":     {"Show the status of a running control plane", runStatus},
 	"runtime":    {"Manage runtime binaries and guest images", runRuntime},
 	"cloudflare": {"Set up remote access through Cloudflare Zero Trust", runCloudflare},
+	"instabox":   {"Show or delete the InstaBox machine of the tenant", runInstabox},
 	"version":    {"Print version information", runVersion},
 }
 
