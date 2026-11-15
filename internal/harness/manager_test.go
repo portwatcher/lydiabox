@@ -3,7 +3,6 @@ package harness_test
 import (
 	"context"
 	"errors"
-	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/harness"
 	"github.com/lydiabox/lydiabox/internal/harness/adapters"
 	"github.com/lydiabox/lydiabox/internal/harness/adapters/adapterstest"

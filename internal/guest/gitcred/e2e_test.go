@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -17,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/connector"
 	"github.com/lydiabox/lydiabox/internal/connector/broker"
 	"github.com/lydiabox/lydiabox/internal/connector/connectortest"

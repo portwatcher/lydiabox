@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/magpie"
 	"github.com/lydiabox/lydiabox/internal/magpie/magpietest"

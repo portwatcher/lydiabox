@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
-	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net"
@@ -17,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/connector"
 	"github.com/lydiabox/lydiabox/internal/connector/broker"
 	"github.com/lydiabox/lydiabox/internal/connector/connectortest"

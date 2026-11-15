@@ -45,12 +45,13 @@ func multipartBody(t *testing.T, parts ...upload) (io.Reader, string) {
 
 func q(p string) string { return url.QueryEscape(p) }
 
-func TestFileAPICRUD(t *testing.T) {
-	e := newEnv(t)
+func TestFileAPICRUD(t *testing.T) { eachFileMode(t, testFileAPICRUD) }
+
+func testFileAPICRUD(t *testing.T, e *env) {
 	jsonHdr := map[string]string{"Content-Type": "application/json"}
 
 	resp, body := e.do(t, "GET", "/api/v1/fs/roots", "", nil, nil)
-	if resp.StatusCode != 200 || !strings.Contains(string(body), `"guestPath":"/home/agent"`) {
+	if resp.StatusCode != 200 || !strings.Contains(string(body), `"guestPath":"`+e.guestHome+`"`) {
 		t.Fatalf("roots: %d %s", resp.StatusCode, body)
 	}
 
@@ -170,8 +171,9 @@ func TestFileAPICRUD(t *testing.T) {
 	}
 }
 
-func TestFileAPITraversal(t *testing.T) {
-	e := newEnv(t)
+func TestFileAPITraversal(t *testing.T) { eachFileMode(t, testFileAPITraversal) }
+
+func testFileAPITraversal(t *testing.T, e *env) {
 	os.WriteFile(filepath.Join(e.secret, "id_rsa"), []byte("PRIVATE"), 0o600)
 	os.Symlink(e.secret, filepath.Join(e.dirs.workspace, "escape"))
 

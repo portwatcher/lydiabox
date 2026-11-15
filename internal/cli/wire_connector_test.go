@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"crypto/rand"
-	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/config"
 	"github.com/lydiabox/lydiabox/internal/storage"
 	"github.com/lydiabox/lydiabox/internal/store"

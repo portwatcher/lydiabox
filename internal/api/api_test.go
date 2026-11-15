@@ -35,9 +35,28 @@ type env struct {
 	srv    *httptest.Server
 	dirs   dirs
 	secret string
+	// guestHome is the guest path of the home root in GET /api/v1/fs/roots.
+	guestHome string
 }
 
-func newEnv(t *testing.T) *env {
+// fileModes builds the File API service per storage mode; the provider
+// mode (files_provider_test.go) runs against an in-process guest daemon.
+var fileModes = map[string]func(t *testing.T, d dirs) (*files.Service, string){
+	"juicefs": func(_ *testing.T, d dirs) (*files.Service, string) {
+		return files.NewLocalService(d, files.Options{}), "/home/agent"
+	},
+}
+
+// eachFileMode runs fn with an env per storage mode.
+func eachFileMode(t *testing.T, fn func(t *testing.T, e *env)) {
+	for mode, build := range fileModes {
+		t.Run(mode, func(t *testing.T) { fn(t, newEnvWith(t, build)) })
+	}
+}
+
+func newEnv(t *testing.T) *env { return newEnvWith(t, fileModes["juicefs"]) }
+
+func newEnvWith(t *testing.T, build func(t *testing.T, d dirs) (*files.Service, string)) *env {
 	t.Helper()
 	base := t.TempDir()
 	d := dirs{home: filepath.Join(base, "jfs/home/agent"), workspace: filepath.Join(base, "jfs/workspace")}
@@ -47,6 +66,7 @@ func newEnv(t *testing.T) *env {
 			t.Fatal(err)
 		}
 	}
+	svc, guestHome := build(t, d)
 	auth := api.NewAuthenticator(token)
 	dav := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Dav", tenant.FromContext(r.Context())+" "+r.Method+" "+r.URL.Path)
@@ -55,7 +75,7 @@ func newEnv(t *testing.T) *env {
 	s, err := api.NewServer(api.Options{Addr: "127.0.0.1:0", Auth: auth, TenantID: "default",
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))},
 		api.CoreRoutes{Auth: auth, VM: api.StaticVMStatus{State: api.VMStopped, Driver: "docker"}, Storage: fakeStorage{}, S3Gateway: fakeGateway{}},
-		api.FilesRoutes{Handler: files.NewHandler(files.NewLocalService(d, files.Options{}))},
+		api.FilesRoutes{Handler: files.NewHandler(svc)},
 		api.WebDAVRoutes{Handler: dav},
 		api.WebUIRoutes{Handler: webui.Handler(webui.FS())},
 	)
@@ -64,7 +84,7 @@ func newEnv(t *testing.T) *env {
 	}
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
-	return &env{srv: srv, dirs: d, secret: secret}
+	return &env{srv: srv, dirs: d, secret: secret, guestHome: guestHome}
 }
 
 // do sends a request with the bearer token unless auth is "-" (none) or a

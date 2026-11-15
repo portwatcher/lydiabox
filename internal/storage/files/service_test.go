@@ -18,9 +18,26 @@ type testDirs struct{ home, workspace string }
 func (d testDirs) HomeDir(string) (string, error)      { return d.home, nil }
 func (d testDirs) WorkspaceDir(string) (string, error) { return d.workspace, nil }
 
-// newSandbox returns a Service over two roots plus a sibling "secret"
-// directory outside both roots that escape attempts target.
-func newSandbox(t *testing.T) (*Service, testDirs, string) {
+// sandboxes builds a Service per storage mode over the same two roots:
+// "juicefs" uses agentfs.Local; "provider" (service_provider_test.go) uses
+// remotefs against an in-process guest daemon.
+var sandboxes = map[string]func(t *testing.T, d testDirs) *Service{
+	"juicefs": func(_ *testing.T, d testDirs) *Service { return NewLocalService(d, Options{MaxTextBytes: 1024}) },
+}
+
+// eachMode runs fn once per storage mode.
+func eachMode(t *testing.T, fn func(t *testing.T, svc *Service, d testDirs, secret string)) {
+	for mode, build := range sandboxes {
+		t.Run(mode, func(t *testing.T) {
+			d, secret := newDirs(t)
+			fn(t, build(t, d), d, secret)
+		})
+	}
+}
+
+// newDirs returns two roots plus a sibling "secret" directory outside both
+// roots that escape attempts target.
+func newDirs(t *testing.T) (testDirs, string) {
 	t.Helper()
 	base := t.TempDir()
 	d := testDirs{home: filepath.Join(base, "jfs", "home", "agent"), workspace: filepath.Join(base, "jfs", "workspace")}
@@ -33,7 +50,7 @@ func newSandbox(t *testing.T) (*Service, testDirs, string) {
 	if err := os.WriteFile(filepath.Join(secret, "passwd"), []byte("root:x:0:0"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return NewLocalService(d, Options{MaxTextBytes: 1024}), d, secret
+	return d, secret
 }
 
 func TestCleanRel(t *testing.T) {
@@ -57,8 +74,9 @@ func TestCleanRel(t *testing.T) {
 	}
 }
 
-func TestTraversalRejected(t *testing.T) {
-	svc, d, secret := newSandbox(t)
+func TestTraversalRejected(t *testing.T) { eachMode(t, testTraversalRejected) }
+
+func testTraversalRejected(t *testing.T, svc *Service, d testDirs, secret string) {
 	const tid = "default"
 
 	// Symlinks that point outside the root: absolute, relative, and a directory.
@@ -130,8 +148,9 @@ func TestTraversalRejected(t *testing.T) {
 	}
 }
 
-func TestTextReadWrite(t *testing.T) {
-	svc, d, _ := newSandbox(t)
+func TestTextReadWrite(t *testing.T) { eachMode(t, testTextReadWrite) }
+
+func testTextReadWrite(t *testing.T, svc *Service, d testDirs, _ string) {
 	e, err := svc.WriteText(ctx, "default", RootHome, "notes.md", "hello", nil)
 	if err != nil || e.Size != 5 || e.Path != "notes.md" {
 		t.Fatalf("write = %+v, %v", e, err)
@@ -174,8 +193,9 @@ func TestTextReadWrite(t *testing.T) {
 	}
 }
 
-func TestMutations(t *testing.T) {
-	svc, d, _ := newSandbox(t)
+func TestMutations(t *testing.T) { eachMode(t, testMutations) }
+
+func testMutations(t *testing.T, svc *Service, d testDirs, _ string) {
 	tid := "default"
 	if _, err := svc.Mkdir(ctx, tid, RootWorkspace, "a/b/c", false); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("mkdir without parents = %v", err)

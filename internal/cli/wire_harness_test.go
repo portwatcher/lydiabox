@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/bootstrap"
 	"github.com/lydiabox/lydiabox/internal/config"
