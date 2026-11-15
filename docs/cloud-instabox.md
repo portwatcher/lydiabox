@@ -82,15 +82,18 @@ state. InstaBox changes often: read the pages again before each phase.
    not kept in the snapshot (images).
 3. The `ENTRYPOINT` starts `lydiabox-guest` as `instabox-image.service`.
    systemd restarts it when it fails (images).
-4. Keep `/home/agent` and `/workspace` on `/data`, for example as
-   `/data/home/agent` and `/data/workspace`. The image task sets the exact
-   paths. Only `/data` is the user disk.
+4. Keep the agent home and the workspace on `/data`: the image
+   ([deploy/instabox](../deploy/instabox), [instabox.md](instabox.md)) keeps
+   the guest paths `/home/agent` and `/workspace` as links to `/data/home`
+   (InstaBox's own HOME) and `/data/workspace`. Only `/data` is the user
+   disk.
 5. The guest needs no `/dev/kvm`: the InstaBox machine is the agent VM.
 
 Guest binary upgrades: the driver compares the version of the running
 guest with `LYDIABOX_GUEST_BINARY`. If they differ, it uploads the binary
-to `/data` (`PUT /v1/machines/{id}/files`), then installs it with `sudo`
-and restarts the service through `exec`. The machine user has
+to `/data/.lydiabox/bin/lydiabox-guest` (`PUT /v1/machines/{id}/files`),
+which the image runs instead of its own binary, and restarts the program
+through `exec` ([instabox.md](instabox.md#run-time-layout)). The machine user has
 passwordless `sudo` (limits).
 
 Root filesystem upgrades: **not stated** how to replace the root disk of

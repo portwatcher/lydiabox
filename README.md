@@ -22,6 +22,9 @@ service (LydiaBox Cloud) on top of this core. Its first version runs each
 agent VM on InstaBox ([docs/cloud-instabox.md](docs/cloud-instabox.md));
 [docs/cloud-own-compute.md](docs/cloud-own-compute.md) is the later design
 for KVM hosts that the service operates.
+[docs/instabox.md](docs/instabox.md) describes the InstaBox API client
+(`internal/instabox`) and the guest image for InstaBox (`deploy/instabox`,
+`make instabox-image`).
 
 ## Quick start
 
@@ -459,6 +462,7 @@ npm run typecheck && npm run lint && npm run test
 | Connectors | Done; tested against fake provider APIs; full real-provider checklist passed on GitHub ([results](docs/conformance.md#connector-run-github-real-provider)); real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 | Remote access (Cloudflare Zero Trust) | Done; tested against a fake Cloudflare API, a fake JWKS, and a fake cloudflared; real-account checklist in [docs/remote-access-manual-test.md](docs/remote-access-manual-test.md) |
+| InstaBox client and image (LydiaBox Cloud) | Client tested against a fake InstaBox API; image built for linux/amd64 and container-tested with Docker; not checked against the real service; checklist in [docs/instabox.md](docs/instabox.md#first-check-with-a-real-account) |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).
 
