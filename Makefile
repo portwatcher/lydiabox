@@ -20,6 +20,7 @@ WEBUI_DIST := internal/webui/dist
 export CGO_ENABLED := 0
 
 .PHONY: all build build-host build-guest webui release test vet lint fmt web-build rootfs guest-image guest-image-slim virtiofsd clean
+.PHONY: instabox-image instabox-image-test
 
 all: build
 
@@ -70,6 +71,7 @@ lint: vet
 	@if command -v staticcheck >/dev/null 2>&1; then CGO_ENABLED=0 staticcheck ./...; \
 	else echo "staticcheck not installed; skipped (go install honnef.co/go/tools/cmd/staticcheck@latest)"; fi
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/rootfs/build-artifacts.sh deploy/rootfs/setup-guest.sh deploy/rootfs/install-harnesses.sh deploy/rootfs/lydiabox-init deploy/initramfs/init deploy/virtiofsd/build.sh; fi
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/instabox/build.sh deploy/instabox/test.sh deploy/instabox/lydiabox-instabox-entry deploy/instabox/lydiabox-instabox-guest; fi
 
 # Builds web/ (Phase 5) and copies the bundle into internal/webui/dist, which
 # go:embed picks up on the next `make build`.
@@ -95,6 +97,19 @@ guest-image:
 
 guest-image-slim:
 	deploy/rootfs/build-artifacts.sh --slim --docker-image $(GUEST_IMAGE_SLIM) --no-vm-images
+
+# LydiaBox image for InstaBox (deploy/instabox, docs/instabox.md), linux/amd64:
+#   make instabox-image          build $(INSTABOX_IMAGE) and print the import command
+#   make instabox-image-test     container test of $(INSTABOX_IMAGE) (skips without Docker)
+# INSTABOX_IMAGE_FLAGS passes build.sh flags, for example --slim or --push.
+INSTABOX_IMAGE       ?= lydiabox/instabox:latest
+INSTABOX_IMAGE_FLAGS ?=
+
+instabox-image:
+	deploy/instabox/build.sh --tag $(INSTABOX_IMAGE) $(INSTABOX_IMAGE_FLAGS)
+
+instabox-image-test:
+	deploy/instabox/test.sh --image $(INSTABOX_IMAGE)
 
 # virtiofsd from source as a static musl binary, dist/virtiofsd-linux-<arch>
 # (upstream has no linux/arm64 build). Install it into runtime/bin with

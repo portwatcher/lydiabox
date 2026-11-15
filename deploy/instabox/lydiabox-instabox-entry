@@ -1,0 +1,67 @@
+#!/bin/sh
+# Entry point of the LydiaBox InstaBox image (deploy/instabox/Dockerfile).
+# On InstaBox it runs as root in the systemd unit instabox-image.service,
+# which restarts it on failure; in the container test it is PID 1. It
+# prepares the persistent disk and runs supervisord, which starts Xvfb,
+# Xfce, and lydiabox-guest as the agent user (UID 1000).
+#
+# It never mounts anything: under systemd /run, /tmp, /dev, and /data are
+# the machine's.
+set -eu
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}" TZ="${TZ:-Etc/UTC}"
+data=${LYDIABOX_DATA_ROOT:-/data}
+display=${LYDIABOX_DISPLAY:-${DISPLAY:-:0}}
+export LYDIABOX_DATA_ROOT="$data" LYDIABOX_DISPLAY="$display"
+uid=1000
+
+log() { echo "lydiabox-instabox-entry: $*" >&2; }
+
+if [ ! -d "$data" ]; then
+	log "$data does not exist; the persistent disk is not mounted"
+	exit 1
+fi
+
+# Agent home, workspace, and the driver's settings directory on the
+# persistent disk. Only new directories change owner, so a large home is
+# not walked on every start.
+for dir in "$data/home" "$data/workspace" "$data/.lydiabox"; do
+	if [ ! -d "$dir" ]; then
+		mkdir -p "$dir"
+		chown "$uid:$uid" "$dir"
+	fi
+done
+chmod 0700 "$data/.lydiabox"
+# A new home gets the home content of the image (/home/agent links to
+# /data/home).
+seed=/usr/local/share/lydiabox/home-seed
+[ -d "$seed" ] || seed=/etc/skel
+if [ ! -e "$data/home/.profile" ] && [ -d "$seed" ]; then
+	cp -a -n "$seed/." "$data/home/" 2>/dev/null || true
+	chown -R "$uid:$uid" "$data/home"
+fi
+
+# Runtime directories of the desktop, the session bus, and the local
+# sockets that lydiabox-guest bridges to the host link
+# (/run/lydiabox/host-9001.sock and host-9002.sock).
+mkdir -p /tmp/.X11-unix /run/user/$uid /var/log/supervisor /run/dbus /run/lydiabox
+chmod 1777 /tmp /tmp/.X11-unix
+chown "$uid:$uid" /run/user/$uid /run/lydiabox
+chmod 0700 /run/user/$uid
+chmod 0755 /run/lydiabox
+dnum=${display#:}
+dnum=${dnum%%.*}
+if [ -e "/tmp/.X$dnum-lock" ] && ! pgrep -x Xvfb >/dev/null 2>&1; then
+	rm -f "/tmp/.X$dnum-lock" "/tmp/.X11-unix/X$dnum"
+fi
+rm -f /run/supervisord.pid /run/supervisor.sock
+
+# The machine's systemd normally runs the system bus. Without one (the
+# container test), start it here.
+if [ ! -S /run/dbus/system_bus_socket ]; then
+	rm -f /run/dbus/pid
+	dbus-daemon --system --fork || log "no system D-Bus; Xfce runs without it"
+fi
+
+exec /usr/bin/supervisord -n -c /etc/lydiabox/instabox-supervisord.conf

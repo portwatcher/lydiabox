@@ -1,0 +1,47 @@
+#!/bin/sh
+# Starts `lydiabox-guest serve` as the agent user once the driver has
+# written its settings (deploy/instabox/guest.env.example). The file has
+# KEY=VALUE lines; only LYDIABOX_* keys are taken, and the file is read,
+# never run as a script. Until it exists, this waits, so the desktop runs
+# while the driver is still setting up the machine.
+#
+# A guest binary at $LYDIABOX_DATA_ROOT/.lydiabox/bin/lydiabox-guest (on
+# the persistent disk, uploaded by the driver) replaces the one in the
+# image, so a guest upgrade needs neither sudo nor a new snapshot.
+set -eu
+
+data=${LYDIABOX_DATA_ROOT:-/data}
+env_file=${LYDIABOX_GUEST_ENV_FILE:-$data/.lydiabox/guest.env}
+
+waited=0
+while [ ! -r "$env_file" ]; do
+	if [ "$waited" -eq 0 ]; then
+		echo "lydiabox-instabox-guest: waiting for $env_file" >&2
+	fi
+	waited=1
+	sleep 2
+done
+
+while IFS= read -r line || [ -n "$line" ]; do
+	case "$line" in
+	LYDIABOX_*=*)
+		key=${line%%=*}
+		value=${line#*=}
+		case "$key" in
+		*[!A-Z0-9_]*) continue ;;
+		esac
+		export "$key=$value"
+		;;
+	esac
+done <"$env_file"
+
+# The two file roots of the guest file API: the agent home and the
+# workspace on the persistent disk.
+export LYDIABOX_GUEST_HOME_ROOT="${LYDIABOX_GUEST_HOME_ROOT:-$data/home}"
+export LYDIABOX_GUEST_WORKSPACE_ROOT="${LYDIABOX_GUEST_WORKSPACE_ROOT:-$data/workspace}"
+
+bin=/usr/local/bin/lydiabox-guest
+if [ -x "$data/.lydiabox/bin/lydiabox-guest" ]; then
+	bin=$data/.lydiabox/bin/lydiabox-guest
+fi
+exec "$bin" serve -workdir "$LYDIABOX_GUEST_WORKSPACE_ROOT" -display "${LYDIABOX_DISPLAY:-:0}"

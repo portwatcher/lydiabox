@@ -1,0 +1,5 @@
+*
+!deploy/instabox/supervisord.conf
+!deploy/instabox/guest.env.example
+!deploy/instabox/lydiabox-instabox-entry
+!deploy/instabox/lydiabox-instabox-guest
