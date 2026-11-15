@@ -196,12 +196,7 @@ func (s *Server) useMachine(w http.ResponseWriter, id string) *machine {
 		return nil
 	}
 	if m.state == "suspended" && m.autoSuspendedAt != nil {
-		now := time.Now().UTC()
-		o := &operation{id: "op_" + randID(26), machineID: m.id, typ: "resume", state: "succeeded", trigger: "request",
-			final: "running", doneAt: now, createdAt: now, updatedAt: now}
-		s.ops[o.id] = o
-		m.state, m.autoSuspendedAt, m.runStartedAt = "running", nil, &now
-		m.revision++
+		s.wakeLocked(m, "request")
 	}
 	if m.state != "running" {
 		apiErr(w, http.StatusConflict, "machine_not_running", "sandbox is "+m.state+"; start it first", nil)

@@ -39,6 +39,9 @@ type Options struct {
 	FreePlan bool
 	// Exec answers commands (default DefaultExec).
 	Exec ExecFunc
+	// Guest runs the programs of the machines (proxy.go). With it, the
+	// published ports are served by the port proxy at ProxyURL.
+	Guest GuestRunner
 }
 
 // Request is one request the fake received.
@@ -82,6 +85,14 @@ type Server struct {
 	replays     int
 	failCreate  *createFailure
 	execLateErr *lateError
+	wakes       int
+
+	// Port proxy and machine programs (proxy.go).
+	proxy      *portProxy
+	guestQueue []guestEvent
+	guestWake  chan struct{}
+	guestDone  chan struct{}
+	closed     bool
 }
 
 // New starts a fake server; t.Cleanup(s.Close) stops it.
@@ -103,6 +114,9 @@ func New(opts Options) *Server {
 		idem:      map[string]*idemRecord{},
 	}
 	s.Server = httptest.NewServer(s.handler())
+	if opts.Guest != nil {
+		s.startGuests()
+	}
 	return s
 }
 

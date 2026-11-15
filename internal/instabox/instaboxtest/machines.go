@@ -128,6 +128,7 @@ func (s *Server) advance() {
 			if m != nil {
 				m.state = "error"
 				m.opID = ""
+				s.queueGuest(false, m.id)
 			}
 			continue
 		}
@@ -140,6 +141,12 @@ func (s *Server) advance() {
 		m.updatedAt = now
 		if o.final == "running" {
 			m.runStartedAt = &now
+			if o.typ == "create" || o.typ == "start" || o.typ == "resize" {
+				s.queueGuest(true, m.id)
+			}
+		}
+		if o.final == "stopped" || o.final == "deleted" {
+			s.queueGuest(false, m.id)
 		}
 		if o.final == "deleted" {
 			delete(s.machines, m.id)
@@ -158,6 +165,13 @@ func (s *Server) startOp(m *machine, typ, transitional, final string) *operation
 	m.state = transitional
 	m.revision++
 	m.updatedAt = now
+	switch typ {
+	case "suspend", "stop", "delete", "resize":
+		// An explicit lifecycle operation ends the activity leases, and the
+		// connections through the port proxy close.
+		m.leases = map[string]time.Time{}
+		s.pauseConns(m.id)
+	}
 	return o
 }
 
@@ -200,6 +214,7 @@ func (s *Server) IdlePause(id string) bool {
 	now := time.Now().UTC()
 	m.state, m.autoSuspendedAt = "suspended", &now
 	m.revision++
+	s.pauseConns(m.id)
 	return true
 }
 

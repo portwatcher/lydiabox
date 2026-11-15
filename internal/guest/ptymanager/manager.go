@@ -54,6 +54,10 @@ type Options struct {
 	Shell string
 	// DefaultDir is the working directory when a spec has none.
 	DefaultDir string
+	// Dirs maps a guest directory (for example /workspace) to the local
+	// directory that holds it, for a guest whose trees are elsewhere and
+	// not linked (a test guest). A spec directory below a key moves there.
+	Dirs map[string]string
 	// Env is added to every PTY environment after the daemon's own
 	// environment and before the spec's variables.
 	Env map[string]string
@@ -124,7 +128,7 @@ func (m *Manager) Start(spec Spec) (*Session, error) {
 	if len(command) == 0 {
 		command = []string{m.opts.Shell, "-l"}
 	}
-	dir := spec.Dir
+	dir := m.localDir(spec.Dir)
 	if dir == "" {
 		dir = m.opts.DefaultDir
 	}
@@ -361,4 +365,17 @@ func (m *Manager) Close(ctx context.Context) {
 		}()
 	}
 	wg.Wait()
+}
+
+// localDir applies Options.Dirs to a spec directory.
+func (m *Manager) localDir(dir string) string {
+	for guest, local := range m.opts.Dirs {
+		if dir == guest {
+			return local
+		}
+		if rest, ok := strings.CutPrefix(dir, guest+"/"); ok {
+			return local + "/" + rest
+		}
+	}
+	return dir
 }

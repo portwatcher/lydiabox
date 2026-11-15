@@ -14,8 +14,7 @@ type port struct {
 	createdAt               time.Time
 }
 
-func (p *port) json(m *machine, withToken bool) map[string]any {
-	url := "https://" + strconv.Itoa(p.port) + "-" + strings.TrimPrefix(m.id, "m_") + ".fake.instabox.test"
+func (p *port) json(url string, m *machine, withToken bool) map[string]any {
 	out := map[string]any{"id": p.id, "machineId": m.id, "port": p.port, "name": p.name, "url": url,
 		"access": p.access, "protocol": "http", "createdAt": p.createdAt, "expiresAt": nil}
 	if withToken && p.token != "" {
@@ -89,7 +88,7 @@ func (s *Server) publishPort(w http.ResponseWriter, r *http.Request) {
 	if !existed {
 		status = http.StatusCreated
 	}
-	writeJSON(w, status, p.json(m, newToken))
+	writeJSON(w, status, p.json(s.portURL(m, p.port), m, newToken))
 }
 
 func (s *Server) listPorts(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +107,7 @@ func (s *Server) listPorts(w http.ResponseWriter, r *http.Request) {
 	sort.Ints(nums)
 	ports := []map[string]any{}
 	for _, n := range nums {
-		ports = append(ports, m.ports[n].json(m, false))
+		ports = append(ports, m.ports[n].json(s.portURL(m, n), m, false))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": true, "ports": ports})
 }
