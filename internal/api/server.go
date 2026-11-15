@@ -27,6 +27,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -211,8 +212,11 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 
 // Listen binds the listen address. It is separate from Serve so the CLI can
 // fail fast on an address conflict before starting background services.
+//
+// An address "unix:/path" (or "unix:///path") listens on a UNIX socket with
+// mode 0660, for a cell host that forwards requests to the cell.
 func (s *Server) Listen() (net.Addr, error) {
-	ln, err := net.Listen("tcp", s.opts.Addr)
+	ln, err := listen(s.opts.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("api: listen %s: %w", s.opts.Addr, err)
 	}
@@ -226,6 +230,32 @@ func (s *Server) Listen() (net.Addr, error) {
 	}
 	s.mu.Unlock()
 	return ln.Addr(), nil
+}
+
+func listen(addr string) (net.Listener, error) {
+	rest, ok := strings.CutPrefix(addr, "unix:")
+	if !ok {
+		return net.Listen("tcp", addr)
+	}
+	path := strings.TrimPrefix(rest, "//")
+	if fi, err := os.Lstat(path); err == nil {
+		if fi.Mode()&os.ModeSocket == 0 {
+			return nil, fmt.Errorf("%s exists and is not a socket", path)
+		}
+		// A socket left by a cell that was killed.
+		if err := os.Remove(path); err != nil {
+			return nil, err
+		}
+	}
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o660); err != nil {
+		ln.Close()
+		return nil, err
+	}
+	return ln, nil
 }
 
 // Serve serves on the listener from Listen until Shutdown.

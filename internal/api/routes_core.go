@@ -71,6 +71,7 @@ type CoreRoutes struct {
 // RegisterRoutes implements RouteRegistrar.
 func (c CoreRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("GET /api/v1/health", c.health, Public())
+	r.HandleFunc("GET /api/v1/ready", c.ready, Public())
 	r.HandleFunc("GET /api/v1/status", c.status)
 	r.HandleFunc("POST /api/v1/auth/login", c.Auth.login, Public())
 	r.HandleFunc("POST /api/v1/auth/logout", c.Auth.logout, Public())
@@ -79,6 +80,19 @@ func (c CoreRoutes) RegisterRoutes(r Router) {
 
 func (c CoreRoutes) health(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ReadyResponse is the body of GET /api/v1/ready.
+type ReadyResponse struct {
+	Status   string `json:"status"`
+	TenantID string `json:"tenantId"`
+}
+
+// ready answers when every subsystem has started (the server serves only
+// after the start), with the tenant ID, so that a cell host can check that
+// it reached the cell of the right tenant.
+func (c CoreRoutes) ready(w http.ResponseWriter, r *http.Request) {
+	httpx.WriteJSON(w, http.StatusOK, ReadyResponse{Status: "ready", TenantID: tenant.FromContext(r.Context())})
 }
 
 func (c CoreRoutes) status(w http.ResponseWriter, r *http.Request) {

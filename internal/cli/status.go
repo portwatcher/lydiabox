@@ -38,6 +38,11 @@ func runStatus(ctx context.Context, env Env, args []string) error {
 	if base == "" {
 		base = clientAddr(cfg.ListenAddr)
 	}
+	client := http.DefaultClient
+	if sock, ok := config.UnixListenPath(base); ok {
+		client = unixClient(sock)
+		base = "http://cell"
+	}
 	if !strings.Contains(base, "://") {
 		base = "http://" + base
 	}
@@ -49,7 +54,7 @@ func runStatus(ctx context.Context, env Env, args []string) error {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("server is not reachable at %s: %w", base, err)
 	}
@@ -108,6 +113,14 @@ func readToken(cfg *config.Config) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(data)), nil
+}
+
+// unixClient sends every request to the UNIX socket at path.
+func unixClient(path string) *http.Client {
+	return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", path)
+	}}}
 }
 
 // clientAddr turns a wildcard listen address into a loopback address.
