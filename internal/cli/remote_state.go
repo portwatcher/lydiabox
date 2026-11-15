@@ -73,7 +73,7 @@ func openStateStore(ctx context.Context, env Env, cfg *config.Config, log *slog.
 	if cfg.AuthTokenGenerated {
 		fmt.Fprintf(env.Stdout, "Generated admin token (saved to %s):\n\n    %s\n\n", cfg.AuthTokenPath(), cfg.AuthToken)
 	}
-	if _, err := os.Stat(cfg.DBPath()); errors.Is(err, os.ErrNotExist) && cfg.ValidateServe() == nil {
+	if _, err := os.Stat(cfg.DBPath()); errors.Is(err, os.ErrNotExist) && cfg.ValidateServe() == nil && cfg.S3Configured() {
 		objects, err := storage.NewS3Store(cfg.S3, nil)
 		if err != nil {
 			return nil, err

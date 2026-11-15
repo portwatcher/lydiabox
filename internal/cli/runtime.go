@@ -66,7 +66,7 @@ func runtimeSetup(env Env, name string, args []string, extra func(*flag.FlagSet)
 		return nil, nil, err
 	}
 	boot, err := bootstrap.New(bootstrap.Options{
-		BinDir: cfg.BinDir(), Driver: cfg.EffectiveVMDriver(), Mirrors: cfg.Mirrors,
+		BinDir: cfg.BinDir(), Driver: cfg.EffectiveVMDriver(), Skip: skipBinaries(cfg), Mirrors: cfg.Mirrors,
 		Logger: newLogger(stderrOrDiscard(env), cfg.LogLevel),
 	})
 	if err != nil {

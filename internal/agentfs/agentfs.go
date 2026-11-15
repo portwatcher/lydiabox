@@ -101,7 +101,7 @@ type WriteOptions struct {
 	// IfModTime, when set, fails with ErrConflict when the existing file has
 	// a different modification time.
 	IfModTime *time.Time
-	// Limit bounds the content size (< 0 disables the check).
+	// Limit bounds the content size (0 or less: no limit).
 	Limit int64
 	// Mode is the mode of a new file (default 0644). An existing regular
 	// file keeps its mode.

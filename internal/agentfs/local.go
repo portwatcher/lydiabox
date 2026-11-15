@@ -254,7 +254,7 @@ func WriteRoot(r *os.Root, rel string, src io.Reader, o WriteOptions, chown func
 }
 
 // writeAtomic streams src into a temporary file in the target directory and
-// renames it over rel. limit < 0 disables the size check.
+// renames it over rel. limit <= 0 disables the size check.
 func writeAtomic(r *os.Root, rel string, src io.Reader, mode fs.FileMode, limit int64, chown func(*os.File) error) error {
 	dir, base := filepath.Split(rel)
 	if dir == "" {
@@ -272,14 +272,14 @@ func writeAtomic(r *os.Root, rel string, src io.Reader, mode fs.FileMode, limit 
 			r.Remove(tmpRel)
 		}
 	}()
-	if limit >= 0 {
+	if limit > 0 {
 		src = io.LimitReader(src, limit+1)
 	}
 	n, err := io.Copy(f, src)
 	if err != nil {
 		return err
 	}
-	if limit >= 0 && n > limit {
+	if limit > 0 && n > limit {
 		return ErrTooLarge
 	}
 	if chown != nil {

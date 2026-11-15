@@ -148,7 +148,7 @@ func cloudflareSetup(ctx context.Context, env Env, args []string) error {
 }
 
 func installCloudflared(ctx context.Context, env Env, cfg *config.Config) {
-	boot, err := bootstrap.New(bootstrap.Options{BinDir: cfg.BinDir(), Driver: cfg.EffectiveVMDriver(), Mirrors: cfg.Mirrors,
+	boot, err := bootstrap.New(bootstrap.Options{BinDir: cfg.BinDir(), Driver: cfg.EffectiveVMDriver(), Skip: skipBinaries(cfg), Mirrors: cfg.Mirrors,
 		Logger: newLogger(stderrOrDiscard(env), cfg.LogLevel)})
 	if err == nil {
 		if _, err = boot.Resolve("cloudflared"); err != nil {

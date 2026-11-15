@@ -78,7 +78,10 @@ func printStatus(w io.Writer, base string, st api.StatusResponse) {
 	fmt.Fprintf(w, "Tenant:   %s\n", st.TenantID)
 	fmt.Fprintf(w, "VM:       %s (driver %s)\n", st.VM.State, st.VM.Driver)
 	mounted := "not mounted"
-	if st.Storage.Mounted {
+	switch {
+	case st.Storage.Mode == config.StorageProvider:
+		mounted = "machine disk (provider mode)"
+	case st.Storage.Mounted:
 		mounted = "mounted"
 	}
 	fmt.Fprintf(w, "Storage:  %s\n", mounted)
