@@ -53,7 +53,7 @@ func parseServeFlags(env Env, args []string) (*serveFlags, error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(env.Stderr)
 	port, _ := strconv.Atoi(envOr(rpc.EnvWebRTCPort, strconv.Itoa(rpc.DefaultWebRTCPort)))
-	fs.StringVar(&f.listen, "listen", envOr(rpc.EnvGuestListen, rpc.GuestListenVsock), "RPC listen address: vsock://:<port> or unix:///path")
+	fs.StringVar(&f.listen, "listen", envOr(rpc.EnvGuestListen, rpc.GuestListenVsock), "RPC listen address: vsock://:<port>, unix:///path, or ws://<host>:<port>[/path] (host link)")
 	fs.StringVar(&f.hostAddr, "host-addr", envOr(rpc.EnvHostAddr, rpc.HostAddrVsock), "host connector broker address (port 9001)")
 	fs.StringVar(&f.gatewayAddr, "gateway-addr", os.Getenv(rpc.EnvGatewayAddr), "host LLM gateway tunnel address (default: port 9002 next to -host-addr)")
 	fs.StringVar(&f.display, "display", envOr("DISPLAY", ":0"), "X display")
@@ -72,6 +72,9 @@ func parseServeFlags(env Env, args []string) (*serveFlags, error) {
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
+	set := map[string]bool{}
+	fs.Visit(func(fl *flag.Flag) { set[fl.Name] = true })
+	linkDefaults(f, set)
 	if f.gatewayAddr == "" {
 		addr, err := rpc.SubAddr(f.hostAddr, rpc.PortHostGateway)
 		if err != nil {
@@ -92,13 +95,6 @@ func runServe(ctx context.Context, env Env, args []string) error {
 		return fmt.Errorf("invalid -log-level %q", f.logLevel)
 	}
 	log := slog.New(slog.NewTextHandler(env.Stderr, &slog.HandlerOptions{Level: level}))
-	if _, err := rpc.ParseAddr(f.hostAddr); err != nil {
-		return err
-	}
-	ln, err := rpc.Listen(f.listen)
-	if err != nil {
-		return err
-	}
 
 	workdir := f.workdir
 	if fi, err := os.Stat(workdir); err != nil || !fi.IsDir() {
@@ -112,15 +108,27 @@ func runServe(ctx context.Context, env Env, args []string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
+	// On an early error return, stop the goroutines that already started.
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
 	errs := make(chan error, 8)
 	run := func(name string, fn func() error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := fn(); err != nil && ctx.Err() == nil {
-				errs <- fmt.Errorf("%s: %w", name, err)
+				select {
+				case errs <- fmt.Errorf("%s: %w", name, err):
+				default:
+				}
 			}
 		}()
+	}
+	ln, err := listenRPC(ctx, f, log, run)
+	if err != nil {
+		return err
 	}
 
 	var stream *webrtc.Streamer
@@ -197,6 +205,10 @@ func serveHTTP(ctx context.Context, addr string, h http.Handler) error {
 	if err != nil {
 		return err
 	}
+	return serveHTTPListener(ctx, ln, h)
+}
+
+func serveHTTPListener(ctx context.Context, ln net.Listener, h http.Handler) error {
 	srv := &http.Server{Handler: h, ReadHeaderTimeout: 30 * time.Second}
 	stop := context.AfterFunc(ctx, func() {
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
