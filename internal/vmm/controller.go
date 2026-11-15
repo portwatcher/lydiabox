@@ -152,6 +152,9 @@ func (c *Controller) Refresh(ctx context.Context, tid string) error {
 	defer t.trans.Unlock()
 	st, err := c.opts.Driver.State(ctx, tid)
 	if err != nil {
+		// The status shows why the VM cannot be read (for example a
+		// refused provider key or a deleted machine).
+		c.recordError(t, err)
 		return err
 	}
 	if st == StateBooting && !c.caps.Remote {
@@ -450,12 +453,14 @@ func (c *Controller) Stop(ctx context.Context, tid string, force bool) error {
 }
 
 // Close stops every running VM (host shutdown, before storage unmounts).
+// A remote VM (Capabilities.Remote) is left as it is: it keeps its files,
+// the next host process adopts it, and the provider's idle pause applies.
 func (c *Controller) Close(ctx context.Context) error {
 	c.mu.Lock()
 	var ids []string
 	for id, t := range c.tenants {
 		c.stopTimerLocked(t)
-		if t.state != StateStopped {
+		if t.state != StateStopped && !c.caps.Remote {
 			ids = append(ids, id)
 		}
 	}

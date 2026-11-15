@@ -147,3 +147,24 @@ func TestObserveIsIgnoredDuringATransition(t *testing.T) {
 		t.Fatalf("an observation during the boot overrode it: %s", st)
 	}
 }
+
+func TestCloseLeavesARemoteMachineRunning(t *testing.T) {
+	d := &remoteDriver{}
+	d.set(StateRunning)
+	c, err := NewController(Options{
+		Driver: d, Logger: slog.New(slog.DiscardHandler), IdleTimeout: time.Hour,
+		Spec: func(context.Context, string) (Spec, error) { return Spec{CPUs: 1}, nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background(), "t1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls := d.Calls(); calls != "" {
+		t.Fatalf("driver calls %q at close, want none: the next host process adopts the machine", calls)
+	}
+}
