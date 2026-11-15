@@ -90,8 +90,10 @@ func SecretFromEnv() ([]byte, error) {
 }
 
 // YamuxConfig returns the session configuration of the link. keepAlive is
-// the ping interval; a ping without an answer within the same interval ends
-// the session (0 selects 10 s).
+// the ping interval (0 selects 10 s). A write or a ping answer that takes
+// longer than three intervals ends the session, so a dead link is found in
+// at most four intervals while a slow proxy still gets time for a large
+// write.
 func YamuxConfig(keepAlive time.Duration) *yamux.Config {
 	if keepAlive <= 0 {
 		keepAlive = 10 * time.Second
@@ -101,7 +103,7 @@ func YamuxConfig(keepAlive time.Duration) *yamux.Config {
 	cfg.Logger = nil
 	cfg.EnableKeepAlive = true
 	cfg.KeepAliveInterval = keepAlive
-	cfg.ConnectionWriteTimeout = keepAlive
+	cfg.ConnectionWriteTimeout = 3 * keepAlive
 	// Each stream buffers at most this much unread data; the sender of a
 	// slow stream waits without blocking other streams.
 	cfg.MaxStreamWindowSize = 1 << 20

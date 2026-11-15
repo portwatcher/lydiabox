@@ -66,7 +66,7 @@ type Options struct {
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
 	// KeepAlive is the yamux ping interval (default 10 s). A link without
-	// an answer within this interval is down.
+	// an answer within three intervals is down.
 	KeepAlive time.Duration
 	// HTTPClient dials the WebSocket (default http.DefaultClient).
 	HTTPClient *http.Client
