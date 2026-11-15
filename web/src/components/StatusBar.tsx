@@ -21,7 +21,12 @@ function SyncIndicator() {
     return null;
   }
   const storage = status.storage;
-  if (!storage.mounted) {
+  const provider = storage.mode === "provider";
+  if (provider && !storage.lastSyncError && !storage.lastSyncAt) {
+    // The files are on the machine disk and no state backup ran (or none is configured).
+    return null;
+  }
+  if (!provider && !storage.mounted) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-warning-fg">
         <CloudOff aria-hidden className="size-4" />

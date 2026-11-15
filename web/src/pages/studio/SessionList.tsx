@@ -1,4 +1,4 @@
-import { CircleDot, Plus, Radio, Trash2 } from "lucide-react";
+import { CircleDot, History, Plus, Radio, Trash2 } from "lucide-react";
 import { useId } from "react";
 import { SESSION_HARNESSES } from "../../api/types";
 import type { HarnessID, Session, SessionStatus } from "../../api/types";
@@ -22,6 +22,8 @@ const statusInfo: Record<SessionStatus, { label: string; tone: Tone }> = {
 
 interface SessionListProps {
   sessions: Session[] | undefined;
+  /** Time of the last scan when the list is cached ("" when unknown); null when it is live. */
+  cachedAt?: string | null;
   error: unknown;
   loading: boolean;
   onRetry: () => void;
@@ -103,7 +105,7 @@ function SessionRow({ session, selected, onSelect, onDelete, now }: { session: S
 }
 
 export function SessionList(props: SessionListProps) {
-  const { sessions, error, loading, onRetry, filter, workspaceInput, onHarness, onWorkspaceInput, workspaces, selectedId, onSelect, onDelete, onNew } = props;
+  const { sessions, cachedAt = null, error, loading, onRetry, filter, workspaceInput, onHarness, onWorkspaceInput, workspaces, selectedId, onSelect, onDelete, onNew } = props;
   const now = useNow(15_000);
   const listId = useId();
   const filtered = filter.harness !== "" || filter.workspace !== "";
@@ -163,6 +165,15 @@ export function SessionList(props: SessionListProps) {
       <div className="flex flex-col gap-2 border-b border-border-subtle p-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Sessions</h2>
+          {cachedAt !== null ? (
+            <span
+              className="mr-auto inline-flex items-center gap-1 text-xs text-fg-muted tabular-nums"
+              title="The machine is paused or stopped. This list is from its last scan."
+            >
+              <History aria-hidden className="size-3.5" />
+              {cachedAt ? `Cached ${timeAgo(cachedAt, now) ?? ""}` : "Cached"}
+            </span>
+          ) : null}
           <Button size="sm" variant="primary" icon={Plus} onClick={onNew}>
             New
           </Button>

@@ -8,6 +8,7 @@ import { ErrorView, LoadingView } from "../components/StateView";
 import { useToast } from "../components/Toast";
 import { Button, cx } from "../components/ui";
 import { useResource } from "../hooks/useResource";
+import { useSystem } from "../hooks/useSystem";
 import { baseName, crumbs, joinPath, parentPath, validName } from "../lib/paths";
 import { collectDrop, collectInput } from "./files/collectFiles";
 import { FileTable } from "./files/FileTable";
@@ -57,6 +58,8 @@ export default function FilesPage() {
   const [renaming, setRenaming] = useState<Entry | null>(null);
   const [deleting, setDeleting] = useState<Entry | null>(null);
   const [davOpen, setDavOpen] = useState(false);
+  // WebDAV and the /s3 gateway need the host volume of the juicefs storage mode.
+  const mountable = useSystem().status?.storage.mode !== "provider";
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
@@ -194,9 +197,11 @@ export default function FilesPage() {
               </Button>
             </div>
           ) : null}
-          <Button size="sm" icon={HardDriveDownload} onClick={() => setDavOpen(true)}>
-            Mount locally
-          </Button>
+          {mountable ? (
+            <Button size="sm" icon={HardDriveDownload} onClick={() => setDavOpen(true)}>
+              Mount locally
+            </Button>
+          ) : null}
         </div>
         <UploadBar uploader={uploader} />
         <div className="min-h-0 flex-1">{content}</div>
@@ -287,7 +292,7 @@ export default function FilesPage() {
           go?.();
         }}
       />
-      <WebDavDialog open={davOpen} onClose={() => setDavOpen(false)} />
+      {mountable ? <WebDavDialog open={davOpen} onClose={() => setDavOpen(false)} /> : null}
     </div>
   );
 }

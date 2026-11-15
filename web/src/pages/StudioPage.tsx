@@ -38,24 +38,26 @@ export default function StudioPage() {
     return () => clearTimeout(id);
   }, [workspaceInput]);
 
-  const loader = useCallback((signal: AbortSignal) => sessions.list(filter, signal).then((r) => r.sessions), [filter]);
+  const loader = useCallback((signal: AbortSignal) => sessions.list(filter, signal), [filter]);
   const list = useResource(loader, { pollMs: 10_000 });
+  const listed = list.data?.sessions;
+  const cachedAt = list.data?.cached ? (list.data.cachedAt ?? "") : null;
 
   useEffect(() => {
-    if (!list.data) {
+    if (!listed) {
       return;
     }
-    const seen = list.data.map((s) => s.workspaceDir);
+    const seen = listed.map((s) => s.workspaceDir);
     setWorkspaces((prev) => {
       const merged = Array.from(new Set([...prev, ...seen])).sort();
       return merged.length === prev.length ? prev : merged;
     });
-  }, [list.data]);
+  }, [listed]);
 
   const [known, setKnown] = useState<Session | null>(null);
   const selected = useMemo(
-    () => list.data?.find((s) => s.id === selectedId) ?? (known && known.id === selectedId ? known : null),
-    [list.data, selectedId, known],
+    () => listed?.find((s) => s.id === selectedId) ?? (known && known.id === selectedId ? known : null),
+    [listed, selectedId, known],
   );
 
   const select = useCallback(
@@ -148,7 +150,8 @@ export default function StudioPage() {
         )}
       >
         <SessionList
-          sessions={list.data}
+          sessions={listed}
+          cachedAt={cachedAt}
           error={list.error}
           loading={list.loading}
           onRetry={list.reload}
@@ -201,7 +204,7 @@ export default function StudioPage() {
             >
               {selected.harness === "shell" ? null : "Resuming starts the harness in the VM and wakes the VM if needed."}
             </StateView>
-          ) : selectedId && list.data ? (
+          ) : selectedId && listed ? (
             <StateView title="Session not found" action={<Button onClick={() => select(null)}>Back to sessions</Button>}>
               It may have been deleted.
             </StateView>

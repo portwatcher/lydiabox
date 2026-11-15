@@ -46,6 +46,8 @@ export interface VersionInfo {
 
 export interface StorageStatus {
   tenantId: string;
+  /** `juicefs` (host volume) or `provider` (machine disk); absent on older servers. */
+  mode?: StorageMode;
   mounted: boolean;
   lastSyncAt: string;
   lastUploadAt: string;
@@ -53,6 +55,8 @@ export interface StorageStatus {
   /** Virtual S3 gateway (api.md section 3); absent on older servers. */
   s3Gateway?: S3GatewayStatus;
 }
+
+export type StorageMode = "juicefs" | "provider";
 
 export interface S3GatewayStatus {
   enabled: boolean;
@@ -172,6 +176,9 @@ export interface Session {
 
 export interface SessionsResponse {
   sessions: Session[];
+  /** True when the list comes from the last scan of a paused or stopped machine (provider storage mode). */
+  cached?: boolean;
+  cachedAt?: string;
 }
 
 export interface CreateSessionRequest {
