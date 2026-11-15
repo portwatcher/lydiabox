@@ -21,6 +21,8 @@ const (
 const (
 	DefaultBootTimeout = 120 * time.Second
 	FlushTimeout       = 30 * time.Second
+	// DefaultReadyProbeTimeout bounds one guest readiness probe.
+	DefaultReadyProbeTimeout = 5 * time.Second
 )
 
 // Options configures a Controller.
@@ -53,6 +55,7 @@ type Options struct {
 // leases, and idle hibernation.
 type Controller struct {
 	opts Options
+	caps Capabilities
 
 	mu      sync.Mutex
 	tenants map[string]*tenantVM
@@ -92,7 +95,11 @@ func NewController(opts Options) (*Controller, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Controller{opts: opts, tenants: map[string]*tenantVM{}}, nil
+	c := &Controller{opts: opts, caps: CapabilitiesOf(opts.Driver), tenants: map[string]*tenantVM{}}
+	if w, ok := opts.Driver.(StateWatcher); ok {
+		w.WatchState(c.Observe)
+	}
+	return c, nil
 }
 
 // Driver returns the backend.
@@ -147,7 +154,10 @@ func (c *Controller) Refresh(ctx context.Context, tid string) error {
 	if err != nil {
 		return err
 	}
-	if st == StateBooting {
+	if st == StateBooting && !c.caps.Remote {
+		// A local VM that was booting when the previous host process
+		// stopped is half made; the next boot makes it again. A remote
+		// boot continues, and the next boot waits for it (bootLocked).
 		st = StateStopped
 	}
 	c.setState(tid, t, st)
@@ -211,6 +221,14 @@ func (c *Controller) bootLocked(ctx context.Context, tid string, t *tenantVM) er
 			c.setState(tid, t, StatePaused)
 			return fmt.Errorf("vmm: resume: %w", err)
 		}
+	case StateBooting:
+		if c.caps.Remote {
+			// The provider is still booting the machine: wait for the
+			// guest, do not create it again.
+			c.setState(tid, t, StateBooting)
+			break
+		}
+		fallthrough
 	default:
 		c.setState(tid, t, StateBooting)
 		c.mu.Lock()
@@ -261,9 +279,13 @@ func (c *Controller) waitReady(ctx context.Context, tid string) error {
 	if c.opts.Ready == nil {
 		return nil
 	}
+	probe := c.caps.ReadyProbeTimeout
+	if probe <= 0 {
+		probe = DefaultReadyProbeTimeout
+	}
 	var last error
 	for {
-		rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		rctx, cancel := context.WithTimeout(ctx, probe)
 		last = c.opts.Ready(rctx, tid)
 		cancel()
 		if last == nil {

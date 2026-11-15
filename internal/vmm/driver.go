@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/lydiabox/lydiabox/internal/api"
 )
@@ -70,11 +71,53 @@ type Driver interface {
 	Shutdown(ctx context.Context, tenantID string, force bool) error
 	// State reports the backend's view of the VM.
 	State(ctx context.Context, tenantID string) (State, error)
-	// DialGuest connects to a guest vsock port (host to guest).
+	// DialGuest connects to a guest port (host to guest): vsock, a UNIX
+	// socket, or a stream of a remote guest link. It fails with an error
+	// that wraps ErrUnavailable when the guest cannot be reached.
 	DialGuest(ctx context.Context, tenantID string, port uint32) (net.Conn, error)
-	// ListenGuestPort accepts guest connections to a host vsock port
-	// (guest to host). It can be called before the VM boots.
+	// ListenGuestPort accepts guest connections to a host port (guest to
+	// host). It can be called before the VM boots, and the listener
+	// survives VM restarts and link reconnects.
 	ListenGuestPort(ctx context.Context, tenantID string, port uint32) (net.Listener, error)
+}
+
+// Capabilities describe how the VM of a driver differs from a local VM
+// that only this process starts, pauses, and stops. The zero value is the
+// local behavior of the chv and docker drivers.
+type Capabilities struct {
+	// Remote: the VM runs on another machine, and its guest is reached
+	// over a network link. A remote boot continues without this process,
+	// so the controller adopts a VM that reports StateBooting (it waits
+	// for the guest) instead of creating it again.
+	Remote bool
+	// SelfPause: the provider can pause and resume the VM without this
+	// process (for example an idle pause). The driver then reports such
+	// changes through StateWatcher, so the cached state stays correct.
+	SelfPause bool
+	// ReadyProbeTimeout bounds one guest readiness probe after a boot or
+	// a resume (default 5 s). A remote guest link can need longer.
+	ReadyProbeTimeout time.Duration
+}
+
+// CapabilityReporter is implemented by a driver whose VM is not local.
+type CapabilityReporter interface {
+	Capabilities() Capabilities
+}
+
+// StateWatcher is implemented by a driver that learns of power changes
+// that it did not make (for example a provider pause). The controller
+// calls WatchState once; the driver calls fn after each such change.
+type StateWatcher interface {
+	WatchState(fn func(tenantID string, st State))
+}
+
+// CapabilitiesOf returns the capabilities of d (the zero value for a local
+// driver).
+func CapabilitiesOf(d Driver) Capabilities {
+	if r, ok := d.(CapabilityReporter); ok {
+		return r.Capabilities()
+	}
+	return Capabilities{}
 }
 
 // Status is the VMStatus object of docs/api.md section 7.
