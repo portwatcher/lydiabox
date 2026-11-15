@@ -90,3 +90,12 @@ export function count(n: number, forms: { one: string; other: string; zero?: str
   const form = plural.select(n) === "one" ? forms.one : forms.other;
   return form.replace("#", new Intl.NumberFormat().format(n));
 }
+
+/** The VM error to show in the status bar: the last error while the VM is not running. */
+export function vmProblem(status: { lastError?: string } | null, state: string): string | null {
+  const message = status?.lastError?.trim();
+  if (!message || state === "RUNNING" || state === "BOOTING") {
+    return null;
+  }
+  return message;
+}

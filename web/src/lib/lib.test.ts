@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buttonName, contentBox, toGuest, wheelPixels } from "./coords";
-import { count, isZeroTime, timeAgo } from "./format";
+import { count, isZeroTime, timeAgo, vmProblem } from "./format";
 import { baseName, crumbs, joinPath, parentPath, uploadName, validName } from "./paths";
 
 const frame = { width: 1920, height: 1080 };
@@ -65,5 +65,17 @@ describe("format", () => {
   it("picks plural forms", () => {
     expect(count(1, { one: "# file", other: "# files" })).toBe("1 file");
     expect(count(3, { one: "# file", other: "# files" })).toBe("3 files");
+  });
+});
+
+describe("vmProblem", () => {
+  it("shows the last VM error only while the VM does not run", () => {
+    const status = { lastError: "InstaBox refused the API key (InstaBox invalid_key)" };
+    expect(vmProblem(status, "STOPPED")).toBe(status.lastError);
+    expect(vmProblem(status, "PAUSED")).toBe(status.lastError);
+    expect(vmProblem(status, "RUNNING")).toBeNull();
+    expect(vmProblem(status, "BOOTING")).toBeNull();
+    expect(vmProblem({ lastError: " " }, "STOPPED")).toBeNull();
+    expect(vmProblem(null, "STOPPED")).toBeNull();
   });
 });

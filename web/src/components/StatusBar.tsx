@@ -1,8 +1,20 @@
-import { CloudAlert, CloudCheck, CloudOff, Cpu, FolderTree, LogOut, Monitor, Plug, Sparkles, SquareTerminal } from "lucide-react";
+import {
+  CloudAlert,
+  CloudCheck,
+  CloudOff,
+  Cpu,
+  FolderTree,
+  LogOut,
+  Monitor,
+  Plug,
+  Sparkles,
+  SquareTerminal,
+  TriangleAlert,
+} from "lucide-react";
 import { NavLink } from "react-router";
 import { useSystem } from "../hooks/useSystem";
 import { useNow } from "../hooks/useResource";
-import { formatAgo, formatDateTime, formatMemory, parseTime } from "../lib/format";
+import { formatAgo, formatDateTime, formatMemory, parseTime, vmProblem } from "../lib/format";
 import { VmPower } from "./VmPower";
 import { IconButton, cx } from "./ui";
 
@@ -77,6 +89,21 @@ function VmResources() {
   );
 }
 
+/** Why the VM cannot run (for example a refused provider key); hidden while it runs. */
+function VmProblem() {
+  const { vmStatus, vmState } = useSystem();
+  const message = vmProblem(vmStatus, vmState);
+  if (!message) {
+    return null;
+  }
+  return (
+    <span role="status" className="inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-danger-fg" title={message}>
+      <TriangleAlert aria-hidden className="size-4 shrink-0" />
+      <span className="truncate">{message}</span>
+    </span>
+  );
+}
+
 export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
   const { error, status } = useSystem();
   return (
@@ -114,6 +141,7 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
           </span>
         ) : null}
         <SyncIndicator />
+        <VmProblem />
         <VmResources />
         <VmPower compact />
         {email ? <span className="hidden text-xs text-fg-muted md:inline">{email}</span> : null}
