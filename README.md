@@ -56,6 +56,31 @@ when you open a terminal session or the desktop, and pauses after
 ./dist/lydiabox version
 ```
 
+### Provider storage mode
+
+With `LYDIABOX_STORAGE_MODE=provider`, `/home/agent` and `/workspace` stay
+on the disk of the agent machine (for example the persistent `/data` disk
+of a hosted machine) instead of a JuiceFS volume. LydiaBox then:
+
+- does not need the S3 settings, FUSE, or `juicefs`, and does not install
+  or start it;
+- reaches the files through the guest daemon: the Files page, the File API,
+  the harness config wirers, and the Google Drive tools wake the machine
+  when it is paused or stopped (`503` after 90 s without an answer);
+- shows the Studio session list from the last scan while the machine is
+  paused or stopped, and marks it as cached;
+- answers `/webdav` and `/s3` with `501`;
+- backs up the host state database to S3 only when the S3 settings are
+  present (it logs one warning at start when they are absent).
+
+The `docker` driver keeps the trees in the named volumes
+`lydiabox-<tenant>-home` and `lydiabox-<tenant>-workspace`. The `chv` driver
+needs the `juicefs` mode (`auto` selects `docker`). In the guest,
+`LYDIABOX_GUEST_HOME_ROOT` and `LYDIABOX_GUEST_WORKSPACE_ROOT` set the root
+directories (default `/home/agent` and `/workspace`); file operations run
+as the agent user (`LYDIABOX_GUEST_FS_USER`, default `agent`) when the
+guest daemon runs as root.
+
 Back up `$LYDIABOX_DATA_DIR/state/master.key`. It decrypts the stored
 connector tokens. To recover on a new host, copy the master key to
 `$LYDIABOX_DATA_DIR/state/master.key` and start `lydiabox up` with the
@@ -75,10 +100,11 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `LYDIABOX_S3_ENDPOINT` | required | S3, R2, or MinIO endpoint URL |
-| `LYDIABOX_S3_BUCKET` | required | Bucket name |
-| `LYDIABOX_S3_ACCESS_KEY` | required | Access key ID |
-| `LYDIABOX_S3_SECRET_KEY` | required | Secret access key |
+| `LYDIABOX_STORAGE_MODE` | `juicefs` | `juicefs` (S3-backed host volume) or `provider` (machine disk; see above) |
+| `LYDIABOX_S3_ENDPOINT` | required (`juicefs`) | S3, R2, or MinIO endpoint URL |
+| `LYDIABOX_S3_BUCKET` | required (`juicefs`) | Bucket name |
+| `LYDIABOX_S3_ACCESS_KEY` | required (`juicefs`) | Access key ID |
+| `LYDIABOX_S3_SECRET_KEY` | required (`juicefs`) | Secret access key |
 | `LYDIABOX_S3_REGION` | `auto` | Region (AWS needs the bucket region) |
 | `LYDIABOX_S3_BUCKET_URL` | derived | JuiceFS `--bucket` URL override |
 | `LYDIABOX_LISTEN_ADDR` | `0.0.0.0:8080` (`127.0.0.1:8080` with a tunnel) | Web UI, API, WebSocket, `/webdav`, and the S3 gateway (`/s3`) |
@@ -265,9 +291,11 @@ real TURN service.
 
 ## Files, WebDAV, and S3
 
-Files are available while the VM is off: in the Files page, through the
-REST API (`/api/v1/fs`), over S3 (below), and over WebDAV at `http://<host>:8080/webdav/`
-(user `lydiabox`, password = admin token). `/webdav/workspace/` and
+In the `juicefs` storage mode, files are available while the VM is off: in
+the Files page, through the REST API (`/api/v1/fs`), over S3 (below), and
+over WebDAV at `http://<host>:8080/webdav/` (user `lydiabox`, password =
+admin token). In the `provider` mode only the Files page and the REST API
+are available, and they wake the machine. `/webdav/workspace/` and
 `/webdav/home/agent/` are the two user trees.
 
 ```sh
@@ -423,6 +451,7 @@ npm run typecheck && npm run lint && npm run test
 | Area | State |
 | :--- | :--- |
 | Storage, File API, WebDAV | Done; tested end to end |
+| Provider storage mode (files on the machine disk) | Done; tested against an in-process guest daemon; not yet run on a hosted machine |
 | Docker VM driver, guest daemon, sessions | Done; tested end to end |
 | Cloud Hypervisor driver | Done; verified on real KVM (arm64, nested KVM in Lima; amd64, nested KVM on Google Cloud; see [docs/kvm-test.md](docs/kvm-test.md)); GPU passthrough untested |
 | magpie gateway, harness sessions | Done; harness formats partly inferred |
@@ -442,6 +471,7 @@ internal/config         configuration, validation, secrets, data directory layou
 internal/store          SQLite state database, AES-256-GCM secrets
 internal/bootstrap      runtime binary downloader, guest image fetcher
 internal/storage        JuiceFS supervisor, S3 metadata backup, WebDAV and S3 proxies, File API
+internal/agentfs        filesystem seam of the guest trees: host mount (os.Root) or guest RPC (remotefs)
 internal/vmm            VM driver interface, auto-wake and idle controller (chv, docker)
 internal/magpie         magpie supervisor, admin client, harness config wirers
 internal/harness        session manager, terminal rooms, adapters
@@ -449,7 +479,7 @@ internal/connector      OAuth, tokens, refresh, audit, guest broker
 internal/desktop        desktop signaling relay and takeover mode
 internal/api            HTTP server, authentication, routes
 internal/cloudflare     Cloudflare API client, tunnel and Access setup, Access JWT verifier, cloudflared supervisor
-internal/guest          guest daemon: rpc, ptymanager, x11, webrtc, mcp, credproxy, gitcred
+internal/guest          guest daemon: rpc, guestfs, ptymanager, x11, webrtc, mcp, credproxy, gitcred
 internal/webui          embedded web UI
 web                     React + TypeScript web workstation
 deploy                  guest initramfs and root filesystem builds

@@ -161,6 +161,8 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 4. **Offline-Capable File Access**:
    - **REST File API (`/api/v1/fs/*`)**: Directly manipulates `$DATA_DIR/mnt/jfs/{workspace,home/agent}` on the host. Supports directory listing, text/code read & save, binary streaming download, chunked/multipart directory drag-and-drop upload, rename, and delete—working identically whether the VM is `STOPPED` or `RUNNING`.
    - **WebDAV & Virtual S3 Gateway**: Supervise `juicefs webdav` (bound to localhost ephemeral port) and reverse-proxy under `/webdav/` protected by Basic Auth (`lydiabox` / `LYDIABOX_AUTH_TOKEN`).
+5. **Provider Storage Mode (addition)**:
+   - `LYDIABOX_STORAGE_MODE=provider` keeps `/home/agent` and `/workspace` on the disk of the agent machine (for example a hosted machine with a persistent `/data` disk) instead of JuiceFS. Host consumers use the `internal/agentfs` seam; its guest-backed implementation calls the guest daemon file methods (`fs.*`), which sandbox every path inside configured roots and run as the agent user. Session discovery and purge run in the guest; the host caches the last discovery in the state database. WebDAV, `/s3`, and the JuiceFS metadata backup are not used; the state database backup runs only when S3 settings are present.
 
 ---
 

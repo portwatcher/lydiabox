@@ -155,6 +155,23 @@ single WebRTC UDP port, and the extra packages.
 | Virtual S3 gateway: supervised `juicefs gateway` on the loopback `LYDIABOX_S3_GATEWAY_ADDR`, bucket `lydiabox`, access key `lydiabox`, secret key = admin token (public route, SigV4 checked by the proxy) | done | `internal/storage/s3gateway.go`, `internal/storage/child.go`, `internal/api/routes_s3.go` | `TestGatewayCommand`, `TestS3GatewaySupervisor`, `TestS3GatewayDisabled`, `TestS3GatewayPathAndBucket`, `TestS3RouteDisabledGateway`, `TestHealthAndStatus`; E2E (steps 43 to 52) |
 | S3 gateway at `/s3` on `LYDIABOX_LISTEN_ADDR`: the proxy verifies SigV4 (header and presigned URLs, 15-minute skew, expiry), removes `/s3`, keeps `Host` and the query, and re-signs for the backend with the same scope; signed chunk chains (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD[-TRAILER]`) are verified and rewritten; S3 XML errors | done | `internal/storage/s3proxy`, `internal/api/routes_s3.go` | `TestVerifyHeaderAuth`, `TestVerifyRejections`, `TestVerifyPresigned`, `TestErrorDocument`, `TestRoundTrip`, `TestResignMatchesBackend`, `TestChunkSignatureAWSExample`, `TestChunkedChainRewrite`, `TestS3RouteVerifiesAndResigns`; E2E (steps 43 to 52) |
 
+### Provider storage mode (addition to the design)
+
+`LYDIABOX_STORAGE_MODE=provider` keeps `/home/agent` and `/workspace` on the
+machine disk (LydiaBox Cloud on InstaBox, [cloud-design.md](cloud-design.md)).
+The `juicefs` mode above is unchanged.
+
+| Requirement | Status | Where | Verified by |
+| :--- | :--- | :--- | :--- |
+| `lydiabox up` without S3 settings: no `juicefs` install or start, no WebDAV or `/s3` (both answer `501`), state backup only with S3 settings (one warning without them) | done | `internal/config/storage.go`, `internal/cli/storage_mode.go`, `internal/storage/statebackup.go`, `internal/api/routes_storage_mode.go` | `TestStorageMode`, `TestProviderModeWiring`, `TestStateBackupWithoutS3`, `TestStateBackupUploadsState` |
+| One filesystem seam for host consumers (`agentfs.FS`): host mount with `os.Root` (`Local`) or guest RPC (`remotefs`) | done | `internal/agentfs`, `internal/agentfs/remotefs` | `TestTraversalRejected`, `TestTextReadWrite`, `TestMutations`, `TestFileAPICRUD`, `TestFileAPITraversal` (each in both modes) |
+| Guest file methods (`fs.*`) in two configured roots with an `os.Root` sandbox; `..`, absolute paths, and escaping symlinks refused; atomic writes; streaming read and write | done | `internal/guest/guestfs`, `internal/guest/rpc/daemon/fs.go`, `internal/guest/rpc/fs.go` | `TestOperations`, `TestTraversalAndSymlinks`, `TestWriteKeepsModeAndRefusesNonRegular`, `TestLargeStreams` (24 MiB, Range reads), `TestWriteAbortAndLimits`, `TestTreeOperationsAndEscapes` |
+| File operations run as the agent user when the guest daemon runs as root (per-thread `setfsuid`, `setfsgid`, groups) | done | `internal/guest/guestfs/identity_linux.go` | `TestRunsAsAgentUser` (Linux, root; run in a `golang:1.24` container) |
+| A file request takes a `files` lease and wakes the machine; `503` after the wake timeout | done | `internal/agentfs/remotefs` | `TestFileAPIWakeTimeout`, `TestWakeTimeoutAndContext` |
+| Session discovery and purge in the guest; cached list in the state database while the machine is paused or stopped (`cached: true`) | done | `internal/harness/discovery_guest.go`, `internal/guest/rpc/daemon/harness.go`, `internal/store/discovery_cache.go` | `TestGuestDiscoveryMatchesLocal`, `TestGuestDiscoveryCacheWhileStopped`, `TestGuestPurge`, `TestDiscoveryCache` |
+| Config wirers and connector file tools through the seam; only the placeholder gateway token is written | done | `internal/magpie/wire`, `internal/connector/broker` | `TestWirersProviderMatchesLocal` |
+| Run on a hosted machine (InstaBox) | missing | | Needs the InstaBox driver and image |
+
 ## 4.3 Serverless agent VM engine
 
 | Requirement | Status | Where | Verified by |

@@ -172,6 +172,7 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
   "vm": { "state": "STOPPED", "driver": "chv" },
   "storage": {
     "tenantId": "default",
+    "mode": "juicefs",
     "mounted": true,
     "lastSyncAt": "2026-11-10T06:29:41Z",
     "lastUploadAt": "2026-11-10T06:20:41Z",
@@ -184,6 +185,10 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
 
 - `vm.state` is one of `STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`.
 - `vm.driver` is the resolved backend: `chv` or `docker`.
+- `storage.mode` is the storage mode, `juicefs` or `provider`
+  (`LYDIABOX_STORAGE_MODE`). In the `provider` mode `mounted` is always
+  false, `lastSyncAt` and `lastUploadAt` refer to the state database backup
+  only (zero time without S3 settings), and `s3Gateway.enabled` is false.
 - `storage.lastSyncAt` is the last successful metadata backup check (the UI
   shows "Synced Xs ago" from `time - lastSyncAt`). `lastUploadAt` is the
   last time a changed snapshot was uploaded. `lastSyncError` is omitted when
@@ -228,13 +233,24 @@ Response `200`:
 
 ## 4. File Manager — implemented (Phase 1)
 
-The File API works on the host JuiceFS mount and does not need the VM. Two
-roots exist:
+Two roots exist. Where they are depends on the storage mode
+(`LYDIABOX_STORAGE_MODE`):
 
-| `{root}` | Host directory | Guest path |
-| :--- | :--- | :--- |
-| `workspace` | `$DATA_DIR/mnt/jfs/workspace` | `/workspace` |
-| `home` | `$DATA_DIR/mnt/jfs/home/agent` | `/home/agent` |
+| `{root}` | `juicefs` mode (host directory) | `provider` mode (guest directory, default) | Guest path |
+| :--- | :--- | :--- | :--- |
+| `workspace` | `$DATA_DIR/mnt/jfs/workspace` | `LYDIABOX_GUEST_WORKSPACE_ROOT`, `/workspace` | `/workspace` |
+| `home` | `$DATA_DIR/mnt/jfs/home/agent` | `LYDIABOX_GUEST_HOME_ROOT`, `/home/agent` | `/home/agent` |
+
+- `juicefs` mode: the File API works on the host JuiceFS mount and does not
+  need the VM.
+- `provider` mode: the trees are on the machine disk, and the host reaches
+  them through the guest daemon file methods (`fs.*` on the guest RPC). A
+  request takes a `files` lease (section 7) and wakes a `PAUSED` or
+  `STOPPED` machine. When the machine does not answer within 90 s, the
+  request fails with `503 unavailable` ("the agent machine did not start
+  within 1m30s; retry the request"). Invalid paths fail with `400` without
+  a wake. The guest applies the same path rules with its own `os.Root`
+  sandbox and runs every file operation as the agent user.
 
 Path rules (`path`, `dir`, `from`, `to`, and upload file names):
 
@@ -257,7 +273,8 @@ Path rules (`path`, `dir`, `from`, `to`, and upload file names):
 
 `type` is `file`, `dir`, `symlink`, or `other`. For the root, `name` and
 `path` are `""`. Files created through the API are owned by uid/gid 1000
-when the host runs as root.
+when the host runs as root (`juicefs` mode), or by the agent user
+(`provider` mode).
 
 ### `GET /api/v1/fs/roots`
 
@@ -265,6 +282,10 @@ when the host runs as root.
 { "roots": [ { "name": "workspace", "guestPath": "/workspace" },
              { "name": "home", "guestPath": "/home/agent" } ] }
 ```
+
+In the `provider` mode `guestPath` is the directory that a running guest
+reports (for example `/data/home` on InstaBox); this route does not wake
+the machine, so it shows the last answer or the defaults.
 
 ### `GET /api/v1/fs/{root}/list?path=<dir>`
 
@@ -354,6 +375,11 @@ Deletes a file, symlink (the link, not its target), or empty directory. A
 non-empty directory needs `recursive=true`. Response `204`.
 
 ## 5. WebDAV gateway — implemented (Phase 1)
+
+In the `provider` storage mode WebDAV and the S3 gateway (section 5a) are
+not available: `/webdav`, `/webdav/...`, `/s3`, and `/s3/...` answer
+`501 not_implemented` ("WebDAV and the /s3 gateway are not available in the
+provider storage mode; use the File API (/api/v1/fs)").
 
 `/webdav/` reverse-proxies a supervised `juicefs webdav` bound to a random
 `127.0.0.1` port. The WebDAV root is the JuiceFS volume root, so
@@ -457,7 +483,8 @@ Unknown `/api/...` paths return the JSON `404` envelope. Public.
 `idleSince` is the time the lease count dropped to 0, or the time the VM
 became `RUNNING` without leases (zero time while leases exist). `leases`
 always lists `pty` (running guest PTYs) and `desktop` (open desktop
-sockets). After `idleTimeoutSeconds` without leases the VM is synced and
+sockets). In the `provider` storage mode, `files` counts File API requests
+and downloads in progress (it is listed while it is not zero). After `idleTimeoutSeconds` without leases the VM is synced and
 paused (`PAUSED`). `gpu` and `lastError` are omitted when empty;
 `lastError` holds the last failed boot or transition.
 
@@ -499,14 +526,27 @@ Harness IDs: `claude-code`, `codex`, `dsh`, `antigravity`, `opencode`, plus
 - `status`: `running` (a PTY is attached), `idle` (discovered on disk, no
   PTY), `exited`. `live` is true while a PTY exists.
 - `usage` is omitted when the harness transcript has no usage data.
-- Discovery reads harness files from `home/agent` on the host, so listing
-  works while the VM is `STOPPED`. On-disk formats and what is verified are
-  listed in [harness-formats.md](harness-formats.md).
+- Discovery reads harness files from `home/agent` on the host
+  (`juicefs` mode), so listing works while the VM is `STOPPED`. In the
+  `provider` mode the guest runs the discovery on the machine disk
+  (`harness.discover`); while the machine is `PAUSED` or `STOPPED`, the
+  list comes from the last result, which the host keeps in the state
+  database, and listing never wakes the machine. On-disk formats and what
+  is verified are listed in [harness-formats.md](harness-formats.md).
 
 ### `GET /api/v1/sessions?harness=<id>&workspace=<guest dir>`
 
-Both filters are optional. Response `200`: `{ "sessions": [Session] }`,
-newest `updatedAt` first.
+Both filters are optional. Response `200`, newest `updatedAt` first:
+
+```json
+{ "sessions": [Session], "cached": false }
+```
+
+`cached` is true when the discovered sessions come from the last stored
+discovery (`provider` mode, machine not running, or the guest did not
+answer). `cachedAt` is then the time of that discovery; it is omitted when
+`cached` is false or no discovery was stored yet. Sessions that the host
+started are always listed from its own metadata.
 
 ### `POST /api/v1/sessions`
 
@@ -540,8 +580,9 @@ Details:
 
 Terminates the PTY (`SIGINT`, 3 s, `SIGTERM`, 2 s, then `SIGHUP` for a
 program that ignores both, such as an interactive shell, 2 s) and removes
-host metadata. With `purge=true`, the native transcript files are also deleted.
-Response `204`.
+host metadata. With `purge=true`, the native transcript files are also deleted
+(`provider` mode: in the guest, which wakes the machine; `503` when it does
+not start). Response `204`.
 
 ### `GET /api/v1/sessions/{id}/ws` — WebSocket
 
