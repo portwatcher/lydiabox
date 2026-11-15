@@ -1,6 +1,7 @@
 package files
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"testing"
 	"time"
 )
+
+var ctx = context.Background()
 
 type testDirs struct{ home, workspace string }
 
@@ -30,7 +33,7 @@ func newSandbox(t *testing.T) (*Service, testDirs, string) {
 	if err := os.WriteFile(filepath.Join(secret, "passwd"), []byte("root:x:0:0"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return NewService(d, Options{MaxTextBytes: 1024}), d, secret
+	return NewLocalService(d, Options{MaxTextBytes: 1024}), d, secret
 }
 
 func TestCleanRel(t *testing.T) {
@@ -67,32 +70,32 @@ func TestTraversalRejected(t *testing.T) {
 	os.Symlink("real.txt", filepath.Join(d.workspace, "inside-link"))
 
 	for _, p := range []string{"abs-link", "rel-link", "dir-link/passwd"} {
-		if _, err := svc.ReadText(tid, RootWorkspace, p); !errors.Is(err, ErrEscapes) {
+		if _, err := svc.ReadText(ctx, tid, RootWorkspace, p); !errors.Is(err, ErrEscapes) {
 			t.Errorf("ReadText(%q) = %v, want ErrEscapes", p, err)
 		}
-		if f, _, err := svc.OpenFile(tid, RootWorkspace, p); !errors.Is(err, ErrEscapes) {
+		if f, err := svc.OpenFile(ctx, tid, RootWorkspace, p); !errors.Is(err, ErrEscapes) {
 			if f != nil {
 				f.Close()
 			}
 			t.Errorf("OpenFile(%q) = %v, want ErrEscapes", p, err)
 		}
 	}
-	if _, _, err := svc.List(tid, RootWorkspace, "dir-link"); !errors.Is(err, ErrEscapes) {
+	if _, _, err := svc.List(ctx, tid, RootWorkspace, "dir-link"); !errors.Is(err, ErrEscapes) {
 		t.Errorf("List through symlink = %v", err)
 	}
-	if _, err := svc.WriteText(tid, RootWorkspace, "dir-link/passwd", "pwned", nil); !errors.Is(err, ErrEscapes) {
+	if _, err := svc.WriteText(ctx, tid, RootWorkspace, "dir-link/passwd", "pwned", nil); !errors.Is(err, ErrEscapes) {
 		t.Errorf("WriteText through symlink = %v", err)
 	}
-	if _, err := svc.Upload(tid, RootWorkspace, "dir-link", "x.txt", strings.NewReader("pwned"), true, -1); !errors.Is(err, ErrEscapes) {
+	if _, err := svc.Upload(ctx, tid, RootWorkspace, "dir-link", "x.txt", strings.NewReader("pwned"), true, -1); !errors.Is(err, ErrEscapes) {
 		t.Errorf("Upload through symlink = %v", err)
 	}
-	if _, err := svc.Mkdir(tid, RootWorkspace, "dir-link/new", true); !errors.Is(err, ErrEscapes) {
+	if _, err := svc.Mkdir(ctx, tid, RootWorkspace, "dir-link/new", true); !errors.Is(err, ErrEscapes) {
 		t.Errorf("Mkdir through symlink = %v", err)
 	}
-	if _, err := svc.Rename(tid, RootWorkspace, "real.txt", "dir-link/stolen.txt", false); !errors.Is(err, ErrEscapes) {
+	if _, err := svc.Rename(ctx, tid, RootWorkspace, "real.txt", "dir-link/stolen.txt", false); !errors.Is(err, ErrEscapes) {
 		t.Errorf("Rename into symlink = %v", err)
 	}
-	if err := svc.Delete(tid, RootWorkspace, "dir-link/passwd", false); !errors.Is(err, ErrEscapes) {
+	if err := svc.Delete(ctx, tid, RootWorkspace, "dir-link/passwd", false); !errors.Is(err, ErrEscapes) {
 		t.Errorf("Delete through symlink = %v", err)
 	}
 	if data, _ := os.ReadFile(filepath.Join(secret, "passwd")); string(data) != "root:x:0:0" {
@@ -103,64 +106,64 @@ func TestTraversalRejected(t *testing.T) {
 	}
 
 	// Deleting the escaping symlink removes the link, not the target.
-	if err := svc.Delete(tid, RootWorkspace, "dir-link", true); err != nil {
+	if err := svc.Delete(ctx, tid, RootWorkspace, "dir-link", true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(secret, "passwd")); err != nil {
 		t.Fatal("recursive delete followed a symlink")
 	}
 
-	if tf, err := svc.ReadText(tid, RootWorkspace, "inside-link"); err != nil || tf.Content != "ok" {
+	if tf, err := svc.ReadText(ctx, tid, RootWorkspace, "inside-link"); err != nil || tf.Content != "ok" {
 		t.Fatalf("inside symlink = %+v, %v", tf, err)
 	}
 	for _, p := range []string{"../secret/passwd", "/etc/passwd", "a/../../secret"} {
-		if _, err := svc.Stat(tid, RootWorkspace, p); !errors.Is(err, ErrInvalidPath) {
+		if _, err := svc.Stat(ctx, tid, RootWorkspace, p); !errors.Is(err, ErrInvalidPath) {
 			t.Errorf("Stat(%q) = %v", p, err)
 		}
 	}
 	// The home root cannot reach the workspace root through "..".
-	if _, err := svc.Stat(tid, RootHome, "../../workspace/real.txt"); !errors.Is(err, ErrInvalidPath) {
+	if _, err := svc.Stat(ctx, tid, RootHome, "../../workspace/real.txt"); !errors.Is(err, ErrInvalidPath) {
 		t.Errorf("cross-root traversal = %v", err)
 	}
-	if _, err := svc.Stat(tid, "etc", ""); !errors.Is(err, ErrUnknownRoot) {
+	if _, err := svc.Stat(ctx, tid, "etc", ""); !errors.Is(err, ErrUnknownRoot) {
 		t.Errorf("unknown root = %v", err)
 	}
 }
 
 func TestTextReadWrite(t *testing.T) {
 	svc, d, _ := newSandbox(t)
-	e, err := svc.WriteText("default", RootHome, "notes.md", "hello", nil)
+	e, err := svc.WriteText(ctx, "default", RootHome, "notes.md", "hello", nil)
 	if err != nil || e.Size != 5 || e.Path != "notes.md" {
 		t.Fatalf("write = %+v, %v", e, err)
 	}
 	os.Chmod(filepath.Join(d.home, "notes.md"), 0o600)
-	tf, err := svc.ReadText("default", RootHome, "notes.md")
+	tf, err := svc.ReadText(ctx, "default", RootHome, "notes.md")
 	if err != nil || tf.Content != "hello" {
 		t.Fatalf("read = %+v, %v", tf, err)
 	}
 	stale := tf.ModTime.Add(-time.Hour)
-	if _, err := svc.WriteText("default", RootHome, "notes.md", "x", &stale); !errors.Is(err, ErrConflict) {
+	if _, err := svc.WriteText(ctx, "default", RootHome, "notes.md", "x", &stale); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale write = %v", err)
 	}
-	e, err = svc.WriteText("default", RootHome, "notes.md", "hello world", &tf.ModTime)
+	e, err = svc.WriteText(ctx, "default", RootHome, "notes.md", "hello world", &tf.ModTime)
 	if err != nil || e.Mode != "0600" {
 		t.Fatalf("write with base = %+v, %v (mode must be preserved)", e, err)
 	}
-	if _, err := svc.WriteText("default", RootHome, "missing/notes.md", "x", nil); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := svc.WriteText(ctx, "default", RootHome, "missing/notes.md", "x", nil); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("write without parent = %v", err)
 	}
-	if _, err := svc.WriteText("default", RootHome, "", "x", nil); !errors.Is(err, ErrIsRoot) {
+	if _, err := svc.WriteText(ctx, "default", RootHome, "", "x", nil); !errors.Is(err, ErrIsRoot) {
 		t.Fatalf("write root = %v", err)
 	}
-	if _, err := svc.WriteText("default", RootHome, "big", strings.Repeat("x", 2000), nil); !errors.Is(err, ErrTooLarge) {
+	if _, err := svc.WriteText(ctx, "default", RootHome, "big", strings.Repeat("x", 2000), nil); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("big write = %v", err)
 	}
 	os.WriteFile(filepath.Join(d.home, "bin"), []byte{0xff, 0xfe, 0x00}, 0o644)
-	if _, err := svc.ReadText("default", RootHome, "bin"); !errors.Is(err, ErrNotText) {
+	if _, err := svc.ReadText(ctx, "default", RootHome, "bin"); !errors.Is(err, ErrNotText) {
 		t.Fatalf("binary read = %v", err)
 	}
 	os.WriteFile(filepath.Join(d.home, "huge"), make([]byte, 2048), 0o644)
-	if _, err := svc.ReadText("default", RootHome, "huge"); !errors.Is(err, ErrTooLarge) {
+	if _, err := svc.ReadText(ctx, "default", RootHome, "huge"); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("huge read = %v", err)
 	}
 	entries, _ := os.ReadDir(d.home)
@@ -174,75 +177,75 @@ func TestTextReadWrite(t *testing.T) {
 func TestMutations(t *testing.T) {
 	svc, d, _ := newSandbox(t)
 	tid := "default"
-	if _, err := svc.Mkdir(tid, RootWorkspace, "a/b/c", false); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := svc.Mkdir(ctx, tid, RootWorkspace, "a/b/c", false); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("mkdir without parents = %v", err)
 	}
-	if _, err := svc.Mkdir(tid, RootWorkspace, "a/b/c", true); err != nil {
+	if _, err := svc.Mkdir(ctx, tid, RootWorkspace, "a/b/c", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Mkdir(tid, RootWorkspace, "a/b/c", true); err != nil {
+	if _, err := svc.Mkdir(ctx, tid, RootWorkspace, "a/b/c", true); err != nil {
 		t.Fatal("mkdir -p on an existing dir must succeed")
 	}
-	if _, err := svc.Mkdir(tid, RootWorkspace, "a", false); !errors.Is(err, fs.ErrExist) {
+	if _, err := svc.Mkdir(ctx, tid, RootWorkspace, "a", false); !errors.Is(err, fs.ErrExist) {
 		t.Fatalf("mkdir existing = %v", err)
 	}
 	os.WriteFile(filepath.Join(d.workspace, "a", "f.txt"), []byte("1"), 0o644)
 	os.WriteFile(filepath.Join(d.workspace, "g.txt"), []byte("2"), 0o644)
 
-	if _, err := svc.Rename(tid, RootWorkspace, "g.txt", "a/f.txt", false); !errors.Is(err, fs.ErrExist) {
+	if _, err := svc.Rename(ctx, tid, RootWorkspace, "g.txt", "a/f.txt", false); !errors.Is(err, fs.ErrExist) {
 		t.Fatalf("rename onto existing = %v", err)
 	}
-	if e, err := svc.Rename(tid, RootWorkspace, "g.txt", "a/f.txt", true); err != nil || e.Path != "a/f.txt" {
+	if e, err := svc.Rename(ctx, tid, RootWorkspace, "g.txt", "a/f.txt", true); err != nil || e.Path != "a/f.txt" {
 		t.Fatalf("rename overwrite = %+v, %v", e, err)
 	}
 	if data, _ := os.ReadFile(filepath.Join(d.workspace, "a", "f.txt")); string(data) != "2" {
 		t.Fatal("overwrite did not replace content")
 	}
-	if _, err := svc.Rename(tid, RootWorkspace, "a", "a/b/moved", false); !errors.Is(err, ErrInvalidPath) {
+	if _, err := svc.Rename(ctx, tid, RootWorkspace, "a", "a/b/moved", false); !errors.Is(err, ErrInvalidPath) {
 		t.Fatalf("move into itself = %v", err)
 	}
-	if _, err := svc.Rename(tid, RootWorkspace, "", "x", false); !errors.Is(err, ErrIsRoot) {
+	if _, err := svc.Rename(ctx, tid, RootWorkspace, "", "x", false); !errors.Is(err, ErrIsRoot) {
 		t.Fatalf("rename root = %v", err)
 	}
-	if _, err := svc.Rename(tid, RootWorkspace, "a", "z", false); err != nil {
+	if _, err := svc.Rename(ctx, tid, RootWorkspace, "a", "z", false); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := svc.Delete(tid, RootWorkspace, "z", false); err == nil {
+	if err := svc.Delete(ctx, tid, RootWorkspace, "z", false); err == nil {
 		t.Fatal("deleting a non-empty dir without recursive must fail")
 	}
-	if err := svc.Delete(tid, RootWorkspace, "z", true); err != nil {
+	if err := svc.Delete(ctx, tid, RootWorkspace, "z", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Delete(tid, RootWorkspace, "", true); !errors.Is(err, ErrIsRoot) {
+	if err := svc.Delete(ctx, tid, RootWorkspace, "", true); !errors.Is(err, ErrIsRoot) {
 		t.Fatalf("delete root = %v", err)
 	}
-	if err := svc.Delete(tid, RootWorkspace, "nope", false); !errors.Is(err, fs.ErrNotExist) {
+	if err := svc.Delete(ctx, tid, RootWorkspace, "nope", false); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("delete missing = %v", err)
 	}
 
-	res, err := svc.Upload(tid, RootWorkspace, "up", "deep/dir/file.bin", strings.NewReader("data"), false, 100)
+	res, err := svc.Upload(ctx, tid, RootWorkspace, "up", "deep/dir/file.bin", strings.NewReader("data"), false, 100)
 	if err != nil || res.Path != "up/deep/dir/file.bin" || res.Replaced {
 		t.Fatalf("upload = %+v, %v", res, err)
 	}
-	if _, err := svc.Upload(tid, RootWorkspace, "up", "deep/dir/file.bin", strings.NewReader("x"), false, 100); !errors.Is(err, fs.ErrExist) {
+	if _, err := svc.Upload(ctx, tid, RootWorkspace, "up", "deep/dir/file.bin", strings.NewReader("x"), false, 100); !errors.Is(err, fs.ErrExist) {
 		t.Fatalf("upload conflict = %v", err)
 	}
-	if res, err := svc.Upload(tid, RootWorkspace, "up", "deep/dir/file.bin", strings.NewReader("x"), true, 100); err != nil || !res.Replaced {
+	if res, err := svc.Upload(ctx, tid, RootWorkspace, "up", "deep/dir/file.bin", strings.NewReader("x"), true, 100); err != nil || !res.Replaced {
 		t.Fatalf("upload overwrite = %+v, %v", res, err)
 	}
-	if _, err := svc.Upload(tid, RootWorkspace, "", "big", strings.NewReader("12345"), false, 4); !errors.Is(err, ErrTooLarge) {
+	if _, err := svc.Upload(ctx, tid, RootWorkspace, "", "big", strings.NewReader("12345"), false, 4); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("upload limit = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(d.workspace, "big")); !os.IsNotExist(err) {
 		t.Fatal("oversized upload must not leave a file")
 	}
 
-	self, list, err := svc.List(tid, RootWorkspace, "")
+	self, list, err := svc.List(ctx, tid, RootWorkspace, "")
 	if err != nil || self.Type != "dir" || len(list) != 1 || list[0].Name != "up" || list[0].Type != "dir" {
 		t.Fatalf("list = %+v %+v %v", self, list, err)
 	}
-	if _, _, err := svc.List(tid, RootWorkspace, "up/deep/dir/file.bin"); !errors.Is(err, ErrNotDir) {
+	if _, _, err := svc.List(ctx, tid, RootWorkspace, "up/deep/dir/file.bin"); !errors.Is(err, ErrNotDir) {
 		t.Fatalf("list file = %v", err)
 	}
 }

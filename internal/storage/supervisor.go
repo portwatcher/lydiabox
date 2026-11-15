@@ -30,7 +30,9 @@ type Provider interface {
 
 // Status is the storage state reported by GET /api/v1/status.
 type Status struct {
-	TenantID      string    `json:"tenantId"`
+	TenantID string `json:"tenantId"`
+	// Mode is the storage mode: "juicefs" or "provider".
+	Mode          string    `json:"mode"`
 	Mounted       bool      `json:"mounted"`
 	LastSyncAt    time.Time `json:"lastSyncAt"`
 	LastUploadAt  time.Time `json:"lastUploadAt"`
@@ -143,7 +145,7 @@ func NewSupervisor(opts Options) (*Supervisor, error) {
 		tenant: c.TenantID,
 		log:    opts.Logger.With("component", "storage", "tenant", c.TenantID),
 		jfs:    JuiceFS{Binary: opts.JuiceFSBinary, MetaURL: c.JuiceFSMetaURL(), MountDir: c.MountDir(), CacheDir: c.CacheDir()},
-		status: Status{TenantID: c.TenantID},
+		status: Status{TenantID: c.TenantID, Mode: config.StorageJuiceFS},
 		sums:   map[string]string{},
 	}, nil
 }
@@ -184,7 +186,7 @@ func (s *Supervisor) Status(tenantID string) Status {
 	st := s.status
 	st.TenantID = tenantID
 	if tenantID != s.tenant {
-		return Status{TenantID: tenantID}
+		return Status{TenantID: tenantID, Mode: config.StorageJuiceFS}
 	}
 	return st
 }

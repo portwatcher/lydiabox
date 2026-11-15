@@ -48,7 +48,7 @@ func wireConnector(_ context.Context, d *deps) (*component, error) {
 		return nil, err
 	}
 	brk, err := broker.New(broker.Options{
-		Manager: mgr, TenantID: d.Config.TenantID, Dirs: d.Storage, Logger: d.Logger,
+		Manager: mgr, TenantID: d.Config.TenantID, Files: d.Files, Logger: d.Logger,
 		ServerVersion: version.Get().Version,
 	})
 	if err != nil {

@@ -2,11 +2,14 @@ package harness
 
 import (
 	"fmt"
+
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"path"
 	"strings"
 )
 
-// Dirs resolves the host paths of the guest trees (storage.Provider).
+// Dirs resolves the host paths of the guest trees (storage.Provider in
+// juicefs storage mode; used by LocalDiscovery).
 type Dirs interface {
 	HomeDir(tenantID string) (string, error)
 	WorkspaceDir(tenantID string) (string, error)
@@ -35,25 +38,15 @@ func CleanGuestDir(dir string) (string, error) {
 	return "", fmt.Errorf("%w: workspaceDir must be inside %s or %s", ErrBadRequest, GuestWorkspace, GuestHome)
 }
 
-// hostRoot maps a guest directory to (host root, path relative to it).
-func hostRoot(d Dirs, tenantID, guestDir string) (string, string, error) {
+// guestRoot maps a guest directory to (agentfs root, path relative to it).
+func guestRoot(guestDir string) (agentfs.Root, string, error) {
 	clean, err := CleanGuestDir(guestDir)
 	if err != nil {
 		return "", "", err
 	}
-	root, rel := GuestWorkspace, ""
+	root, prefix := agentfs.RootWorkspace, GuestWorkspace
 	if clean == GuestHome || strings.HasPrefix(clean, GuestHome+"/") {
-		root = GuestHome
+		root, prefix = agentfs.RootHome, GuestHome
 	}
-	rel = strings.TrimPrefix(strings.TrimPrefix(clean, root), "/")
-	var host string
-	if root == GuestHome {
-		host, err = d.HomeDir(tenantID)
-	} else {
-		host, err = d.WorkspaceDir(tenantID)
-	}
-	if err != nil {
-		return "", "", err
-	}
-	return host, rel, nil
+	return root, strings.TrimPrefix(strings.TrimPrefix(clean, prefix), "/"), nil
 }

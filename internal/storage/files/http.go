@@ -47,6 +47,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnsupportedMediaType, httpx.CodeUnsupported
 	case errors.Is(err, fs.ErrPermission):
 		status, code = http.StatusForbidden, httpx.CodeForbidden
+	case errors.Is(err, ErrUnavailable):
+		status, code = http.StatusServiceUnavailable, httpx.CodeUnavailable
 	}
 	httpx.WriteError(w, status, code, err.Error())
 }
@@ -58,19 +60,12 @@ func boolParam(r *http.Request, name string) bool {
 
 // Roots handles GET /api/v1/fs/roots.
 func (h *Handler) Roots(w http.ResponseWriter, r *http.Request) {
-	type root struct {
-		Name string `json:"name"`
-		Path string `json:"guestPath"`
-	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"roots": []root{
-		{Name: RootWorkspace, Path: "/workspace"},
-		{Name: RootHome, Path: "/home/agent"},
-	}})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"roots": h.svc.Roots(r.Context(), tenant.FromContext(r.Context()))})
 }
 
 // List handles GET /api/v1/fs/{root}/list?path=.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
-	self, entries, err := h.svc.List(tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
+	self, entries, err := h.svc.List(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -80,7 +75,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 
 // Stat handles GET /api/v1/fs/{root}/stat?path=.
 func (h *Handler) Stat(w http.ResponseWriter, r *http.Request) {
-	e, err := h.svc.Stat(tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
+	e, err := h.svc.Stat(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -90,7 +85,7 @@ func (h *Handler) Stat(w http.ResponseWriter, r *http.Request) {
 
 // ReadText handles GET /api/v1/fs/{root}/text?path=.
 func (h *Handler) ReadText(w http.ResponseWriter, r *http.Request) {
-	tf, err := h.svc.ReadText(tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
+	tf, err := h.svc.ReadText(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -113,7 +108,7 @@ func (h *Handler) SaveText(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
 		return
 	}
-	e, err := h.svc.WriteText(tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"), req.Content, req.BaseModTime)
+	e, err := h.svc.WriteText(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"), req.Content, req.BaseModTime)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -124,20 +119,21 @@ func (h *Handler) SaveText(w http.ResponseWriter, r *http.Request) {
 // Download handles GET /api/v1/fs/{root}/download?path=. It streams the file
 // with Range and conditional request support.
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
-	f, fi, err := h.svc.OpenFile(tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
+	f, err := h.svc.OpenFile(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	defer f.Close()
+	fi := f.Info()
 	disposition := "attachment"
 	if boolParam(r, "inline") {
 		disposition = "inline"
 	}
-	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": fi.Name()}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": fi.Name}))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "sandbox")
-	http.ServeContent(w, r, fi.Name(), fi.ModTime(), f)
+	http.ServeContent(w, r, fi.Name, fi.ModTime, f)
 }
 
 // Upload handles POST /api/v1/fs/{root}/upload?dir=&overwrite=. The body is
@@ -177,7 +173,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			uploadFailed(w, results, err)
 			return
 		}
-		res, err := h.svc.Upload(tid, root, dir, name, part, overwrite, h.MaxUploadBytes)
+		res, err := h.svc.Upload(r.Context(), tid, root, dir, name, part, overwrite, h.MaxUploadBytes)
 		part.Close()
 		if err != nil {
 			uploadFailed(w, results, err)
@@ -237,7 +233,7 @@ func (h *Handler) Mkdir(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
 		return
 	}
-	e, err := h.svc.Mkdir(tenant.FromContext(r.Context()), r.PathValue("root"), req.Path, req.Parents)
+	e, err := h.svc.Mkdir(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), req.Path, req.Parents)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -259,7 +255,7 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
 		return
 	}
-	e, err := h.svc.Rename(tenant.FromContext(r.Context()), r.PathValue("root"), req.From, req.To, req.Overwrite)
+	e, err := h.svc.Rename(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), req.From, req.To, req.Overwrite)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -269,7 +265,7 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/v1/fs/{root}/entry?path=&recursive=.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
-	err := h.svc.Delete(tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"), boolParam(r, "recursive"))
+	err := h.svc.Delete(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"), boolParam(r, "recursive"))
 	if err != nil {
 		writeErr(w, err)
 		return

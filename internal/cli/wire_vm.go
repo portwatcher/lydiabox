@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/bootstrap"
 	"github.com/lydiabox/lydiabox/internal/config"
@@ -81,6 +82,15 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 	d.VM = &vmRuntime{Controller: ctl, Driver: drv, Gateway: gw}
 	d.Guest = guest
 	d.VMStatus = ctl
+	if cfg.ProviderStorage() {
+		// The guest trees are on the machine disk: file requests take a
+		// lease and wake the machine (remotefs).
+		rfs, err := remotefs.New(remotefs.Options{Client: guest, Waker: ctl, Leaser: ctl})
+		if err != nil {
+			return nil, err
+		}
+		d.Files = rfs
+	}
 
 	gwCtx, gwCancel := context.WithCancel(context.Background())
 	tid := cfg.TenantID
@@ -197,13 +207,19 @@ func newDriver(d *deps, log interface{ Warn(string, ...any) }) (vmm.Driver, erro
 // LYDIABOX_ROOTFS_URL when they are missing (chv).
 func vmSpec(ctx context.Context, d *deps, tid string, webrtcPort int) (vmm.Spec, error) {
 	cfg := d.Config
-	home, err := d.Storage.HomeDir(tid)
-	if err != nil {
-		return vmm.Spec{}, err
-	}
-	ws, err := d.Storage.WorkspaceDir(tid)
-	if err != nil {
-		return vmm.Spec{}, err
+	// In the provider storage mode the guest trees are on the machine disk:
+	// no host directories are shared (the docker driver uses volumes).
+	var home, ws, rootUpper string
+	if !cfg.ProviderStorage() {
+		var err error
+		if home, err = d.Storage.HomeDir(tid); err != nil {
+			return vmm.Spec{}, err
+		}
+		if ws, err = d.Storage.WorkspaceDir(tid); err != nil {
+			return vmm.Spec{}, err
+		}
+		// home is <mount>/home/agent; the upper image is <mount>/system/root-upper.img.
+		rootUpper = filepath.Join(filepath.Dir(filepath.Dir(home)), "system", "root-upper.img")
 	}
 	bin, err := guestBinary(cfg)
 	if err != nil {
@@ -214,9 +230,7 @@ func vmSpec(ctx context.Context, d *deps, tid string, webrtcPort int) (vmm.Spec,
 		CPUs: cfg.VM.CPUs, MemMB: cfg.VM.MemMB, GPUPCIAddr: cfg.VM.GPUPCIAddr,
 		Kernel: filepath.Join(images, "vmlinux"), Initramfs: filepath.Join(images, "initramfs.cpio.gz"),
 		Rootfs: filepath.Join(images, "rootfs.squashfs"), Image: os.Getenv(envDockerImage),
-		GuestBinary: bin, HomeDir: home, WorkspaceDir: ws, WebRTCPort: webrtcPort,
-		// home is <mount>/home/agent; the upper image is <mount>/system/root-upper.img.
-		RootUpper: filepath.Join(filepath.Dir(filepath.Dir(home)), "system", "root-upper.img"),
+		GuestBinary: bin, HomeDir: home, WorkspaceDir: ws, WebRTCPort: webrtcPort, RootUpper: rootUpper,
 	}
 	if d.Driver == config.DriverCHV && !bootstrap.ImagesPresent(images) {
 		if cfg.RootfsURL == "" {

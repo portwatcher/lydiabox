@@ -7,6 +7,7 @@ import (
 	"maps"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/magpie/wire"
 	"github.com/lydiabox/lydiabox/internal/store"
 )
@@ -27,16 +28,13 @@ type BindingStore interface {
 	DeleteHarnessBinding(ctx context.Context, tenantID, harness string) error
 }
 
-// HomeDirs resolves the host path of /home/agent (storage.Provider).
-type HomeDirs interface {
-	HomeDir(tenantID string) (string, error)
-}
-
 // Bindings binds harnesses to models: it stores the choice and rewrites the
 // harness config through its wirer.
 type Bindings struct {
-	Store  BindingStore
-	Homes  HomeDirs
+	Store BindingStore
+	// Files reaches /home/agent (agentfs.Local in juicefs mode, remotefs in
+	// provider mode).
+	Files  agentfs.FS
 	Wirers []wire.Wirer
 	// GatewayURL is the gateway as seen from the guest (default
 	// wire.DefaultGatewayURL).
@@ -93,13 +91,12 @@ func (b *Bindings) Bind(ctx context.Context, tenantID, harness, model string) (B
 	if model != "" && !ValidModelID(model) {
 		return Binding{}, fmt.Errorf("%w: model %q is not a provider/model ID", ErrBadRequest, model)
 	}
-	home, err := b.Homes.HomeDir(tenantID)
-	if err != nil {
-		return Binding{}, err
-	}
-	if err := w.Apply(home, b.binding(model)); err != nil {
+	if err := w.Apply(wire.FSHome(ctx, b.Files, tenantID), b.binding(model)); err != nil {
 		if errors.Is(err, wire.ErrUnparseable) {
 			return Binding{}, fmt.Errorf("%w: %v", ErrConflict, err)
+		}
+		if errors.Is(err, agentfs.ErrUnavailable) {
+			return Binding{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 		}
 		return Binding{}, err
 	}
@@ -133,11 +130,7 @@ func (b *Bindings) EnsureWired(ctx context.Context, tenantID, harness string) er
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	home, err := b.Homes.HomeDir(tenantID)
-	if err != nil {
-		return err
-	}
-	return w.Apply(home, b.binding(model))
+	return w.Apply(wire.FSHome(ctx, b.Files, tenantID), b.binding(model))
 }
 
 // WireAll runs EnsureWired for every harness and joins the errors.

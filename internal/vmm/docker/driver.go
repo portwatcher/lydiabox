@@ -69,6 +69,12 @@ func (d *Driver) Name() string { return "docker" }
 // ContainerName returns the container of a tenant.
 func ContainerName(tid string) string { return "lydiabox-" + tid }
 
+// VolumeName is the named volume that holds a guest tree ("home" or
+// "workspace") when the spec shares no host directory (provider storage
+// mode). Docker copies the image content into a new empty volume, so the
+// home skeleton of the image survives.
+func VolumeName(tid, tree string) string { return "lydiabox-" + tid + "-" + tree }
+
 // SocketDir returns the host directory mounted at /run/lydiabox.
 func (d *Driver) SocketDir(tid string) (string, error) {
 	if err := vmm.ValidTenantID(tid); err != nil {
@@ -111,10 +117,14 @@ func (d *Driver) CreateArgs(tid string, spec vmm.Spec, sockDir string) []string 
 	for _, e := range env {
 		args = append(args, "--env", e)
 	}
+	home, ws := spec.HomeDir, spec.WorkspaceDir
+	if home == "" && ws == "" {
+		home, ws = VolumeName(tid, "home"), VolumeName(tid, "workspace")
+	}
 	args = append(args,
 		"--volume", sockDir+":"+rpc.DockerSocketDir,
-		"--volume", spec.HomeDir+":/home/agent",
-		"--volume", spec.WorkspaceDir+":/workspace",
+		"--volume", home+":/home/agent",
+		"--volume", ws+":/workspace",
 	)
 	if spec.GuestBinary != "" {
 		args = append(args, "--volume", spec.GuestBinary+":/usr/local/bin/lydiabox-guest:ro")
@@ -132,8 +142,8 @@ func (d *Driver) Create(ctx context.Context, tid string, spec vmm.Spec) error {
 	if err != nil {
 		return err
 	}
-	if spec.HomeDir == "" || spec.WorkspaceDir == "" {
-		return errors.New("docker: home and workspace directories are required")
+	if (spec.HomeDir == "") != (spec.WorkspaceDir == "") {
+		return errors.New("docker: set both the home and workspace directories, or neither (named volumes)")
 	}
 	if err := os.MkdirAll(sockDir, 0o700); err != nil {
 		return err

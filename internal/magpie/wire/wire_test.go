@@ -70,7 +70,7 @@ func TestWirersPreserveUserContent(t *testing.T) {
 			if !ok {
 				t.Fatalf("no wirer for %s", tc.harness)
 			}
-			if err := w.Apply(home, binding); err != nil {
+			if err := w.Apply(DirHome(home), binding); err != nil {
 				t.Fatal(err)
 			}
 			got := map[string]string{}
@@ -108,12 +108,12 @@ func TestWirersPreserveUserContent(t *testing.T) {
 					t.Errorf("MCP server %s not registered", s.URL)
 				}
 			}
-			m, err := w.CurrentModel(home)
+			m, err := w.CurrentModel(DirHome(home))
 			if err != nil || m != tc.model {
 				t.Fatalf("CurrentModel = %q, %v; want %q", m, err, tc.model)
 			}
 			// Idempotent: a second apply changes nothing.
-			if err := w.Apply(home, binding); err != nil {
+			if err := w.Apply(DirHome(home), binding); err != nil {
 				t.Fatal(err)
 			}
 			for _, f := range tc.files {
@@ -123,10 +123,10 @@ func TestWirersPreserveUserContent(t *testing.T) {
 				}
 			}
 			// An empty model keeps the bound model.
-			if err := w.Apply(home, Binding{}); err != nil {
+			if err := w.Apply(DirHome(home), Binding{}); err != nil {
 				t.Fatal(err)
 			}
-			if m, _ := w.CurrentModel(home); m != tc.model {
+			if m, _ := w.CurrentModel(DirHome(home)); m != tc.model {
 				t.Fatalf("empty binding changed the model to %q", m)
 			}
 		})
@@ -145,10 +145,10 @@ func TestWirersCreateMissingFiles(t *testing.T) {
 	for _, w := range All() {
 		t.Run(w.Harness(), func(t *testing.T) {
 			home := t.TempDir()
-			if err := w.Apply(home, Binding{Model: "deepseek/deepseek-v4-pro"}); err != nil {
+			if err := w.Apply(DirHome(home), Binding{Model: "deepseek/deepseek-v4-pro"}); err != nil {
 				t.Fatal(err)
 			}
-			m, err := w.CurrentModel(home)
+			m, err := w.CurrentModel(DirHome(home))
 			if err != nil || m != "deepseek/deepseek-v4-pro" {
 				t.Fatalf("CurrentModel = %q, %v", m, err)
 			}
@@ -170,7 +170,7 @@ func TestWirersRefuseUnparseableAndSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	w, _ := For("claude-code")
-	if err := w.Apply(home, Binding{Model: "m"}); !errors.Is(err, ErrUnparseable) {
+	if err := w.Apply(DirHome(home), Binding{Model: "m"}); !errors.Is(err, ErrUnparseable) {
 		t.Fatalf("Apply on JSONC = %v, want ErrUnparseable", err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(home, ".claude/settings.json")); string(b) != string(bad) {
@@ -189,7 +189,7 @@ func TestWirersRefuseUnparseableAndSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	cw, _ := For("codex")
-	if err := cw.Apply(home, Binding{Model: "m"}); err == nil {
+	if err := cw.Apply(DirHome(home), Binding{Model: "m"}); err == nil {
 		t.Fatal("wirer followed a symlink out of the home directory")
 	}
 	if b, _ := os.ReadFile(target); string(b) != "x = 1\n" {

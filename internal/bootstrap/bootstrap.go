@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/config"
@@ -29,6 +30,9 @@ type Options struct {
 	// Driver is the resolved VM driver (chv or docker); it selects which
 	// binaries are required.
 	Driver string
+	// Skip names binaries that are not required in this configuration (for
+	// example juicefs in the provider storage mode).
+	Skip []string
 	// GOOS and GOARCH default to the running platform.
 	GOOS, GOARCH string
 	// Mirrors overrides download URLs and checksums per binary.
@@ -114,7 +118,7 @@ func (b *Bootstrapper) Check() ([]Status, error) {
 	}
 	out := make([]Status, 0, len(b.opts.Manifest.Binaries))
 	for _, bin := range b.opts.Manifest.Binaries {
-		st := Status{Name: bin.Name, Version: bin.Version, Required: bin.Required(b.opts.Driver), Source: "missing"}
+		st := Status{Name: bin.Name, Version: bin.Version, Required: bin.Required(b.opts.Driver) && !slices.Contains(b.opts.Skip, bin.Name), Source: "missing"}
 		local := filepath.Join(b.opts.BinDir, bin.Name)
 		if isExecutable(local) {
 			st.Path, st.Source = local, "runtime"

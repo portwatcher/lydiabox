@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/connector"
 	"github.com/lydiabox/lydiabox/internal/httpx"
 	"github.com/lydiabox/lydiabox/internal/storage/files"
@@ -38,9 +39,9 @@ type Options struct {
 	Manager *connector.Manager
 	// TenantID is the tenant whose guest connects to this broker.
 	TenantID string
-	// Dirs resolves the tenant workspace for the Google Drive tools
-	// (storage.Provider implements it).
-	Dirs   files.Dirs
+	// Files is the guest filesystem used by the Google Drive workspace
+	// tools (agentfs.Local in juicefs mode, remotefs in provider mode).
+	Files  agentfs.FS
 	Logger *slog.Logger
 	// MaxDownloadBytes and MaxUploadBytes bound gdrive transfers.
 	MaxDownloadBytes int64
@@ -72,8 +73,8 @@ func New(opts Options) (*Broker, error) {
 	if opts.TenantID == "" {
 		return nil, errors.New("broker: TenantID is required")
 	}
-	if opts.Dirs == nil {
-		return nil, errors.New("broker: Dirs is required")
+	if opts.Files == nil {
+		return nil, errors.New("broker: Files is required")
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -88,7 +89,7 @@ func New(opts Options) (*Broker, error) {
 		opts.ServerVersion = "dev"
 	}
 	b := &Broker{
-		mgr: opts.Manager, tenantID: opts.TenantID, files: files.NewService(opts.Dirs, files.Options{}),
+		mgr: opts.Manager, tenantID: opts.TenantID, files: files.NewService(opts.Files, files.Options{}),
 		log:     opts.Logger.With("component", "connector-broker", "tenant", opts.TenantID),
 		maxDown: opts.MaxDownloadBytes, maxUp: opts.MaxUploadBytes, version: opts.ServerVersion,
 		byName: map[string]*tool{},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net/http"
@@ -39,8 +40,10 @@ func newSessionsEnv(t *testing.T) *sessionsEnv {
 	}
 	runner := &harnesstest.Runner{Replay: []byte("replayed\r\n")}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	mgr, err := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(), Dirs: harnesstest.Dirs{Home: home, Workspace: ws},
-		Store: &harnesstest.Store{}, Runner: runner, Waker: &harnesstest.Waker{}, Logger: log,
+	mgr, err := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(),
+		Files:     agentfs.NewLocal(harnesstest.Dirs{Home: home, Workspace: ws}, agentfs.LocalOptions{}),
+		Discovery: harness.LocalDiscovery{Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Adapters: adapters.All()},
+		Store:     &harnesstest.Store{}, Runner: runner, Waker: &harnesstest.Waker{}, Logger: log,
 		KillGrace: 100 * time.Millisecond, TermGrace: 100 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)

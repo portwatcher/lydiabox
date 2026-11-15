@@ -3,6 +3,7 @@ package harness_test
 import (
 	"context"
 	"errors"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"os"
@@ -58,7 +59,7 @@ func newEnv(t *testing.T, runner harness.PTYRunner) *env {
 		e.runner = r
 	}
 	mgr, err := harness.NewManager(harness.ManagerOptions{
-		Adapters: adapters.All(), Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Store: e.store,
+		Adapters: adapters.All(), Files: localFiles(home, ws), Discovery: localDiscovery(home, ws), Store: e.store,
 		Runner: runner, Waker: e.waker, Wiring: e.wiring, Logger: quiet(),
 		KillGrace: 200 * time.Millisecond, TermGrace: 200 * time.Millisecond,
 	})
@@ -270,8 +271,9 @@ func TestRoomReattachAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A new manager (host restart) with the same store and guest.
-	mgr2, err := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(), Dirs: harnesstest.Dirs{Home: e.home, Workspace: e.workspace},
-		Store: e.store, Runner: runner, Waker: e.waker, Logger: quiet()})
+	mgr2, err := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(), Files: localFiles(e.home, e.workspace),
+		Discovery: localDiscovery(e.home, e.workspace),
+		Store:     e.store, Runner: runner, Waker: e.waker, Logger: quiet()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,4 +297,12 @@ func TestRoomReattachAfterRestart(t *testing.T) {
 		_, err := mgr2.Room(ctx, tenant, s.ID)
 		return errors.Is(err, harness.ErrConflict)
 	})
+}
+
+func localFiles(home, ws string) agentfs.FS {
+	return agentfs.NewLocal(harnesstest.Dirs{Home: home, Workspace: ws}, agentfs.LocalOptions{})
+}
+
+func localDiscovery(home, ws string) harness.Discovery {
+	return harness.LocalDiscovery{Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Adapters: adapters.All()}
 }

@@ -79,6 +79,7 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.WebRTC.validate()...)
 	errs = append(errs, c.Remote.validate()...)
 	errs = append(errs, c.validateCell()...)
+	errs = append(errs, c.Storage.validate()...)
 	for name, m := range c.Mirrors {
 		if m.SHA256 != "" {
 			if b, err := hex.DecodeString(m.SHA256); err != nil || len(b) != 32 {
@@ -89,8 +90,10 @@ func (c *Config) Validate() error {
 	return joinErrs(errs)
 }
 
-// ValidateServe checks the settings required by `lydiabox up`, which needs the
-// S3 bucket that backs the persistent filesystem.
+// ValidateServe checks the settings required by `lydiabox up`. The juicefs
+// storage mode needs the S3 bucket that backs the persistent filesystem; the
+// provider mode accepts no S3 settings or a complete set (state database
+// backup only).
 func (c *Config) ValidateServe() error {
 	errs := []error{}
 	if err := c.Validate(); err != nil {
@@ -103,9 +106,16 @@ func (c *Config) ValidateServe() error {
 		{"LYDIABOX_S3_SECRET_KEY", c.S3.SecretKey},
 	}
 	for _, r := range required {
-		if r.val == "" {
+		if r.val == "" && (!c.ProviderStorage() || c.S3Partial()) {
+			if c.ProviderStorage() {
+				errs = append(errs, fmt.Errorf("%s is required when other S3 settings are set (storage mode provider)", r.name))
+				continue
+			}
 			errs = append(errs, fmt.Errorf("%s is required", r.name))
 		}
+	}
+	if c.ProviderStorage() && c.VM.Driver == DriverCHV {
+		errs = append(errs, errors.New("LYDIABOX_VM_DRIVER=chv needs LYDIABOX_STORAGE_MODE=juicefs; the provider storage mode runs with the docker driver"))
 	}
 	if c.S3.Endpoint != "" {
 		if err := checkHTTPURL(c.S3.Endpoint); err != nil {
@@ -170,7 +180,12 @@ func ResolveVMDriver(configured string, kvmAvailable func() bool) string {
 	return DriverDocker
 }
 
-// EffectiveVMDriver resolves the configured driver against /dev/kvm.
+// EffectiveVMDriver resolves the configured driver against /dev/kvm. The
+// provider storage mode resolves "auto" to docker: the chv driver shares the
+// guest trees from the host JuiceFS mount.
 func (c *Config) EffectiveVMDriver() string {
+	if c.ProviderStorage() && c.VM.Driver == DriverAuto {
+		return DriverDocker
+	}
 	return ResolveVMDriver(c.VM.Driver, func() bool { return KVMAccessible(KVMDevice) })
 }

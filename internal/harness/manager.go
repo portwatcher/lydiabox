@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness/safefile"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/store"
 )
 
@@ -68,12 +68,16 @@ type Wiring interface {
 // ManagerOptions configures a Manager.
 type ManagerOptions struct {
 	Adapters []Adapter
-	Dirs     Dirs
-	Store    SessionStore
-	Runner   PTYRunner
-	Waker    VMWaker
-	Wiring   Wiring
-	Logger   *slog.Logger
+	// Files creates workspace directories (agentfs.Local or remotefs).
+	Files agentfs.FS
+	// Discovery finds and purges sessions (LocalDiscovery or
+	// GuestDiscovery).
+	Discovery Discovery
+	Store     SessionStore
+	Runner    PTYRunner
+	Waker     VMWaker
+	Wiring    Wiring
+	Logger    *slog.Logger
 	// KillGrace is the wait after SIGINT before SIGTERM (default 3s).
 	KillGrace time.Duration
 	// TermGrace is the wait after SIGTERM before detaching (default 2s).
@@ -117,8 +121,8 @@ type Manager struct {
 
 // NewManager validates opts.
 func NewManager(opts ManagerOptions) (*Manager, error) {
-	if opts.Dirs == nil || opts.Store == nil {
-		return nil, errors.New("harness: Dirs and Store are required")
+	if opts.Files == nil || opts.Discovery == nil || opts.Store == nil {
+		return nil, errors.New("harness: Files, Discovery, and Store are required")
 	}
 	if opts.Runner == nil {
 		opts.Runner = UnavailableRunner{}
@@ -199,7 +203,7 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	if provisional {
 		nativeID = randomID("new-")
 	}
-	if err := m.ensureWorkspace(tenantID, ws); err != nil {
+	if err := m.ensureWorkspace(ctx, tenantID, ws); err != nil {
 		return Session{}, err
 	}
 	ls := &liveSession{tenantID: tenantID, harness: req.Harness, nativeID: nativeID, workspace: ws, model: req.Model,
@@ -210,12 +214,15 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	return m.sessionOf(ls), nil
 }
 
-func (m *Manager) ensureWorkspace(tenantID, guestDir string) error {
-	root, rel, err := hostRoot(m.opts.Dirs, tenantID, guestDir)
+func (m *Manager) ensureWorkspace(ctx context.Context, tenantID, guestDir string) error {
+	root, rel, err := guestRoot(guestDir)
 	if err != nil {
 		return err
 	}
-	if _, err := safefile.MkdirAll(root, rel); err != nil {
+	if err := m.opts.Files.MkdirAll(ctx, tenantID, root, rel); err != nil {
+		if errors.Is(err, agentfs.ErrUnavailable) {
+			return fmt.Errorf("%w: %v", ErrUnavailable, err)
+		}
 		return fmt.Errorf("%w: workspace %s: %v", ErrBadRequest, guestDir, err)
 	}
 	return nil
@@ -360,15 +367,10 @@ func (m *Manager) Delete(ctx context.Context, tenantID, id string, purge bool) e
 		return err
 	}
 	if purge {
-		a, ok := m.adapters[harness]
-		if !ok {
+		if _, ok := m.adapters[harness]; !ok {
 			return nil
 		}
-		home, err := m.opts.Dirs.HomeDir(tenantID)
-		if err != nil {
-			return err
-		}
-		if err := a.Purge(home, nativeID); err != nil {
+		if err := m.opts.Discovery.Purge(ctx, tenantID, harness, nativeID); err != nil {
 			return fmt.Errorf("purge %s: %w", id, err)
 		}
 	}

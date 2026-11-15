@@ -44,6 +44,8 @@ type Config struct {
 
 	S3 S3Config
 	VM VMConfig
+	// Storage selects the storage mode (storage.go).
+	Storage StorageConfig
 	// WebRTC holds the desktop stream ICE settings (STUN, TURN, relay-only).
 	WebRTC WebRTCConfig
 
@@ -135,6 +137,7 @@ func Defaults(homeDir string) *Config {
 		ListenAddr:       "0.0.0.0:8080",
 		DataDir:          filepath.Join(homeDir, ".lydiabox"),
 		S3:               S3Config{Region: "auto", GatewayAddr: DefaultS3GatewayAddr},
+		Storage:          StorageConfig{Mode: StorageJuiceFS},
 		VM:               VMConfig{Driver: DriverAuto, CPUs: 4, MemMB: 8192, IdleTimeout: 20 * time.Minute, SubnetIndex: SubnetAuto},
 		OAuthClients:     map[string]OAuthClient{},
 		Mirrors:          map[string]Mirror{},

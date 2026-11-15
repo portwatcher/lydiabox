@@ -54,6 +54,8 @@ type fileConfig struct {
 	RemoteAccess remoteFile `yaml:"remote_access"`
 	// Cell holds the cell-mode keys (cell.go).
 	Cell cellFile `yaml:",inline"`
+	// Storage is the storage mode section (storage.go).
+	Storage storageFile `yaml:"storage"`
 }
 
 func applyFile(cfg *Config, path string, explicit bool, home string) error {
@@ -109,6 +111,7 @@ func applyFile(cfg *Config, path string, explicit bool, home string) error {
 	}
 	applyRemoteFile(cfg, &fc)
 	applyCellFile(cfg, &fc)
+	applyStorageFile(cfg, &fc.Storage)
 	return applyWebRTCFile(&cfg.WebRTC, &fc.WebRTC)
 }
 
@@ -207,6 +210,7 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 	errs = append(errs, applyWebRTCEnv(&cfg.WebRTC, env)...)
 	applyRemoteEnv(cfg, env)
 	errs = append(errs, applyCellEnv(cfg, env)...)
+	applyStorageEnv(cfg, env)
 	if len(errs) > 0 {
 		return fmt.Errorf("config: %w", errors.Join(errs...))
 	}

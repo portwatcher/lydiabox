@@ -2,11 +2,15 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/harness"
 	"github.com/lydiabox/lydiabox/internal/harness/adapters"
 	"github.com/lydiabox/lydiabox/internal/magpie"
+	"github.com/lydiabox/lydiabox/internal/vmm"
 	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
 )
 
@@ -36,12 +40,15 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	if err != nil {
 		return nil, err
 	}
-	bindings := &magpie.Bindings{Store: d.Store, Homes: d.Storage}
+	if d.Files == nil {
+		return nil, errors.New("harness: the guest filesystem is not available")
+	}
+	bindings := &magpie.Bindings{Store: d.Store, Files: d.Files}
 	service := &magpie.Service{Gateway: sup, Bindings: bindings}
 
 	runner, waker := guestRuntime(d)
 	mgr, err := harness.NewManager(harness.ManagerOptions{
-		Adapters: adapters.All(), Dirs: d.Storage, Store: d.Store,
+		Adapters: adapters.All(), Files: d.Files, Discovery: sessionDiscovery(d, log), Store: d.Store,
 		Runner: runner, Waker: waker, Wiring: bindings, Logger: log,
 	})
 	if err != nil {
@@ -65,6 +72,11 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 			}
 			// Point every harness at the gateway once the home tree is
 			// mounted; a config that cannot be parsed is left untouched.
+			// In the provider storage mode this would wake the machine, so
+			// EnsureWired before each harness start does it instead.
+			if cfg.ProviderStorage() {
+				return nil
+			}
 			if err := bindings.WireAll(ctx, tid); err != nil {
 				log.Warn("harness config wiring incomplete", "err", err)
 			}
@@ -72,6 +84,27 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 		},
 		Stop: sup.Stop,
 	}, nil
+}
+
+// sessionDiscovery returns the session discovery of the storage mode: the
+// adapters on the host JuiceFS mount, or the guest daemon with a cache of
+// the last result for a paused or stopped machine.
+func sessionDiscovery(d *deps, log *slog.Logger) harness.Discovery {
+	if !d.Config.ProviderStorage() {
+		return harness.LocalDiscovery{Dirs: d.Storage, Adapters: adapters.All()}
+	}
+	g := &harness.GuestDiscovery{Cache: d.Store, Logger: log}
+	if d.Guest != nil {
+		g.Guest = d.Guest
+	}
+	if d.VM != nil && d.VM.Controller != nil {
+		ctl := d.VM.Controller
+		g.Running = func(tid string) bool { return ctl.State(tid) == vmm.StateRunning }
+	}
+	if rfs, ok := d.Files.(*remotefs.FS); ok {
+		g.Begin = rfs.Begin
+	}
+	return g
 }
 
 // guestRuntime returns the PTY runner and VM waker of the harness manager.

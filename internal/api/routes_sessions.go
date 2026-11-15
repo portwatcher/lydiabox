@@ -53,12 +53,12 @@ func (s SessionsRoutes) list(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Workspace = ws
 	}
-	sessions, err := s.Manager.List(r.Context(), tenant.FromContext(r.Context()), f)
+	list, err := s.Manager.ListSessions(r.Context(), tenant.FromContext(r.Context()), f)
 	if err != nil {
 		writeHarnessError(w, err)
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+	httpx.WriteJSON(w, http.StatusOK, list)
 }
 
 func (s SessionsRoutes) create(w http.ResponseWriter, r *http.Request) {

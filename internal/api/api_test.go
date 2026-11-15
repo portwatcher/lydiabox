@@ -55,7 +55,7 @@ func newEnv(t *testing.T) *env {
 	s, err := api.NewServer(api.Options{Addr: "127.0.0.1:0", Auth: auth, TenantID: "default",
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))},
 		api.CoreRoutes{Auth: auth, VM: api.StaticVMStatus{State: api.VMStopped, Driver: "docker"}, Storage: fakeStorage{}, S3Gateway: fakeGateway{}},
-		api.FilesRoutes{Handler: files.NewHandler(files.NewService(d, files.Options{}))},
+		api.FilesRoutes{Handler: files.NewHandler(files.NewLocalService(d, files.Options{}))},
 		api.WebDAVRoutes{Handler: dav},
 		api.WebUIRoutes{Handler: webui.Handler(webui.FS())},
 	)

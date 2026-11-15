@@ -35,18 +35,43 @@ func (f Filter) match(s Session) bool {
 // harness-assigned session is matched to its provisional terminal.
 const provisionalMatchSlack = 10 * time.Second
 
-// List discovers sessions of every harness from the host home directory
-// (no VM needed), merges stored metadata and live terminals, and returns
-// them newest first.
+// SessionList is the result of ListSessions.
+type SessionList struct {
+	Sessions []Session `json:"sessions"`
+	// Cached reports that the discovered sessions come from the last stored
+	// discovery because the machine that holds the transcripts is paused
+	// or stopped (provider storage mode).
+	Cached bool `json:"cached"`
+	// CachedAt is the time of that discovery (omitted when not cached).
+	CachedAt *time.Time `json:"cachedAt,omitempty"`
+}
+
+// List discovers sessions of every harness (no VM wake needed), merges
+// stored metadata and live terminals, and returns them newest first.
 func (m *Manager) List(ctx context.Context, tenantID string, f Filter) ([]Session, error) {
+	l, err := m.ListSessions(ctx, tenantID, f)
+	return l.Sessions, err
+}
+
+// ListSessions is List with the cache state of the discovery.
+func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (SessionList, error) {
 	if f.Harness != "" && f.Harness != Shell {
 		if _, ok := m.adapters[f.Harness]; !ok {
-			return nil, fmt.Errorf("%w: unknown harness %q", ErrBadRequest, f.Harness)
+			return SessionList{}, fmt.Errorf("%w: unknown harness %q", ErrBadRequest, f.Harness)
 		}
 	}
-	home, err := m.opts.Dirs.HomeDir(tenantID)
-	if err != nil {
-		return nil, err
+	var names []string
+	for _, name := range Harnesses {
+		if _, ok := m.adapters[name]; ok && (f.Harness == "" || f.Harness == name) {
+			names = append(names, name)
+		}
+	}
+	var found Discovered
+	if len(names) > 0 {
+		var err error
+		if found, err = m.opts.Discovery.Discover(ctx, tenantID, names); err != nil {
+			return SessionList{}, err
+		}
 	}
 	byID := map[string]*Session{}
 	var order []string
@@ -59,16 +84,12 @@ func (m *Manager) List(ctx context.Context, tenantID string, f Filter) ([]Sessio
 		return &s
 	}
 	discovered := map[string][]SessionMeta{}
-	for _, name := range Harnesses {
-		a, ok := m.adapters[name]
-		if !ok || (f.Harness != "" && f.Harness != name) {
-			continue
-		}
-		metas, err := a.DiscoverSessions(home)
-		if err != nil {
+	for _, name := range names {
+		if err := found.Errors[name]; err != nil {
 			m.log.Warn("session discovery failed", "harness", name, "err", err)
 			continue
 		}
+		metas := found.Sessions[name]
 		discovered[name] = metas
 		for _, sm := range metas {
 			put(Session{ID: SessionID(name, sm.NativeID), Harness: name, NativeID: sm.NativeID, Title: sm.Title,
@@ -85,7 +106,7 @@ func (m *Manager) List(ctx context.Context, tenantID string, f Filter) ([]Sessio
 
 	stored, err := m.opts.Store.ListSessionMeta(ctx, tenantID, f.Harness)
 	if err != nil {
-		return nil, err
+		return SessionList{}, err
 	}
 	for _, sm := range stored {
 		var x extra
@@ -141,7 +162,12 @@ func (m *Manager) List(ctx context.Context, tenantID string, f Filter) ([]Sessio
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
-	return out, nil
+	res := SessionList{Sessions: out, Cached: found.Cached}
+	if found.Cached && !found.CachedAt.IsZero() {
+		at := found.CachedAt
+		res.CachedAt = &at
+	}
+	return res, nil
 }
 
 // Get returns one session.

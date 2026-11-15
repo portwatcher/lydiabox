@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net/http"
@@ -45,7 +46,7 @@ func newConnEnv(t *testing.T) *connEnv {
 	}
 	base := t.TempDir()
 	brk, err := broker.New(broker.Options{Manager: mgr, TenantID: "default", Logger: log,
-		Dirs: dirs{home: filepath.Join(base, "home"), workspace: filepath.Join(base, "workspace")}})
+		Files: agentfs.NewLocal(dirs{home: filepath.Join(base, "home"), workspace: filepath.Join(base, "workspace")}, agentfs.LocalOptions{})})
 	if err != nil {
 		t.Fatal(err)
 	}

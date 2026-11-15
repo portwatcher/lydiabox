@@ -1,6 +1,6 @@
 //go:build !unix
 
-package files
+package agentfs
 
 import (
 	"os"

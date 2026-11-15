@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/lydiabox/lydiabox/internal/guest/guestfs"
 	"github.com/lydiabox/lydiabox/internal/guest/mcp"
 	"github.com/lydiabox/lydiabox/internal/guest/ptymanager"
 	"github.com/lydiabox/lydiabox/internal/guest/rpc"
@@ -29,6 +30,9 @@ type Options struct {
 	MCP     *mcp.Server
 	Apps    mcp.Apps
 	Stream  *webrtc.Streamer
+	// Files serves the fs.* and harness.* methods of the provider storage
+	// mode (fs.go). Nil builds it from the guest environment.
+	Files *guestfs.Service
 }
 
 type service struct{ Options }
@@ -70,6 +74,7 @@ func Register(srv *rpc.Server, opts Options) {
 	srv.HandleUnary(rpc.MethodDesktopLaunch, s.launch)
 	srv.Handle(rpc.MethodDesktopSignal, s.signal)
 	srv.Handle(rpc.MethodEventsSubscribe, s.events)
+	registerFS(srv, opts.Files)
 }
 
 func (s *service) ptyStart(_ context.Context, params json.RawMessage) (any, error) {

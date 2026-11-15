@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/bootstrap"
 	"github.com/lydiabox/lydiabox/internal/config"
@@ -28,7 +29,10 @@ type deps struct {
 	Store     *store.Store
 	Bootstrap *bootstrap.Bootstrapper
 	Storage   storage.Provider
-	Auth      *api.Authenticator
+	// Files is the guest filesystem (agentfs.Local in the juicefs storage
+	// mode; remotefs, set by wireVM, in the provider mode).
+	Files agentfs.FS
+	Auth  *api.Authenticator
 	// VMStatus feeds GET /api/v1/status. Phase 2 replaces it in wireVM.
 	VMStatus api.VMStatusSource
 	// VM and Guest are set by wireVM (Phase 2): the VM controller, driver,
@@ -95,19 +99,21 @@ func runUp(ctx context.Context, env Env, args []string) error {
 
 func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, skipBootstrap bool) error {
 	driver := cfg.EffectiveVMDriver()
-	log.Info("starting LydiaBox", "dataDir", cfg.DataDir, "vmDriver", driver, "tenant", cfg.TenantID)
+	log.Info("starting LydiaBox", "dataDir", cfg.DataDir, "vmDriver", driver, "storageMode", cfg.Storage.Mode, "tenant", cfg.TenantID)
 
 	key, err := cfg.MasterKeyBytes()
 	if err != nil {
 		return err
 	}
-	objects, err := storage.NewS3Store(cfg.S3, nil)
+	objects, err := objectStore(cfg)
 	if err != nil {
 		return err
 	}
-	restored, err := storage.RestoreState(ctx, objects, cfg.TenantID, cfg.DBPath(), log)
-	if err != nil {
-		return err
+	restored := false
+	if objects != nil {
+		if restored, err = storage.RestoreState(ctx, objects, cfg.TenantID, cfg.DBPath(), log); err != nil {
+			return err
+		}
 	}
 	if restored && cfg.MasterKeyGenerated {
 		log.Warn("the state database was restored but the master key is new; stored connector tokens cannot be decrypted. "+
@@ -120,7 +126,7 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	}
 	defer st.Close()
 
-	boot, err := bootstrap.New(bootstrap.Options{BinDir: cfg.BinDir(), Driver: driver, Mirrors: cfg.Mirrors, Logger: log})
+	boot, err := bootstrap.New(bootstrap.Options{BinDir: cfg.BinDir(), Driver: driver, Skip: skipBinaries(cfg), Mirrors: cfg.Mirrors, Logger: log})
 	if err != nil {
 		return err
 	}
@@ -129,29 +135,13 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 			return err
 		}
 	}
-	juicefs, err := boot.Resolve("juicefs")
-	if err != nil {
-		return err
-	}
-	runner := storage.OSRunner{}
-	sup, err := storage.NewSupervisor(storage.Options{
-		Config: cfg, JuiceFSBinary: juicefs, Runner: runner, Objects: objects, State: st,
-		Logger: log, RequireRootUpper: driver == config.DriverCHV,
-	})
-	if err != nil {
-		return err
-	}
-	dav, err := storage.NewWebDAV(storage.WebDAVOptions{Config: cfg, JuiceFSBinary: juicefs, Runner: runner, Logger: log})
-	if err != nil {
-		return err
-	}
-	s3gw, err := storage.NewS3Gateway(storage.S3GatewayOptions{Config: cfg, JuiceFSBinary: juicefs, Runner: runner, Logger: log})
+	stor, err := newStorageRuntime(cfg, driver, boot, objects, st, log)
 	if err != nil {
 		return err
 	}
 
 	d := &deps{
-		Config: cfg, Driver: driver, Logger: log, Store: st, Bootstrap: boot, Storage: sup,
+		Config: cfg, Driver: driver, Logger: log, Store: st, Bootstrap: boot, Storage: stor.Provider, Files: stor.Files,
 		Auth:          api.NewAuthenticator(cfg.AuthToken),
 		VMStatus:      api.StaticVMStatus{State: api.VMStopped, Driver: driver},
 		SkipBootstrap: skipBootstrap,
@@ -166,13 +156,15 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 			comps = append(comps, c)
 		}
 	}
+	if d.Files == nil {
+		return errors.New("the guest filesystem is not available: the provider storage mode needs the VM subsystem")
+	}
 
 	regs := []api.RouteRegistrar{
-		api.CoreRoutes{Auth: d.Auth, VM: d.VMStatus, Storage: sup, S3Gateway: s3gw},
-		api.FilesRoutes{Handler: files.NewHandler(files.NewService(sup, files.Options{}))},
-		api.WebDAVRoutes{Handler: dav.Handler()},
-		api.S3Routes{Handler: s3gw.Handler()},
+		api.CoreRoutes{Auth: d.Auth, VM: d.VMStatus, Storage: stor.Provider, S3Gateway: stor.Gateway},
+		api.FilesRoutes{Handler: files.NewHandler(files.NewService(d.Files, files.Options{}))},
 	}
+	regs = append(regs, stor.Routes...)
 	for _, c := range comps {
 		regs = append(regs, c.Routes...)
 	}
@@ -188,18 +180,9 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 
 	shutdown := newShutdown(log)
 	defer shutdown.run()
-	if err := sup.Start(ctx, cfg.TenantID); err != nil {
+	if err := stor.start(ctx, shutdown); err != nil {
 		return err
 	}
-	shutdown.push("storage", func(ctx context.Context) error { return sup.Stop(ctx, cfg.TenantID) })
-	if err := dav.Start(ctx, cfg.TenantID); err != nil {
-		return err
-	}
-	shutdown.push("webdav", func(ctx context.Context) error { return dav.Stop(ctx, cfg.TenantID) })
-	if err := s3gw.Start(ctx, cfg.TenantID); err != nil {
-		return err
-	}
-	shutdown.push("s3 gateway", func(ctx context.Context) error { return s3gw.Stop(ctx, cfg.TenantID) })
 	for _, c := range comps {
 		if c.Start != nil {
 			if err := c.Start(ctx); err != nil {
@@ -215,10 +198,7 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	go func() { serveErr <- srv.Serve() }()
 	shutdown.push("http", srv.Shutdown)
 	fmt.Fprintf(env.Stdout, "LydiaBox is listening on http://%s (web UI built: %t)\n", addr, webui.Built())
-	if s3gw.Enabled() {
-		fmt.Fprintf(env.Stdout, "S3 gateway: endpoint http://%s%s, bucket %q (path style), access key %q, secret key = admin token\n",
-			addr, storage.S3GatewayPrefix, storage.S3GatewayBucket, storage.S3GatewayAccessKey)
-	}
+	stor.printGateway(env.Stdout, addr)
 
 	select {
 	case <-ctx.Done():

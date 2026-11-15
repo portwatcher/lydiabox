@@ -17,9 +17,9 @@ const (
 func (claudeWirer) Harness() string    { return "claude-code" }
 func (claudeWirer) ConfigPath() string { return guestPath(claudeSettings) }
 
-func (claudeWirer) Apply(homeDir string, b Binding) error {
+func (claudeWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
-	err := editJSONFile(homeDir, claudeSettings, 0o644, func(o *object) error {
+	err := editJSONFile(h, claudeSettings, 0o644, func(o *object) error {
 		env, err := o.child("env")
 		if err != nil {
 			return err
@@ -41,7 +41,7 @@ func (claudeWirer) Apply(homeDir string, b Binding) error {
 	if err != nil {
 		return err
 	}
-	return editJSONFile(homeDir, claudeState, 0o600, func(o *object) error {
+	return editJSONFile(h, claudeState, 0o600, func(o *object) error {
 		servers, err := o.child("mcpServers")
 		if err != nil {
 			return err
@@ -59,8 +59,8 @@ func (claudeWirer) Apply(homeDir string, b Binding) error {
 	})
 }
 
-func (claudeWirer) CurrentModel(homeDir string) (string, error) {
-	return readJSONString(homeDir, claudeSettings, "model")
+func (claudeWirer) CurrentModel(h Home) (string, error) {
+	return readJSONString(h, claudeSettings, "model")
 }
 
 func (claudeWirer) Env(Binding) map[string]string { return nil }
@@ -75,9 +75,9 @@ const codexConfig = ".codex/config.toml"
 func (codexWirer) Harness() string    { return "codex" }
 func (codexWirer) ConfigPath() string { return guestPath(codexConfig) }
 
-func (codexWirer) Apply(homeDir string, b Binding) error {
+func (codexWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
-	old, err := readOptional(homeDir, codexConfig)
+	old, err := readOptional(h, codexConfig)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", guestPath(codexConfig), err)
 	}
@@ -97,11 +97,11 @@ func (codexWirer) Apply(homeDir string, b Binding) error {
 	for _, s := range b.MCPServers {
 		doc.set("mcp_servers."+s.Name, "url", tomlString(s.URL))
 	}
-	return writeIfChanged(homeDir, codexConfig, old, doc.bytes(), 0o644)
+	return writeIfChanged(h, codexConfig, old, doc.bytes(), 0o644)
 }
 
-func (codexWirer) CurrentModel(homeDir string) (string, error) {
-	old, err := readOptional(homeDir, codexConfig)
+func (codexWirer) CurrentModel(h Home) (string, error) {
+	old, err := readOptional(h, codexConfig)
 	if err != nil {
 		return "", err
 	}

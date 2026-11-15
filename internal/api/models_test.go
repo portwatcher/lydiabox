@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,6 +24,8 @@ type homeDir string
 
 func (h homeDir) HomeDir(string) (string, error) { return string(h), nil }
 
+func (h homeDir) WorkspaceDir(string) (string, error) { return string(h) + "-workspace", nil }
+
 func newModelsServer(t *testing.T) (*httptest.Server, *magpietest.FakeAdmin, string) {
 	t.Helper()
 	fake := magpietest.NewFakeAdmin()
@@ -32,7 +35,7 @@ func newModelsServer(t *testing.T) (*httptest.Server, *magpietest.FakeAdmin, str
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	svc := &magpie.Service{Gateway: magpietest.Gateway{Fake: fake}, Bindings: &magpie.Bindings{Store: st, Homes: homeDir(home)}}
+	svc := &magpie.Service{Gateway: magpietest.Gateway{Fake: fake}, Bindings: &magpie.Bindings{Store: st, Files: agentfs.NewLocal(homeDir(home), agentfs.LocalOptions{})}}
 	auth := api.NewAuthenticator(token)
 	s, err := api.NewServer(api.Options{Addr: "127.0.0.1:0", Auth: auth, TenantID: "default",
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, api.ModelsRoutes{Service: svc})

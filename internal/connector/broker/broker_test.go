@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net"
@@ -63,7 +64,7 @@ func newEnv(t *testing.T, connect ...string) *env {
 			t.Fatal(err)
 		}
 	}
-	brk, err := broker.New(broker.Options{Manager: mgr, TenantID: tenantID, Dirs: d, Logger: log, MaxDownloadBytes: 1 << 20})
+	brk, err := broker.New(broker.Options{Manager: mgr, TenantID: tenantID, Files: agentfs.NewLocal(d, agentfs.LocalOptions{}), Logger: log, MaxDownloadBytes: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
 	}

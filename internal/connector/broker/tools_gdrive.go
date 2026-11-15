@@ -180,7 +180,7 @@ func gdriveDownload(c *call, raw json.RawMessage) (any, error) {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		return nil, &connector.APIError{Provider: connector.GDrive, Status: resp.StatusCode, Message: apiMessage(msg)}
 	}
-	res, err := c.b.files.Upload(c.b.tenantID, files.RootWorkspace, "", target, resp.Body, a.Overwrite, c.b.maxDown)
+	res, err := c.b.files.Upload(c.ctx, c.b.tenantID, files.RootWorkspace, "", target, resp.Body, a.Overwrite, c.b.maxDown)
 	if err != nil {
 		return nil, workspaceError(err)
 	}
@@ -217,18 +217,19 @@ func gdriveUpload(c *call, raw json.RawMessage) (any, error) {
 	if a.ParentID != "" && !driveIDRe.MatchString(a.ParentID) {
 		return nil, invalidf("parent_id %q is not a Drive folder ID", a.ParentID)
 	}
-	f, info, err := c.b.files.OpenFile(c.b.tenantID, files.RootWorkspace, a.Path)
+	f, err := c.b.files.OpenFile(c.ctx, c.b.tenantID, files.RootWorkspace, a.Path)
 	if err != nil {
 		return nil, workspaceError(err)
 	}
 	defer f.Close()
-	if info.Size() > c.b.maxUp {
+	info := f.Info()
+	if info.Size > c.b.maxUp {
 		return nil, invalidf("file exceeds the %d byte upload limit", c.b.maxUp)
 	}
 	meta := map[string]any{}
 	name := a.Name
 	if name == "" && a.FileID == "" {
-		name = info.Name()
+		name = info.Name
 	}
 	if name != "" {
 		meta["name"] = name
@@ -238,7 +239,7 @@ func gdriveUpload(c *call, raw json.RawMessage) (any, error) {
 	}
 	ctype := a.MimeType
 	if ctype == "" {
-		ctype = mime.TypeByExtension(path.Ext(info.Name()))
+		ctype = mime.TypeByExtension(path.Ext(info.Name))
 	}
 	if ctype == "" {
 		ctype = "application/octet-stream"
@@ -252,18 +253,18 @@ func gdriveUpload(c *call, raw json.RawMessage) (any, error) {
 	if a.FileID != "" {
 		method, target = http.MethodPatch, c.p.Upload("/drive/v3/files/"+a.FileID+"?"+q)
 	}
-	body := io.MultiReader(bytes.NewReader(prefix), io.LimitReader(f, info.Size()), bytes.NewReader(suffix))
+	body := io.MultiReader(bytes.NewReader(prefix), io.LimitReader(f, info.Size), bytes.NewReader(suffix))
 	req, err := connector.NewRequest(c.ctx, method, target, c.cred.AccessToken, body)
 	if err != nil {
 		return nil, err
 	}
-	req.ContentLength = int64(len(prefix)) + info.Size() + int64(len(suffix))
+	req.ContentLength = int64(len(prefix)) + info.Size + int64(len(suffix))
 	req.Header.Set("Content-Type", "multipart/related; boundary="+boundary)
 	var out driveFile
 	if err := connector.Do(c.http, req, connector.GDrive, &out); err != nil {
 		return nil, err
 	}
-	return map[string]any{"uploaded": path.Clean(a.Path), "size": info.Size(), "driveFile": out}, nil
+	return map[string]any{"uploaded": path.Clean(a.Path), "size": info.Size, "driveFile": out}, nil
 }
 
 // relatedEnvelope builds the multipart/related framing around the media part

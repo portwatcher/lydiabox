@@ -1,89 +1,45 @@
-// Package files implements the offline-capable File Manager over the host
-// JuiceFS mount (docs/api.md, "/api/v1/fs"). Every operation resolves paths
-// through an os.Root opened on the selected root directory, so `..`,
-// absolute paths, and symlinks that point outside the root are rejected by
-// the kernel-level lookup, not only by string checks.
+// Package files implements the File Manager (docs/api.md, "/api/v1/fs")
+// over an agentfs.FS: the host JuiceFS mount in juicefs storage mode
+// (agentfs.Local, an os.Root sandbox) or the guest daemon file methods in
+// provider storage mode (remotefs). The sandbox rules (CleanRel, os.Root
+// lookups that reject "..", absolute paths, and escaping symlinks) live in
+// internal/agentfs and internal/guest/guestfs.
 package files
 
 import (
 	"errors"
-	"fmt"
-	"io/fs"
-	"path"
-	"path/filepath"
-	"strings"
+
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 )
 
 // Root names exposed by the API.
 const (
-	RootWorkspace = "workspace"
-	RootHome      = "home"
+	RootWorkspace = agentfs.RootWorkspace
+	RootHome      = agentfs.RootHome
 )
 
 // RootNames lists the roots in display order.
-var RootNames = []string{RootWorkspace, RootHome}
+var RootNames = agentfs.RootNames
 
 // Errors returned by Service operations; http.go maps them to status codes.
 var (
-	ErrInvalidPath = errors.New("invalid path")
-	ErrEscapes     = errors.New("path escapes the root")
-	ErrUnknownRoot = errors.New("unknown root")
-	ErrIsRoot      = errors.New("operation is not allowed on the root directory")
-	ErrNotDir      = errors.New("not a directory")
-	ErrIsDir       = errors.New("is a directory")
-	ErrNotRegular  = errors.New("not a regular file")
-	ErrTooLarge    = errors.New("file is too large")
-	ErrNotText     = errors.New("file is not UTF-8 text")
-	ErrConflict    = errors.New("file changed since it was read")
+	ErrInvalidPath = agentfs.ErrInvalidPath
+	ErrEscapes     = agentfs.ErrEscapes
+	ErrUnknownRoot = agentfs.ErrUnknownRoot
+	ErrIsRoot      = agentfs.ErrIsRoot
+	ErrNotDir      = agentfs.ErrNotDir
+	ErrIsDir       = agentfs.ErrIsDir
+	ErrNotRegular  = agentfs.ErrNotRegular
+	ErrTooLarge    = agentfs.ErrTooLarge
+	ErrConflict    = agentfs.ErrConflict
+	ErrUnavailable = agentfs.ErrUnavailable
 )
 
-// CleanRel validates a client path and returns it in OS form relative to the
-// root. "" and "." select the root itself. Absolute paths, ".." components,
-// backslashes, and NUL bytes are rejected before any filesystem access.
-func CleanRel(p string) (string, error) {
-	if p == "" || p == "." {
-		return ".", nil
-	}
-	if strings.ContainsRune(p, 0) || strings.Contains(p, `\`) {
-		return "", fmt.Errorf("%w: %q contains a forbidden character", ErrInvalidPath, p)
-	}
-	if strings.HasPrefix(p, "/") || filepath.IsAbs(p) {
-		return "", fmt.Errorf("%w: %q must be relative to the root", ErrInvalidPath, p)
-	}
-	for _, seg := range strings.Split(p, "/") {
-		if seg == ".." {
-			return "", fmt.Errorf("%w: %q must not contain '..'", ErrInvalidPath, p)
-		}
-	}
-	clean := path.Clean(p)
-	if clean == "." {
-		return ".", nil
-	}
-	rel := filepath.FromSlash(clean)
-	if !filepath.IsLocal(rel) {
-		return "", fmt.Errorf("%w: %q", ErrInvalidPath, p)
-	}
-	return rel, nil
-}
+// ErrNotText is returned when a text read finds binary content.
+var ErrNotText = errors.New("file is not UTF-8 text")
 
-// toSlash converts an OS-relative path to the API form ("" for the root).
-func toSlash(rel string) string {
-	if rel == "." {
-		return ""
-	}
-	return filepath.ToSlash(rel)
-}
+// CleanRel validates a client path (see agentfs.CleanRel).
+func CleanRel(p string) (string, error) { return agentfs.CleanRel(p) }
 
-// mapRootErr converts os.Root lookup failures into ErrEscapes. os.Root
-// reports an escaping symlink or ".." traversal as a *PathError whose message
-// is "path escapes from parent".
-func mapRootErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	var pe *fs.PathError
-	if errors.As(err, &pe) && strings.Contains(pe.Err.Error(), "escapes") {
-		return fmt.Errorf("%w: %s", ErrEscapes, pe.Path)
-	}
-	return err
-}
+// Entry describes one file or directory.
+type Entry = agentfs.Entry

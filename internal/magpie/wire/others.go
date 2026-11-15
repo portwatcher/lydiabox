@@ -14,9 +14,9 @@ const dshEnv = ".dsh/.env"
 func (dshWirer) Harness() string    { return "dsh" }
 func (dshWirer) ConfigPath() string { return guestPath(dshEnv) }
 
-func (dshWirer) Apply(homeDir string, b Binding) error {
+func (dshWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
-	old, err := readOptional(homeDir, dshEnv)
+	old, err := readOptional(h, dshEnv)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", guestPath(dshEnv), err)
 	}
@@ -27,7 +27,7 @@ func (dshWirer) Apply(homeDir string, b Binding) error {
 	if b.Model != "" {
 		doc.set("DSH_MODEL", b.Model)
 	}
-	return writeIfChanged(homeDir, dshEnv, old, doc.bytes(), 0o600)
+	return writeIfChanged(h, dshEnv, old, doc.bytes(), 0o600)
 }
 
 // dshValues are the managed variables, in a fixed order for stable output.
@@ -44,8 +44,8 @@ func dshValues(b Binding) [][2]string {
 	}
 }
 
-func (dshWirer) CurrentModel(homeDir string) (string, error) {
-	old, err := readOptional(homeDir, dshEnv)
+func (dshWirer) CurrentModel(h Home) (string, error) {
+	old, err := readOptional(h, dshEnv)
 	if err != nil {
 		return "", err
 	}
@@ -82,9 +82,9 @@ var antigravityMCPConfigs = []string{".gemini/antigravity/mcp_config.json", ".ge
 func (antigravityWirer) Harness() string    { return "antigravity" }
 func (antigravityWirer) ConfigPath() string { return guestPath(antigravitySettings) }
 
-func (w antigravityWirer) Apply(homeDir string, b Binding) error {
+func (w antigravityWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
-	err := editJSONFile(homeDir, antigravitySettings, 0o644, func(o *object) error {
+	err := editJSONFile(h, antigravitySettings, 0o644, func(o *object) error {
 		if err := o.set("endpoint", b.GatewayURL); err != nil {
 			return err
 		}
@@ -111,13 +111,13 @@ func (w antigravityWirer) Apply(homeDir string, b Binding) error {
 	if err != nil {
 		return err
 	}
-	if err := editJSONFile(homeDir, antigravityCLISettings, 0o644, func(o *object) error {
+	if err := editJSONFile(h, antigravityCLISettings, 0o644, func(o *object) error {
 		return applyAntigravityCLI(o, b.Model)
 	}); err != nil {
 		return err
 	}
 	for _, rel := range antigravityMCPConfigs {
-		err := editJSONFile(homeDir, rel, 0o644, func(o *object) error {
+		err := editJSONFile(h, rel, 0o644, func(o *object) error {
 			servers, err := o.child("mcpServers")
 			if err != nil {
 				return err
@@ -174,8 +174,8 @@ func applyAntigravityCLI(o *object, model string) error {
 	return o.setChild("customModelsConfig", cfg)
 }
 
-func (antigravityWirer) CurrentModel(homeDir string) (string, error) {
-	return readJSONString(homeDir, antigravitySettings, "model")
+func (antigravityWirer) CurrentModel(h Home) (string, error) {
+	return readJSONString(h, antigravitySettings, "model")
 }
 
 func (antigravityWirer) Env(b Binding) map[string]string {
@@ -194,9 +194,9 @@ const opencodeConfig = ".config/opencode/opencode.json"
 func (opencodeWirer) Harness() string    { return "opencode" }
 func (opencodeWirer) ConfigPath() string { return guestPath(opencodeConfig) }
 
-func (opencodeWirer) Apply(homeDir string, b Binding) error {
+func (opencodeWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
-	return editJSONFile(homeDir, opencodeConfig, 0o644, func(o *object) error {
+	return editJSONFile(h, opencodeConfig, 0o644, func(o *object) error {
 		if _, ok := o.get("$schema"); !ok && len(o.keys) == 0 {
 			if err := o.set("$schema", "https://opencode.ai/config.json"); err != nil {
 				return err
@@ -318,8 +318,8 @@ func opencodeMCP(o *object, b Binding) error {
 	return o.setChild("mcp", mcp)
 }
 
-func (opencodeWirer) CurrentModel(homeDir string) (string, error) {
-	m, err := readJSONString(homeDir, opencodeConfig, "model")
+func (opencodeWirer) CurrentModel(h Home) (string, error) {
+	m, err := readJSONString(h, opencodeConfig, "model")
 	if err != nil {
 		return "", err
 	}

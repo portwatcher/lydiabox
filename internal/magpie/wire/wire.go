@@ -1,20 +1,63 @@
 // Package wire points the five harness CLIs at the magpie gateway by
-// editing their config files in the host copy of /home/agent. Edits are
-// non-destructive (only managed keys change; TOML and .env files are edited
-// line by line so comments survive) and atomic (temporary file + rename).
-// Paths are resolved with internal/harness/safefile, so guest symlinks
-// cannot redirect a host write outside /home/agent.
+// editing their config files in /home/agent through a Home: the host copy
+// on the JuiceFS mount (juicefs storage mode) or the guest daemon file
+// methods (provider storage mode). Edits are non-destructive (only managed
+// keys change; TOML and .env files are edited line by line so comments
+// survive) and atomic (temporary file + rename). Paths are resolved inside
+// the home root, so guest symlinks cannot redirect a write outside
+// /home/agent. Only the placeholder gateway token is written; upstream LLM
+// keys never reach the guest disk.
 package wire
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path"
 	"strings"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/harness/safefile"
 )
+
+// Home is the guest home tree; paths are relative to /home/agent.
+type Home interface {
+	ReadFile(rel string) ([]byte, error)
+	// WriteFile writes atomically, creates parents, and keeps the mode of
+	// an existing file.
+	WriteFile(rel string, data []byte, perm fs.FileMode) error
+}
+
+// DirHome is a Home on a host directory (internal/harness/safefile).
+type DirHome string
+
+// ReadFile implements Home.
+func (d DirHome) ReadFile(rel string) ([]byte, error) { return safefile.ReadFile(string(d), rel) }
+
+// WriteFile implements Home.
+func (d DirHome) WriteFile(rel string, data []byte, perm fs.FileMode) error {
+	return safefile.WriteFile(string(d), rel, data, perm)
+}
+
+// FSHome returns the home root of a tenant in an agentfs.FS.
+func FSHome(ctx context.Context, fsys agentfs.FS, tenantID string) Home {
+	return fsHome{ctx: ctx, fs: fsys, tenantID: tenantID}
+}
+
+type fsHome struct {
+	ctx      context.Context
+	fs       agentfs.FS
+	tenantID string
+}
+
+func (f fsHome) ReadFile(rel string) ([]byte, error) {
+	return f.fs.ReadFile(f.ctx, f.tenantID, agentfs.RootHome, rel)
+}
+
+func (f fsHome) WriteFile(rel string, data []byte, perm fs.FileMode) error {
+	return f.fs.WriteFile(f.ctx, f.tenantID, agentfs.RootHome, rel, data, perm)
+}
 
 // Defaults of the in-VM endpoints (docs/design.md sections 4.4 and 4.5).
 const (
@@ -82,9 +125,9 @@ type Wirer interface {
 	// ConfigPath is the guest path of the file that holds the model.
 	ConfigPath() string
 	// Apply points the harness at the gateway and binds the model.
-	Apply(homeDir string, b Binding) error
+	Apply(h Home, b Binding) error
 	// CurrentModel returns the configured model ("" when none).
-	CurrentModel(homeDir string) (string, error)
+	CurrentModel(h Home) (string, error)
 	// Env returns environment variables the harness process needs.
 	Env(b Binding) map[string]string
 }
@@ -107,9 +150,9 @@ func For(harness string) (Wirer, bool) {
 // guestPath maps a path relative to the home directory to its guest path.
 func guestPath(rel string) string { return path.Join("/home/agent", rel) }
 
-// readOptional reads rel below homeDir; a missing file is empty.
-func readOptional(homeDir, rel string) ([]byte, error) {
-	b, err := safefile.ReadFile(homeDir, rel)
+// readOptional reads rel below h; a missing file is empty.
+func readOptional(h Home, rel string) ([]byte, error) {
+	b, err := h.ReadFile(rel)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -117,19 +160,19 @@ func readOptional(homeDir, rel string) ([]byte, error) {
 }
 
 // writeIfChanged writes data when it differs from old.
-func writeIfChanged(homeDir, rel string, old, data []byte, perm fs.FileMode) error {
+func writeIfChanged(h Home, rel string, old, data []byte, perm fs.FileMode) error {
 	if old != nil && string(old) == string(data) {
 		return nil
 	}
-	if err := safefile.WriteFile(homeDir, rel, data, perm); err != nil {
+	if err := h.WriteFile(rel, data, perm); err != nil {
 		return fmt.Errorf("write %s: %w", guestPath(rel), err)
 	}
 	return nil
 }
 
 // editJSONFile merges managed keys into a JSON config file.
-func editJSONFile(homeDir, rel string, perm fs.FileMode, fn func(o *object) error) error {
-	old, err := readOptional(homeDir, rel)
+func editJSONFile(h Home, rel string, perm fs.FileMode, fn func(o *object) error) error {
+	old, err := readOptional(h, rel)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", guestPath(rel), err)
 	}
@@ -137,12 +180,12 @@ func editJSONFile(homeDir, rel string, perm fs.FileMode, fn func(o *object) erro
 	if err != nil {
 		return fmt.Errorf("%s: %w", guestPath(rel), err)
 	}
-	return writeIfChanged(homeDir, rel, old, data, perm)
+	return writeIfChanged(h, rel, old, data, perm)
 }
 
 // readJSONString returns a top-level string of a JSON config file.
-func readJSONString(homeDir, rel, key string) (string, error) {
-	old, err := readOptional(homeDir, rel)
+func readJSONString(h Home, rel, key string) (string, error) {
+	old, err := readOptional(h, rel)
 	if err != nil {
 		return "", err
 	}

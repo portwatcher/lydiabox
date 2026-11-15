@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"crypto/rand"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"log/slog"
 	"net"
@@ -45,6 +46,7 @@ func TestWireConnectorServesBrokerSocket(t *testing.T) {
 	}
 	defer st.Close()
 	d := &deps{Config: cfg, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Store: st, Storage: stubStorage{t.TempDir()}}
+	d.Files = agentfs.NewLocal(d.Storage, agentfs.LocalOptions{})
 	c, err := wireConnector(ctx, d)
 	if err != nil {
 		t.Fatal(err)

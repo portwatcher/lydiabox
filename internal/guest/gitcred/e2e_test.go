@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -101,7 +102,7 @@ func TestGitCredEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	brk, err := broker.New(broker.Options{Manager: mgr, TenantID: "default", Dirs: dirs{hostDir}, Logger: log})
+	brk, err := broker.New(broker.Options{Manager: mgr, TenantID: "default", Files: agentfs.NewLocal(dirs{hostDir}, agentfs.LocalOptions{}), Logger: log})
 	if err != nil {
 		t.Fatal(err)
 	}

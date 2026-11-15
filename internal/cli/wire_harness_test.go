@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -47,7 +48,7 @@ func TestWireHarness(t *testing.T) {
 		}
 	}
 	d := &deps{Config: cfg, Driver: config.DriverDocker, Logger: slog.New(slog.DiscardHandler), Store: st, Bootstrap: boot,
-		Storage: stor, Auth: api.NewAuthenticator("test-admin-token-0123456789abcdef"),
+		Storage: stor, Files: agentfs.NewLocal(stor, agentfs.LocalOptions{}), Auth: api.NewAuthenticator("test-admin-token-0123456789abcdef"),
 		VMStatus: api.StaticVMStatus{State: api.VMStopped, Driver: config.DriverDocker}}
 	if _, err := wireVM(ctx, d); err != nil {
 		t.Fatal(err)
