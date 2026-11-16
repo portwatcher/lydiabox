@@ -734,6 +734,15 @@ port, so `LYDIABOX_WEBRTC_UDP_PORT=0` is valid. TURN over UDP, TCP
 (`?transport=tcp`), and TLS (`turns:`) are supported. Without these
 settings, the guest gets no ICE server, as before.
 
+Video: H.264 Constrained Baseline, `packetization-mode=1` (the guest's
+track takes the payload type with `profile-level-id=42e01f` of the offer,
+or the first H.264 type when the offer has none). The guest's RTP packets
+are at most 1100 bytes, so that a relayed packet (SRTP tag, TURN header,
+UDP, IP) fits a 1280-byte path without IP fragments; a keyframe comes
+every 2 seconds, so a new viewer, or a viewer that lost a packet, waits at
+most 2 seconds for a picture. Picture loss requests are counted in the
+guest log, and lost packets are sent again on a NACK.
+
 ### Data channel `input` (browser → guest, peer-to-peer)
 
 Messages are JSON text. The guest ignores them in `OBSERVER` mode.

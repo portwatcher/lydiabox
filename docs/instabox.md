@@ -391,6 +391,33 @@ and after a stop and start: all three programs `RUNNING` as `alice`,
 `101` to a WebSocket upgrade, Xfce runs on `/run/user/1000/bus`, and
 `xdpyinfo` answers on `:0`.
 
+### Desktop video through the relay
+
+In the first tenant test (2026-11-16) the browser's ICE connection was
+relay-only on both sides through `turn.example.com` over UDP, the input
+data channel worked, and video RTP arrived with 8 to 14 % loss, but no
+frame was decoded. The cause is the packet size, measured on the same
+machine and from the tester's network:
+
+| Fact | Evidence |
+| :--- | :--- |
+| Outbound UDP from the machine to the TURN server works, up to a 1500-byte IP packet; a fragmented datagram does not arrive | STUN Binding requests padded to a size: 1472-byte UDP payload (1500 IP) answered 4/4, 1473 and larger 0/4; `eth0` MTU 1500; ICMP `ping -M do -s 1472` to the TURN server passes |
+| The tester's network passes at most a 1452-byte IP packet to the TURN server | the same STUN probe from the tester's Mac: 1424-byte payload answered, 1428 and larger not |
+| ffmpeg's default RTP packet is 1472 bytes; relayed, it does not fit | 1472 + 10 or 16 (SRTP) + 4 (TURN ChannelData) + 28 (UDP, IPv4) = 1514 to 1520 bytes |
+| Only keyframes have full-size packets | ffmpeg with the old arguments, 25 s on `:0`: 668 packets, 98 of them 1400 to 1472 bytes (14.7 %, the loss that the browser saw); keyframes 44 to 57 kB every 250 frames (10.4 s), P frames 250 to 500 bytes |
+| Not the cause: codec, payload type, profile | ffmpeg 6.1.1 with libx264 in the machine makes Constrained Baseline level 4.0, payload type 96, SPS and PPS in a STAP-A before each IDR; the guest rewrites the payload type to the negotiated one; a pion receiver on the machine assembles the real stream (below) |
+
+With the fixed guest (RTP packets of at most 1100 bytes, a keyframe every
+48 frames), a pion receiver on the machine over loopback, with the real
+ffmpeg and display, negotiated payload type 106
+(`profile-level-id=42e01f;packetization-mode=1`), got packets of at most
+1100 bytes, and assembled a 55 kB keyframe every 2.00 s. A still desktop
+then needs about 265 kbit/s instead of 140 kbit/s (one keyframe every 2 s
+instead of every 10.4 s); with motion the encoder keeps the 2500 kbit/s
+target. `TestRelayedKeyframeFitsPathMTU` repeats the failure without a
+browser: relay-only on both sides through an in-process TURN server, on a
+path that drops packets above 1452 bytes.
+
 ## What the documentation does not state
 
 Each item needs a check with a real account (see the checklist below).
@@ -400,7 +427,9 @@ Each item needs a check with a real account (see the checklist below).
    that a machine can receive UDP, so the WebRTC desktop stream must use
    the TURN relay ([turn-manual-test.md](turn-manual-test.md), the TURN key
    of `lydiabox cloudflare setup`). Outbound UDP to the TURN server is
-   also not stated.
+   not stated; verified on a real machine, 2026-11-16: it works up to a
+   1500-byte IP packet, and IP fragments do not pass
+   ([above](#desktop-video-through-the-relay)).
 2. **Root disk across stop and start.** Verified on a real machine,
    2026-11-16: the root disk is kept ([above](#verified-on-a-real-machine-2026-11-16)).
 3. **Cold start, resume, and import times.** `readyAt - createdAt` is the
@@ -493,7 +522,15 @@ result in `docs/conformance.md`.
     finds nothing.
 14. Driver, sessions: a Studio session through the magpie gateway, a file
     upload in the Files page, and the desktop through TURN from a network
-    without UDP.
+    without UDP. For the desktop, the picture shows within a few seconds;
+    in `chrome://webrtc-internals` the inbound video has a codec and
+    `framesDecoded` and `keyFramesDecoded` grow (a keyframe about every
+    2 s); the guest log
+    (`sudo tail /var/log/supervisor/lydiabox-guest.log`) has
+    `desktop viewer joined`, `desktop viewer connected local=relay`,
+    `desktop encoder started ... packetSize=1100 keyframeEvery=48`, and
+    every 30 s `desktop stream` with `maxPacket` at most 1100 and
+    `oversizePackets=0`.
 15. Driver, power: leave the cell idle for `LYDIABOX_IDLE_TIMEOUT`; check
     that the machine is `suspended` without `autoSuspendedAt`, and that
     the next request resumes it (record the time). Check the activity

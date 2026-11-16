@@ -328,6 +328,11 @@ LYDIABOX_WEBRTC_UDP_PORT=0
 ```
 
 `turn:...?transport=tcp` and `turns:` URLs work on networks that block UDP.
+The guest sends RTP packets of at most 1100 bytes and a keyframe every 2
+seconds, so that a relayed stream needs no IP fragments and a new viewer
+gets a picture soon. The guest log has one line when a viewer joins, when
+`ffmpeg` starts or stops, and every 30 seconds with the packets, bytes, and
+keyframes that it sent (`level=WARN` when it sent nothing).
 Minted credentials (Cloudflare, `LYDIABOX_TURN_SECRET`) are renewed before
 `LYDIABOX_TURN_TTL` ends. With `chv`, the guest cannot reach private
 networks or the host, so the TURN server needs a public address.
