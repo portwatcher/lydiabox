@@ -1,4 +1,4 @@
-import { Monitor, Play, RotateCw } from "lucide-react";
+import { Monitor, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { desktop } from "../api/domains";
 import { availabilityOf, describeError } from "../api/errors";
@@ -6,17 +6,19 @@ import type { AgentAction, DesktopMode, LaunchApp } from "../api/types";
 import { ErrorView, LoadingView, StateView } from "../components/StateView";
 import { useToast } from "../components/Toast";
 import { Banner, Button, cx } from "../components/ui";
+import { VmWakeButton } from "../components/VmPower";
 import { useSystem } from "../hooks/useSystem";
 import { ActionFeed } from "./desktop/ActionFeed";
 import { DesktopOverlay } from "./desktop/DesktopOverlay";
 import { DesktopToolbar } from "./desktop/DesktopToolbar";
 import { initialOverlay, overlayReducer } from "./desktop/overlay";
+import { desktopStage, shouldConnect, shouldDisconnect } from "./desktop/stage";
 import { useDesktopStream } from "./desktop/useDesktopStream";
 import { useTakeoverInput } from "./desktop/useTakeoverInput";
 
 export default function DesktopPage() {
   const toast = useToast();
-  const { vmState } = useSystem();
+  const { vmState, pending, refresh } = useSystem();
   const [overlay, dispatch] = useReducer(overlayReducer, initialOverlay);
   const onAction = useCallback((action: AgentAction) => {
     dispatch({ type: "action", action, now: Date.now() });
@@ -28,7 +30,6 @@ export default function DesktopPage() {
   const [keyboardHeld, setKeyboardHeld] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const prevVm = useRef(vmState);
   const { connect, disconnect, setMode } = stream;
 
   // The desktop routes may not be in this build yet: probe the mode route once.
@@ -48,22 +49,31 @@ export default function DesktopPage() {
   }, [setMode]);
   useEffect(runProbe, [runProbe]);
 
-  // Connect on its own only when the VM already runs; connecting wakes a stopped VM.
+  // Stream only a running VM. Opening the stream never starts the VM: the
+  // start control does (the status bar, or the stage below).
+  const stageInput = { vmState, pending, socket: stream.socket, stopped: stream.stopped, live: false };
+  const connectNow = probe.state === "ok" && shouldConnect(stageInput);
   useEffect(() => {
-    if (probe.state === "ok" && vmState === "RUNNING" && stream.socket === null) {
+    if (connectNow) {
       connect();
     }
-  }, [probe.state, vmState, stream.socket, connect]);
+  }, [connectNow, connect]);
 
-  // A stop or hibernate elsewhere ends the stream instead of waking the VM again.
+  // A stop, hibernate, or start elsewhere closes the stream before the guest goes down.
+  const disconnectNow = shouldDisconnect({ vmState, pending });
   useEffect(() => {
-    const was = prevVm.current;
-    prevVm.current = vmState;
-    if (was === "RUNNING" && (vmState === "STOPPED" || vmState === "PAUSED")) {
+    if (disconnectNow) {
       disconnect();
       dispatch({ type: "reset" });
     }
-  }, [vmState, disconnect]);
+  }, [disconnectNow, disconnect]);
+
+  // The server ended the stream for a user stop: read the new VM state now.
+  useEffect(() => {
+    if (stream.stopped) {
+      refresh();
+    }
+  }, [stream.stopped, refresh]);
 
   useEffect(() => {
     if (overlay.ripples.length === 0 && overlay.pills.length === 0 && !overlay.drag) {
@@ -112,30 +122,38 @@ export default function DesktopPage() {
 
   const connected = stream.socket === "open";
   const live = connected && stream.stream !== null;
+  const stage = desktopStage({ ...stageInput, live });
 
   let stageContent = null;
-  if (stream.socket === null) {
-    stageContent = (
-      <StateView
-        icon={Monitor}
-        title={vmState === "PAUSED" ? "The VM is hibernating" : vmState === "BOOTING" ? "The VM is starting" : "The desktop is off"}
-        action={
-          <Button variant="primary" icon={Play} onClick={connect}>
-            Start desktop
-          </Button>
-        }
-      >
-        Starting the desktop wakes the VM.
-      </StateView>
-    );
-  } else if (stream.socket === "failed") {
-    stageContent = (
-      <StateView title="Desktop connection lost" action={<Button icon={RotateCw} onClick={stream.retry}>Reconnect</Button>}>
-        The VM may have stopped, or the desktop stream failed to start.
-      </StateView>
-    );
-  } else if (!live) {
-    stageContent = <LoadingView label={stream.socket === "reconnecting" ? "Reconnecting to the desktop…" : "Starting the desktop stream…"} />;
+  switch (stage) {
+    case "stopped":
+    case "hibernating":
+      stageContent = (
+        <StateView
+          icon={Monitor}
+          title={stage === "hibernating" ? "The VM is hibernating" : "The VM is stopped"}
+          action={<VmWakeButton variant="primary">Start desktop</VmWakeButton>}
+        />
+      );
+      break;
+    case "starting":
+      stageContent = <LoadingView label="Starting the VM…" />;
+      break;
+    case "stopping":
+      stageContent = <LoadingView label={pending === "hibernate" ? "Hibernating the VM…" : "Stopping the VM…"} />;
+      break;
+    case "lost":
+      stageContent = (
+        <StateView title="Desktop connection lost" action={<Button icon={RotateCw} onClick={stream.retry}>Reconnect</Button>}>
+          The desktop stream failed to start.
+        </StateView>
+      );
+      break;
+    case "connecting":
+      stageContent = <LoadingView label={stream.socket === "reconnecting" ? "Reconnecting to the desktop…" : "Starting the desktop stream…"} />;
+      break;
+    case "live":
+      break;
   }
 
   return (
@@ -150,7 +168,7 @@ export default function DesktopPage() {
         onLaunch={launch}
         onToggleSidebar={() => setSidebar((s) => !s)}
       />
-      {stream.error ? (
+      {stream.error && stream.socket !== null ? (
         <div className="px-3 pt-2">
           <Banner tone="danger">{stream.error}</Banner>
         </div>

@@ -1,6 +1,6 @@
 import { isRecord, num, str } from "./decode";
 import { sessions } from "./domains";
-import { ReconnectingSocket, wsUrl } from "./socket";
+import { ReconnectingSocket, STOPPED_CODE, wsUrl } from "./socket";
 import type { SocketState, WebSocketFactory } from "./socket";
 import type { PtyClientMessage, PtyServerMessage, PtySignal } from "./types";
 
@@ -50,8 +50,8 @@ export interface PtyClientOptions {
 /**
  * Terminal room client. Binary frames carry PTY bytes in both directions;
  * text frames carry JSON control messages. The client adopts the session ID
- * from `hello` so a reconnect attaches to it. After `exit` the client does
- * not reconnect.
+ * from `hello` so a reconnect attaches to it. After `exit`, or the `stopped`
+ * error of a VM that the user stopped, the client does not reconnect.
  */
 export class PtyClient {
   private id: string;
@@ -141,6 +141,10 @@ export class PtyClient {
         this.handlers.onExit?.(msg);
         return;
       case "error":
+        if (msg.code === STOPPED_CODE) {
+          // The user stopped the VM: a reconnect would ask for it again.
+          this.socket.finish();
+        }
         this.handlers.onError?.(msg);
         return;
       default:

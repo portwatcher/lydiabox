@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFactory } from "../test/fakeSocket";
 import { PtyClient, PTY_PROTOCOL, parsePtyMessage } from "./pty";
-import { ReconnectingSocket, backoffDelay, wsUrl } from "./socket";
+import { ReconnectingSocket, STOPPED_CODE, backoffDelay, wsUrl } from "./socket";
 import type { SocketState } from "./socket";
 
 beforeEach(() => {
@@ -170,6 +170,20 @@ describe("PtyClient", () => {
     vi.advanceTimersByTime(30_000);
     expect(exited).toHaveBeenCalledOnce();
     expect(sockets).toHaveLength(2);
+    expect(client.state).toBe("closed");
+  });
+
+  it("does not reconnect after the server says the user stopped the VM", () => {
+    const { factory, sockets } = fakeFactory();
+    const errors = vi.fn();
+    const client = new PtyClient("dsh:a91f", { onOutput: () => undefined, onError: errors }, { factory, url: (p) => p });
+    client.connect();
+    sockets[0]?.open();
+    sockets[0]?.receiveJson({ type: "error", code: STOPPED_CODE, message: "the VM was stopped" });
+    sockets[0]?.serverClose(1000);
+    vi.advanceTimersByTime(60_000);
+    expect(errors).toHaveBeenCalledOnce();
+    expect(sockets).toHaveLength(1);
     expect(client.state).toBe("closed");
   });
 });

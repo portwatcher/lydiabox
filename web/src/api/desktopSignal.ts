@@ -1,7 +1,7 @@
 import { bool, isRecord, num, oneOf, str } from "./decode";
 import type { Json } from "./decode";
 import { desktop } from "./domains";
-import { ReconnectingSocket, wsUrl } from "./socket";
+import { ReconnectingSocket, STOPPED_CODE, wsUrl } from "./socket";
 import type { SocketState, WebSocketFactory } from "./socket";
 import type {
   AgentAction,
@@ -134,7 +134,11 @@ export interface DesktopSignalOptions {
   url?: (path: string) => string;
 }
 
-/** Signaling socket for the desktop stream. Every (re)connect starts with `hello`. */
+/**
+ * Signaling socket for the desktop stream. Every (re)connect starts with
+ * `hello`. After the `stopped` error the socket does not reconnect: a new
+ * socket would ask for a VM that the user stopped.
+ */
 export class DesktopSignalClient {
   private readonly socket: ReconnectingSocket;
 
@@ -146,6 +150,9 @@ export class DesktopSignalClient {
       factory: options.factory,
       onJson: (raw) => {
         const msg = parseDesktopMessage(raw);
+        if (msg?.type === "error" && msg.code === STOPPED_CODE) {
+          this.socket.finish();
+        }
         if (msg) {
           options.onMessage(msg);
         }

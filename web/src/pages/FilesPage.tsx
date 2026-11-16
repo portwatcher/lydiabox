@@ -59,13 +59,24 @@ export default function FilesPage() {
   const [deleting, setDeleting] = useState<Entry | null>(null);
   const [davOpen, setDavOpen] = useState(false);
   // WebDAV and the /s3 gateway need the host volume of the juicefs storage mode.
-  const mountable = useSystem().status?.storage.mode !== "provider";
+  const { status, vmState } = useSystem();
+  const mountable = status?.storage.mode !== "provider";
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
   const loader = useCallback((signal: AbortSignal) => files.list(root, dir, signal), [root, dir]);
   const listing = useResource(loader, { enabled: file === null });
   const reloadListing = listing.reload;
+
+  // In the provider storage mode the files are on the VM: a start loads them.
+  const prevVm = useRef(vmState);
+  useEffect(() => {
+    const was = prevVm.current;
+    prevVm.current = vmState;
+    if (was !== "RUNNING" && vmState === "RUNNING") {
+      reloadListing();
+    }
+  }, [vmState, reloadListing]);
 
   // After a change: reload the listing and every open folder in the tree.
   const bump = useCallback(() => {

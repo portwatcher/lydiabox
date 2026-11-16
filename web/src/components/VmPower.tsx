@@ -1,5 +1,6 @@
 import { LoaderCircle, Moon, Play, Square } from "lucide-react";
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { VMState } from "../api/types";
 import { useSystem } from "../hooks/useSystem";
 import { ConfirmDialog } from "./Dialog";
@@ -41,12 +42,42 @@ export function VmPill({ state }: { state: VMState }) {
   );
 }
 
+interface VmWakeButtonProps {
+  size?: "sm" | "md";
+  variant?: "primary" | "secondary";
+  /** Replaces the Wake / Resume label. */
+  children?: ReactNode;
+}
+
+/**
+ * Starts a stopped VM or resumes a paused one (POST /api/v1/vm/wake): the
+ * explicit start, the only one that undoes a stop.
+ */
+export function VmWakeButton({ size = "md", variant = "secondary", children }: VmWakeButtonProps) {
+  const { vmState, vmControl, pending, runVM } = useSystem();
+  return (
+    <Button
+      size={size}
+      variant={variant}
+      icon={Play}
+      busy={pending === "wake"}
+      disabled={!vmControl || pending !== null}
+      title={vmControl ? undefined : unavailableTitle}
+      onClick={() => void runVM("wake")}
+    >
+      {children ?? (vmState === "PAUSED" ? "Resume" : "Wake")}
+    </Button>
+  );
+}
+
+const unavailableTitle = "VM power control is not available in this build";
+
 /** Wake / Hibernate / Stop controls for the current VM state. */
 export function VmPower({ compact = false }: { compact?: boolean }) {
   const { vmState, vmControl, pending, runVM } = useSystem();
   const [confirmStop, setConfirmStop] = useState(false);
   const size = compact ? "sm" : "md";
-  const unavailable = vmControl ? undefined : "VM power control is not available in this build";
+  const unavailable = vmControl ? undefined : unavailableTitle;
   const canWake = vmState === "STOPPED" || vmState === "PAUSED";
   const canHibernate = vmState === "RUNNING";
   const canStop = vmState === "RUNNING" || vmState === "PAUSED";
@@ -54,19 +85,7 @@ export function VmPower({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-2">
       <VmPill state={vmState} />
-      {canWake ? (
-        <Button
-          size={size}
-          variant="secondary"
-          icon={Play}
-          busy={pending === "wake"}
-          disabled={!vmControl || pending !== null}
-          title={unavailable}
-          onClick={() => void runVM("wake")}
-        >
-          {vmState === "PAUSED" ? "Resume" : "Wake"}
-        </Button>
-      ) : null}
+      {canWake ? <VmWakeButton size={size} variant="secondary" /> : null}
       {canHibernate ? (
         <Button
           size={size}

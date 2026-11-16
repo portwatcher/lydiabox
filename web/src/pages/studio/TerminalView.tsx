@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import { RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PtyClient } from "../../api/pty";
+import { STOPPED_CODE } from "../../api/socket";
 import type { SocketState } from "../../api/socket";
 import { Banner, Button, cx } from "../../components/ui";
 
@@ -65,6 +66,7 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
   const [conn, setConn] = useState<SocketState>("connecting");
   const [exited, setExited] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [vmStopped, setVmStopped] = useState(false);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -99,7 +101,13 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
         setExited(detail);
         callbacks.current.onExit();
       },
-      onError: (msg) => setServerError(msg.message || msg.code),
+      onError: (msg) => {
+        if (msg.code === STOPPED_CODE) {
+          setVmStopped(true);
+          return;
+        }
+        setServerError(msg.message || msg.code);
+      },
       onState: setConn,
     });
     clientRef.current = client;
@@ -140,13 +148,18 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
     // The view attaches once per mount; the parent remounts it for a new room.
   }, []);
 
-  const showState = conn !== "open" && !exited;
+  const showState = conn !== "open" && !exited && !vmStopped;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {serverError ? (
         <div className="px-3 pt-3">
           <Banner tone="danger">{serverError}</Banner>
+        </div>
+      ) : null}
+      {vmStopped ? (
+        <div className="px-3 pt-3">
+          <Banner tone="neutral">The VM is stopped.</Banner>
         </div>
       ) : null}
       {showState ? (

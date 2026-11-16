@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFactory } from "../test/fakeSocket";
 import { DESKTOP_PROTOCOL, DesktopSignalClient, parseDesktopMessage } from "./desktopSignal";
+import { STOPPED_CODE } from "./socket";
 import type { DesktopServerMessage } from "./types";
 
 beforeEach(() => {
@@ -96,5 +97,38 @@ describe("DesktopSignalClient", () => {
     expect(received).toEqual([{ type: "viewers", count: 2 }]);
     expect(client.send({ type: "launch", app: "blender" })).toBe(true);
     expect(ws?.json()).toEqual([{ type: "launch", app: "blender" }]);
+  });
+
+  it("does not reconnect after the server says the user stopped the VM", () => {
+    const { factory, sockets } = fakeFactory();
+    const received: DesktopServerMessage[] = [];
+    const states: string[] = [];
+    const client = new DesktopSignalClient({
+      onMessage: (m) => received.push(m),
+      onState: (s) => states.push(s),
+      factory,
+      url: (p) => `ws://h${p}`,
+    });
+    client.connect();
+    sockets[0]?.open();
+    sockets[0]?.receiveJson({ type: "error", code: STOPPED_CODE, message: "the VM was stopped" });
+    sockets[0]?.serverClose(1000);
+    vi.advanceTimersByTime(60_000);
+    expect(sockets).toHaveLength(1);
+    expect(client.state).toBe("closed");
+    expect(received).toEqual([{ type: "error", code: STOPPED_CODE, message: "the VM was stopped" }]);
+    expect(states).not.toContain("reconnecting");
+  });
+
+  it("reconnects after other stream errors", () => {
+    const { factory, sockets } = fakeFactory();
+    const client = new DesktopSignalClient({ onMessage: () => undefined, factory, url: (p) => `ws://h${p}` });
+    client.connect();
+    sockets[0]?.open();
+    sockets[0]?.receiveJson({ type: "error", code: "unavailable", message: "desktop stream ended" });
+    sockets[0]?.serverClose(1011);
+    vi.advanceTimersByTime(1_000);
+    expect(sockets).toHaveLength(2);
+    client.close();
   });
 });

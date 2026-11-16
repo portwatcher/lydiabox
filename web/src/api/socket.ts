@@ -4,6 +4,13 @@
  * (`{ "type": "ping", "id": n }`), which both LydiaBox protocols share.
  */
 
+/**
+ * Error code with which the desktop and terminal sockets end when the user
+ * stopped the VM. Their clients do not reconnect after it: a new socket would
+ * ask for the stopped VM again.
+ */
+export const STOPPED_CODE = "stopped";
+
 export type SocketState = "connecting" | "open" | "reconnecting" | "closed" | "failed";
 
 /** The subset of the browser WebSocket this module uses (lets tests inject a fake). */

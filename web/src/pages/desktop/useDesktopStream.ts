@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DesktopSignalClient } from "../../api/desktopSignal";
+import { STOPPED_CODE } from "../../api/socket";
 import type { SocketState } from "../../api/socket";
 import type { AgentAction, DesktopMode, DesktopServerMessage, IceCandidate, InputMessage, LaunchApp } from "../../api/types";
 
@@ -12,6 +13,8 @@ export interface DesktopStream {
   viewers: number;
   screen: { width: number; height: number };
   error: string | null;
+  /** The server ended the stream because the user stopped the VM; cleared by connect and disconnect. */
+  stopped: boolean;
   inputReady: boolean;
   connect: () => void;
   disconnect: () => void;
@@ -60,6 +63,7 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
   const [viewers, setViewers] = useState(0);
   const [screen, setScreen] = useState({ width: 1920, height: 1080 });
   const [error, setError] = useState<string | null>(null);
+  const [stopped, setStopped] = useState(false);
   const [inputReady, setInputReady] = useState(false);
 
   const clientRef = useRef<DesktopSignalClient | null>(null);
@@ -119,6 +123,16 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
     [closePeer],
   );
 
+  const disconnect = useCallback(() => {
+    clientRef.current?.close();
+    clientRef.current = null;
+    closePeer();
+    setSocket(null);
+    setViewers(0);
+    setError(null);
+    setStopped(false);
+  }, [closePeer]);
+
   const handle = useCallback(
     (client: DesktopSignalClient, msg: DesktopServerMessage) => {
       switch (msg.type) {
@@ -170,28 +184,29 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
           actionRef.current(msg);
           return;
         case "error":
+          if (msg.code === STOPPED_CODE) {
+            // The user stopped the VM: a calm state, not an error.
+            if (clientRef.current === client) {
+              disconnect();
+              setStopped(true);
+            }
+            return;
+          }
           setError(msg.message || msg.code);
           return;
         case "pong":
           return;
       }
     },
-    [startPeer],
+    [startPeer, disconnect],
   );
-
-  const disconnect = useCallback(() => {
-    clientRef.current?.close();
-    clientRef.current = null;
-    closePeer();
-    setSocket(null);
-    setViewers(0);
-  }, [closePeer]);
 
   const connect = useCallback(() => {
     if (clientRef.current) {
       return;
     }
     setError(null);
+    setStopped(false);
     const client: DesktopSignalClient = new DesktopSignalClient({
       onMessage: (msg) => handle(client, msg),
       onState: (state) => {
@@ -220,5 +235,5 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
 
   const launch = useCallback((app: LaunchApp) => clientRef.current?.send({ type: "launch", app }) ?? false, []);
 
-  return { socket, peer, stream, mode, viewers, screen, error, inputReady, connect, disconnect, retry, sendInput, launch, setMode };
+  return { socket, peer, stream, mode, viewers, screen, error, stopped, inputReady, connect, disconnect, retry, sendInput, launch, setMode };
 }
