@@ -71,7 +71,7 @@ lint: vet
 	@if command -v staticcheck >/dev/null 2>&1; then CGO_ENABLED=0 staticcheck ./...; \
 	else echo "staticcheck not installed; skipped (go install honnef.co/go/tools/cmd/staticcheck@latest)"; fi
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/rootfs/build-artifacts.sh deploy/rootfs/setup-guest.sh deploy/rootfs/install-harnesses.sh deploy/rootfs/lydiabox-init deploy/initramfs/init deploy/virtiofsd/build.sh; fi
-	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/instabox/build.sh deploy/instabox/test.sh deploy/instabox/lydiabox-instabox-entry deploy/instabox/lydiabox-instabox-guest; fi
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/instabox/build.sh deploy/instabox/test.sh deploy/instabox/lydiabox-instabox-entry deploy/instabox/lydiabox-instabox-guest deploy/instabox/lydiabox-instabox-xfce deploy/instabox/machine-model/model-init; fi
 
 # Builds web/ (Phase 5) and copies the bundle into internal/webui/dist, which
 # go:embed picks up on the next `make build`.

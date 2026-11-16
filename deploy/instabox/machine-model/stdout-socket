@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Runs a program with a UNIX stream socket as its standard output and
+error, as systemd does for a unit whose output goes to the journal, and
+copies what it writes to this process's standard output. Opening
+/dev/stdout then fails with ENXIO, as under systemd. SIGTERM and SIGINT
+go to the program; the exit status is the program's."""
+
+import os
+import signal
+import socket
+import sys
+
+parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+pid = os.fork()
+if pid == 0:
+    parent.close()
+    os.dup2(child.fileno(), 1)
+    os.dup2(child.fileno(), 2)
+    child.close()
+    os.execv(sys.argv[1], sys.argv[1:])
+child.close()
+
+
+def forward(signum, _frame):
+    try:
+        os.kill(pid, signum)
+    except ProcessLookupError:
+        pass
+
+
+signal.signal(signal.SIGTERM, forward)
+signal.signal(signal.SIGINT, forward)
+while True:
+    data = parent.recv(65536)
+    if not data:
+        break
+    os.write(1, data)
+_, status = os.waitpid(pid, 0)
+sys.exit(os.waitstatus_to_exitcode(status))

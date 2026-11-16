@@ -8,24 +8,38 @@
 # broker bridge), and that it starts again from the kept settings after a
 # restart. Exits 0 with a SKIP line when Docker is not available.
 #
-# Usage: deploy/instabox/test.sh [--image IMAGE] [--build [build.sh flags]]
+# Scenarios:
+#   plain    the image as it is (UID 1000 is "agent", from the base image)
+#   machine  the image as an InstaBox import makes it
+#            (deploy/instabox/machine-model): no user "agent", UID 1000
+#            named "alice" with the home /data/home, the machine's session
+#            bus instead of dbus-run-session, and a socket as the standard
+#            output of the entry point (the journal)
+#   precond  the entry point fails with a clear error when UID 1000 or
+#            /data is missing
 #
-#   --image IMAGE  image to test (default lydiabox/instabox:latest)
-#   --build        build it first with deploy/instabox/build.sh; the
-#                  remaining arguments go to build.sh (for example --slim)
+# Usage: deploy/instabox/test.sh [--image IMAGE] [--scenario NAME]
+#                                [--build [build.sh flags]]
+#
+#   --image IMAGE    image to test (default lydiabox/instabox:latest)
+#   --scenario NAME  plain, machine, precond, or all (default all)
+#   --build          build it first with deploy/instabox/build.sh; the
+#                    remaining arguments go to build.sh (for example --slim)
 set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 image=lydiabox/instabox:latest
+scenario=all
 build=0
 while [ $# -gt 0 ]; do
 	case "$1" in
-	--image)
+	--image | --scenario)
 		[ $# -ge 2 ] || {
-			echo "--image needs an image" >&2
+			echo "$1 needs a value" >&2
 			exit 2
 		}
-		image=$2
+		if [ "$1" = --image ]; then image=$2; else scenario=$2; fi
 		shift 2
 		;;
 	--build)
@@ -39,6 +53,13 @@ while [ $# -gt 0 ]; do
 		;;
 	esac
 done
+case "$scenario" in
+plain | machine | precond | all) ;;
+*)
+	echo "unknown scenario $scenario" >&2
+	exit 2
+	;;
+esac
 
 if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
 	echo "SKIP: Docker is not available; the InstaBox image test did not run"
@@ -57,16 +78,21 @@ arch=$(docker image inspect --format '{{.Architecture}}' "$image")
 	exit 1
 }
 
-name=lbx-instabox-test-$$
+prefix=lbx-instabox-test-$$
+model=lbx-instabox-model-$$:test
+name=$prefix
 volume=$name-data
 cleanup() {
-	docker rm -f "$name" >/dev/null 2>&1 || true
-	docker volume rm "$volume" >/dev/null 2>&1 || true
+	for n in "$prefix-plain" "$prefix-machine"; do
+		docker rm -f "$n" >/dev/null 2>&1 || true
+		docker volume rm "$n-data" >/dev/null 2>&1 || true
+	done
+	docker image rm -f "$model" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
 fail() {
-	echo "FAIL: $*" >&2
+	echo "FAIL ($current): $*" >&2
 	echo "--- container log" >&2
 	docker logs "$name" 2>&1 | tail -40 >&2 || true
 	echo "--- supervisor logs" >&2
@@ -85,46 +111,33 @@ wait_for() {
 	limit=${3:-180}
 	i=0
 	until in_ctr "$1" >/dev/null 2>&1; do
+		[ "$(docker inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" = true ] ||
+			fail "the container stopped while waiting for: $2"
 		i=$((i + 2))
 		[ "$i" -lt "$limit" ] || fail "$2 within ${limit}s"
 		sleep 2
 	done
-	echo "ok: $2"
+	echo "ok ($current): $2"
 }
 
-docker volume create "$volume" >/dev/null
-docker run -d --name "$name" --platform linux/amd64 --shm-size 1g \
-	-p 127.0.0.1::9000 -v "$volume:/data" "$image" >/dev/null
+guest_log=/var/log/supervisor/lydiabox-guest.log
 
-wait_for 'test -S /tmp/.X11-unix/X0' "Xvfb socket :0"
-wait_for 'su agent -s /bin/sh -c "DISPLAY=:0 xdpyinfo" || su agent -s /bin/sh -c "DISPLAY=:0 xprop -root"' "X11 display :0 answers"
-wait_for 'pgrep -u 1000 -x xfwm4 && pgrep -u 1000 -f "xfce4-sessio[n]"' "Xfce session and window manager as UID 1000"
-wait_for 'pgrep -u 1000 -f "lydiabox-instabox-gues[t]"' "guest wrapper runs as UID 1000"
-sleep 3
-docker logs "$name" 2>&1 | grep -q "waiting for /data/.lydiabox/guest.env" || fail "the guest wrapper does not wait for guest.env"
-if in_ctr 'pgrep -f "lydiabox-guest [s]erve"' >/dev/null 2>&1; then
-	fail "lydiabox-guest started before guest.env existed"
-fi
-echo "ok: lydiabox-guest waits for guest.env"
+# probe connects to the guest over the real host link with the Go test in
+# internal/instabox/imagetest (needs Go and this checkout).
+probe() {
+	if ! command -v go >/dev/null 2>&1 || [ ! -f "$repo_root/go.mod" ]; then
+		echo "SKIP: link probe ($current, $1): Go or the repository is not available"
+		return
+	fi
+	hostport=$(docker port "$name" 9000/tcp | head -n 1)
+	(cd "$repo_root" && LYDIABOX_IMAGE_LINK_URL="ws://$hostport/" LYDIABOX_IMAGE_LINK_SECRET="$secret" \
+		CGO_ENABLED=0 go test ./internal/instabox/imagetest -run TestImageLink -count=1 -v) ||
+		fail "link probe ($1)"
+	echo "ok ($current): ping, desktop screenshot, PTY, and broker bridge over the host link ($1)"
+}
 
-home=$(in_ctr 'getent passwd agent | cut -d: -f6')
-[ "$home" = /home/agent ] || fail "agent home is $home, want /home/agent"
-[ "$(in_ctr 'readlink /home/agent')" = /data/home ] || fail "/home/agent does not link to /data/home"
-[ "$(in_ctr 'readlink /workspace')" = /data/workspace ] || fail "/workspace does not link to /data/workspace"
-owner=$(in_ctr 'stat -c %u:%g /data/home /data/workspace | sort -u')
-[ "$owner" = 1000:1000 ] || fail "/data/home and /data/workspace owner $owner, want 1000:1000"
-echo "ok: /home/agent -> /data/home, /workspace -> /data/workspace, owner UID 1000"
-
-# The driver writes the settings file as UID 1000 (the InstaBox files
-# API): the host link listener on port 9000 and its secret.
-secret=lbx-test-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
-docker exec -u 1000 -e "SECRET=$secret" "$name" sh -c 'umask 077; cat >/data/.lydiabox/guest.env <<EOF
-LYDIABOX_GUEST_LISTEN=ws://0.0.0.0:9000/
-LYDIABOX_LINK_SECRET=$SECRET
-LYDIABOX_WEBRTC_UDP_PORT=0
-NOT_LYDIABOX=ignored
-LYDIABOX_LOG_LEVEL=debug
-EOF'
+# check_guest WHEN: the guest daemon runs as UID 1000 with the settings of
+# guest.env and the user name $user, and the link probe passes.
 check_guest() {
 	wait_for 'pgrep -u 1000 -f "lydiabox-guest [s]erve" && test -S /run/lydiabox/host-9001.sock' "lydiabox-guest serves the host link as UID 1000 ($1)" 90
 	# shellcheck disable=SC2016 # expanded in the container
@@ -133,36 +146,114 @@ check_guest() {
 	env_check="$env_check"' echo "$env" | grep -qx HOME=/home/agent && echo "$env" | grep -qx LYDIABOX_LOG_LEVEL=debug'
 	# shellcheck disable=SC2016
 	env_check="$env_check"' && echo "$env" | grep -qx LYDIABOX_GUEST_WORKSPACE_ROOT=/data/workspace && ! echo "$env" | grep -q NOT_LYDIABOX'
+	# shellcheck disable=SC2016
+	env_check="$env_check"' && echo "$env" | grep -qx USER='"$user"' && echo "$env" | grep -qx XDG_RUNTIME_DIR=/run/user/1000'
 	as_user=1000
-	wait_for "$env_check" "guest environment from guest.env ($1)" 30
+	wait_for "$env_check" "guest environment from guest.env, USER=$user ($1)" 30
 	as_user=0
 	probe "$1"
 }
 
-# probe connects to the guest over the real host link with the Go test in
-# internal/instabox/imagetest (needs Go and this checkout).
-repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
-probe() {
-	if ! command -v go >/dev/null 2>&1 || [ ! -f "$repo_root/go.mod" ]; then
-		echo "SKIP: link probe ($1): Go or the repository is not available"
-		return
+# run_desktop SCENARIO IMAGE USER: the full check of one image.
+run_desktop() {
+	current=$1
+	user=$3
+	name=$prefix-$1
+	volume=$name-data
+	docker volume create "$volume" >/dev/null
+	docker run -d --name "$name" --platform linux/amd64 --shm-size 1g \
+		-p 127.0.0.1::9000 -v "$volume:/data" "$2" >/dev/null
+
+	wait_for 'test -S /tmp/.X11-unix/X0' "Xvfb socket :0"
+	as_user=1000
+	wait_for 'DISPLAY=:0 xdpyinfo || DISPLAY=:0 xprop -root' "X11 display :0 answers UID 1000"
+	as_user=0
+	wait_for 'pgrep -u 1000 -x xfwm4 && pgrep -u 1000 -f "xfce4-sessio[n]"' "Xfce session and window manager as UID 1000"
+	wait_for 'pgrep -u 1000 -f "lydiabox-instabox-gues[t]"' "guest wrapper runs as UID 1000"
+	sleep 3
+	in_ctr "grep -q 'waiting for /data/.lydiabox/guest.env' $guest_log" || fail "the guest wrapper does not wait for guest.env"
+	if in_ctr 'pgrep -f "lydiabox-guest [s]erve"' >/dev/null 2>&1; then
+		fail "lydiabox-guest started before guest.env existed"
 	fi
-	hostport=$(docker port "$name" 9000/tcp | head -n 1)
-	(cd "$repo_root" && LYDIABOX_IMAGE_LINK_URL="ws://$hostport/" LYDIABOX_IMAGE_LINK_SECRET="$secret" \
-		CGO_ENABLED=0 go test ./internal/instabox/imagetest -run TestImageLink -count=1 -v) ||
-		fail "link probe ($1)"
-	echo "ok: ping, desktop screenshot, PTY, and broker bridge over the host link ($1)"
+	echo "ok ($current): lydiabox-guest waits for guest.env"
+
+	[ "$(in_ctr 'getent passwd 1000 | cut -d: -f1')" = "$user" ] || fail "UID 1000 is not $user"
+	[ "$(in_ctr 'readlink /home/agent')" = /data/home ] || fail "/home/agent does not link to /data/home"
+	[ "$(in_ctr 'readlink /workspace')" = /data/workspace ] || fail "/workspace does not link to /data/workspace"
+	owner=$(in_ctr 'stat -c %u:%g /data/home /data/workspace | sort -u')
+	[ "$owner" = 1000:1000 ] || fail "/data/home and /data/workspace owner $owner, want 1000:1000"
+	in_ctr 'test -f /data/home/.profile' || fail "the home seed was not copied"
+	echo "ok ($current): UID 1000 is $user; /home/agent -> /data/home, /workspace -> /data/workspace, owner UID 1000"
+	if [ "$current" = machine ]; then
+		in_ctr '! getent passwd agent' || fail "the machine model has a user agent"
+		as_user=1000
+		# shellcheck disable=SC2016 # expanded in the container
+		wait_for 'pid=$(pgrep -u 1000 -x xfce4-session | head -n 1); tr "\0" "\n" </proc/$pid/environ | grep -qx DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus' "Xfce uses the session bus of the user manager" 30
+		as_user=0
+	fi
+
+	# The driver writes the settings file as UID 1000 (the InstaBox files
+	# API): the host link listener on port 9000 and its secret.
+	secret=lbx-test-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+	docker exec -u 1000 -e "SECRET=$secret" "$name" sh -c 'umask 077; cat >/data/.lydiabox/guest.env <<EOF
+LYDIABOX_GUEST_LISTEN=ws://0.0.0.0:9000/
+LYDIABOX_LINK_SECRET=$SECRET
+LYDIABOX_WEBRTC_UDP_PORT=0
+NOT_LYDIABOX=ignored
+LYDIABOX_LOG_LEVEL=debug
+EOF'
+	check_guest "first start"
+	in_ctr "grep -q 'lydiabox-guest serving' $guest_log" || fail "no 'lydiabox-guest serving' line in $guest_log"
+	echo "ok ($current): guest log line"
+	# The driver's restart after changed settings (sudo through exec).
+	in_ctr 'supervisorctl -c /etc/lydiabox/instabox-supervisord.conf restart lydiabox-guest' >/dev/null ||
+		fail "supervisorctl restart lydiabox-guest"
+	echo "ok ($current): supervisorctl restarts the guest daemon"
+
+	# Stop and start: the persistent disk keeps guest.env, so the guest
+	# starts without the driver writing it again.
+	docker restart "$name" >/dev/null
+	wait_for 'test -S /tmp/.X11-unix/X0' "Xvfb after restart"
+	wait_for 'pgrep -u 1000 -x xfwm4' "Xfce after restart"
+	check_guest "after restart"
+	docker rm -f "$name" >/dev/null
+	docker volume rm "$volume" >/dev/null
 }
 
-check_guest "first start"
-docker logs "$name" 2>&1 | grep -q "lydiabox-guest serving" || fail "no 'lydiabox-guest serving' line in the container log"
-echo "ok: guest log line"
+build_model() {
+	[ -n "${model_built:-}" ] && return
+	docker build -q --platform linux/amd64 --build-arg "IMAGE=$image" -t "$model" "$script_dir/machine-model" >/dev/null
+	model_built=1
+}
 
-# Stop and start: the persistent disk keeps guest.env, so the guest starts
-# without the driver writing it again.
-docker restart "$name" >/dev/null
-wait_for 'test -S /tmp/.X11-unix/X0' "Xvfb after restart"
-wait_for 'pgrep -u 1000 -x xfwm4' "Xfce after restart"
-check_guest "after restart"
+# expect_entry_error DESCRIPTION SETUP MESSAGE: the entry point exits
+# non-zero with MESSAGE after SETUP (a shell command run as root first).
+expect_entry_error() {
+	set +e
+	out=$(docker run --rm --platform linux/amd64 --entrypoint /bin/sh "$model" -c "$2; exec /usr/local/sbin/lydiabox-instabox-entry" 2>&1)
+	rc=$?
+	set -e
+	if [ "$rc" -eq 0 ] || ! echo "$out" | grep -q "$3"; then
+		echo "$out" | tail -n 5 >&2
+		echo "FAIL (precond): $1: exit $rc, want non-zero and '$3'" >&2
+		exit 1
+	fi
+	echo "ok (precond): $1"
+}
 
-echo "PASS: $image"
+if [ "$scenario" = plain ] || [ "$scenario" = all ]; then
+	run_desktop plain "$image" agent
+fi
+if [ "$scenario" = machine ] || [ "$scenario" = all ]; then
+	build_model
+	run_desktop machine "$model" alice
+fi
+if [ "$scenario" = precond ] || [ "$scenario" = all ]; then
+	build_model
+	current=precond
+	expect_entry_error "no user with UID 1000" "mkdir -p /data && userdel alice" "ERROR: no user with UID 1000"
+	expect_entry_error "no /data" "rm -rf /data" "ERROR: /data does not exist"
+	expect_entry_error "/home/agent is a directory" "mkdir -p /data && rm /home/agent && mkdir /home/agent" "ERROR: /home/agent exists and is not a link"
+fi
+
+echo "PASS: $image ($scenario)"
