@@ -59,7 +59,7 @@ Status legend:
 | 499 | `canceled` | The client closed the request before the answer (`GET /api/v1/sessions` while the guest discovery waits); the client does not see it |
 | 500 | `internal` | Unexpected server error. The server logs one `request failed` line at error level with the route, the status, and the cause (credentials removed) |
 | 501 | `not_implemented` | Route exists but the subsystem is not in this build |
-| 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running |
+| 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running. An expected state (the VM is not running, or the user stopped it) is logged at info level (`request refused`); other `503` answers are logged like a `500` |
 | 504 | `timeout` | The VM did not reach `RUNNING` in time (`POST /api/v1/vm/wake`) |
 
 ## 2. Authentication
@@ -170,7 +170,8 @@ Response `200`: `{ "status": "ok" }`. Liveness only; no dependency checks.
 Response `200`: `{ "status": "ready", "tenantId": "alice" }`. The server
 serves only after every subsystem has started, so an answer means the
 cell is ready; a cell host checks the tenant ID to be sure that it reached
-the right cell. The VM can be stopped or paused: it wakes on the first use.
+the right cell. The VM can be stopped or paused: it wakes on the first use,
+but a VM that the user stopped starts only on an explicit start (section 7).
 
 ### `GET /api/v1/status` — implemented
 
@@ -262,7 +263,9 @@ Two roots exist. Where they are depends on the storage mode
 - `provider` mode: the trees are on the machine disk, and the host reaches
   them through the guest daemon file methods (`fs.*` on the guest RPC). A
   request takes a `files` lease (section 7) and wakes a `PAUSED` or
-  `STOPPED` machine. When the machine does not answer within 90 s, the
+  `STOPPED` machine, but not a machine that the user stopped: that request
+  fails at once with `503 unavailable` ("the VM was stopped; start it to use
+  these files"). When the machine does not answer within 90 s, the
   request fails with `503 unavailable` ("the agent machine did not start
   within 1m30s; retry the request"). Invalid paths fail with `400` without
   a wake. The guest applies the same path rules with its own `os.Root`
@@ -515,13 +518,24 @@ provider's `Retry-After`) before it tries again.
 | Route | Effect | Response |
 | :--- | :--- | :--- |
 | `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
-| `POST /api/v1/vm/wake` | `EnsureRunning`: boot from `STOPPED` or resume from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `504` after 120 s |
+| `POST /api/v1/vm/wake` | Explicit start (`Start`): ends a user stop, then boots from `STOPPED` or resumes from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `504` after 120 s |
 | `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause | `200 VMStatus` (`PAUSED`) |
 | `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot` | `200 VMStatus` (`STOPPED`) |
 
 `409 conflict` when the transition is not possible (for example hibernate
 or stop while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM
 themselves; the UI does not need to call `wake` first.
+
+A user stop holds: from the start of `POST /api/v1/vm/stop` until the next
+explicit start, no request wakes the VM on demand. The desktop socket, the
+terminal socket of an existing session, and File API requests in `provider`
+mode answer at once (desktop and terminal: `error` message with `code`
+`stopped`, then close `1000`; File API: `503`), and the clients do not
+retry. Only `POST /api/v1/vm/wake` and `POST /api/v1/sessions` (a new or
+resumed session, which the user asked for) start the VM again. An idle
+pause (`PAUSED` by the idle timer or by InstaBox) is not a user stop: the
+next request wakes the machine. The hold is kept in memory: a restart of
+the host process forgets it.
 
 ## 8. Sessions and PTY — implemented (Phase 3)
 
@@ -574,7 +588,8 @@ started are always listed from its own metadata.
 
 ### `POST /api/v1/sessions`
 
-Starts a harness PTY in the guest (wakes the VM).
+Starts a harness PTY in the guest. It starts the VM, also one that the
+user stopped: a new or resumed session is an explicit request.
 
 ```json
 { "harness": "claude-code", "workspaceDir": "/workspace/lydiabox", "model": "kimi/kimi-k3",
@@ -622,7 +637,9 @@ On connect the server sends `hello`, then the ring-buffer replay (up to
 is closed with status `1008`. When the session has no running terminal, the
 server sends an `error` message (`not_found`, `conflict` for a session that
 is idle or exited, `unavailable` when the VM cannot be woken) and closes the
-socket (`1008`, or `1013` for `unavailable`). A terminal that survived a host
+socket (`1008`, or `1013` for `unavailable`). When the user stopped the VM,
+the server sends `error` with `code` `stopped` and closes with `1000`; the
+socket does not start the VM, and the client does not reconnect. A terminal that survived a host
 restart is attached again from the guest. Invalid control messages give an
 `error` message with `code` `bad_request`; the socket stays open. A client
 that falls more than 512 frames behind is disconnected.
@@ -667,7 +684,11 @@ Screen coordinates are always in the guest frame, 1920 × 1080.
 
 Subprotocol `lydiabox.desktop.v1`. Text frames only, one JSON object each.
 Opening the socket wakes the VM and takes a desktop lease; closing it
-releases the lease (the guest stops `ffmpeg` when no viewer remains).
+releases the lease (the guest stops `ffmpeg` when no viewer remains). The
+socket does not start a VM that the user stopped (section 7): the server
+sends `{ "type": "error", "code": "stopped" }` and closes with `1000`, also
+when a user stop ends an open stream. The browser does not reconnect after
+`stopped`; it opens a new socket when the VM is `RUNNING` again.
 
 The browser creates the `RTCPeerConnection` with one `recvonly` H.264 video
 transceiver and a data channel labelled `input`, then sends the offer.
@@ -718,7 +739,8 @@ connection and sends a new offer on the same socket.
 every join and leave. An invalid message gives an `error` message with
 `code` `bad_request`; the socket stays open. A socket without the
 subprotocol is closed with status `1008`. A failed wake or stream start
-gives an `error` message with `code` `unavailable`, then close `1011`.
+gives an `error` message with `code` `unavailable`, then close `1011`; a
+user stop gives `code` `stopped`, then close `1000`.
 
 Media path: the guest sends all WebRTC media on one UDP port
 (`LYDIABOX_WEBRTC_UDP_PORT`, default `50000`), which the VMM driver
