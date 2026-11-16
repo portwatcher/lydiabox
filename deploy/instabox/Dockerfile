@@ -5,7 +5,10 @@
 # (`instabox snapshot import IMAGE --name N`): it lays the image's files
 # over an agent-browser machine and runs the image ENTRYPOINT and CMD as
 # the systemd unit instabox-image.service, as root (no USER). systemd,
-# sshd, sudo, the UID 1000 user, and /data stay the machine's.
+# sshd, sudo, the user database (UID 1000 has the account's name, not
+# "agent", and the home /data/home), the shared libraries of the
+# machine's own programs (glibc, libdbus), and /data stay the machine's.
+# So the run-time scripts use UID 1000 by number, never a user name.
 #
 # BASE_IMAGE is the "desktop" (or "desktop-slim") stage of
 # deploy/rootfs/Dockerfile, built for linux/amd64. Build both with
@@ -22,9 +25,10 @@
 ARG BASE_IMAGE=lydiabox/guest:instabox-base
 FROM ${BASE_IMAGE}
 
-# The agent user (UID 1000) keeps its name and its home path. The home
-# content of the base image becomes the seed of a new /data/home, and
-# /home/agent and /workspace become links onto the persistent disk.
+# The home content of the base image becomes the seed of /data/home, and
+# /home/agent and /workspace become links onto the persistent disk (the
+# import keeps both links; the entry point makes them when they are
+# missing).
 RUN set -eux; \
 	mkdir -p /usr/local/share/lydiabox; \
 	mv /home/agent /usr/local/share/lydiabox/home-seed; \
@@ -37,9 +41,12 @@ COPY deploy/instabox/supervisord.conf /etc/lydiabox/instabox-supervisord.conf
 COPY deploy/instabox/guest.env.example /etc/lydiabox/guest.env.example
 COPY --chmod=0755 deploy/instabox/lydiabox-instabox-entry /usr/local/sbin/lydiabox-instabox-entry
 COPY --chmod=0755 deploy/instabox/lydiabox-instabox-guest /usr/local/bin/lydiabox-instabox-guest
+COPY --chmod=0755 deploy/instabox/lydiabox-instabox-xfce /usr/local/bin/lydiabox-instabox-xfce
 
-# InstaBox exports the image ENV into every session (exec, SSH, login
-# shells), so HOME and DISPLAY match the desktop the entry point starts.
+# InstaBox exports the image ENV into sessions (exec, SSH) and into
+# instabox-image.service, except HOME and PATH: there HOME is the machine
+# user's /data/home (the same directory as /home/agent). DISPLAY matches
+# the desktop that the entry point starts.
 ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data
 
 LABEL org.opencontainers.image.title="lydiabox-instabox" \

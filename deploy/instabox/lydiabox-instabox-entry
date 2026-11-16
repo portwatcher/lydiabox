@@ -1,27 +1,53 @@
 #!/bin/sh
 # Entry point of the LydiaBox InstaBox image (deploy/instabox/Dockerfile).
 # On InstaBox it runs as root in the systemd unit instabox-image.service,
-# which restarts it on failure; in the container test it is PID 1. It
-# prepares the persistent disk and runs supervisord, which starts Xvfb,
-# Xfce, and lydiabox-guest as the agent user (UID 1000).
+# which restarts it 5 seconds after a failure; in the container test it is
+# PID 1. It prepares the persistent disk and runs supervisord, which starts
+# Xvfb, Xfce, and lydiabox-guest as the machine user (UID 1000).
+#
+# The machine user is UID 1000, but its name is not the image's: an
+# InstaBox import keeps the machine's own user database, where UID 1000 has
+# the account's name (for example "alice") and the home /data/home. So
+# nothing here or in the supervisord configuration uses a user name from
+# the image; the name comes from `getent passwd 1000` at each start.
 #
 # It never mounts anything: under systemd /run, /tmp, /dev, and /data are
-# the machine's.
+# the machine's. A missing precondition is an error in the journal
+# (journalctl -u instabox-image.service) and a non-zero exit.
 set -eu
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}" TZ="${TZ:-Etc/UTC}"
 data=${LYDIABOX_DATA_ROOT:-/data}
 display=${LYDIABOX_DISPLAY:-${DISPLAY:-:0}}
-export LYDIABOX_DATA_ROOT="$data" LYDIABOX_DISPLAY="$display"
 uid=1000
+# The guest paths that the core uses (agentfs.DefaultGuestHome and the
+# PTY directory); both are links onto the persistent disk.
+home=/home/agent
+workspace=/workspace
 
 log() { echo "lydiabox-instabox-entry: $*" >&2; }
-
-if [ ! -d "$data" ]; then
-	log "$data does not exist; the persistent disk is not mounted"
+die() {
+	log "ERROR: $*"
 	exit 1
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+	die "runs as UID $(id -u); the entry point must run as root (no USER in the image)"
 fi
+for cmd in getent supervisord Xvfb startxfce4 dbus-run-session lydiabox-guest lydiabox-instabox-guest; do
+	command -v "$cmd" >/dev/null 2>&1 || die "$cmd is missing from the image"
+done
+if [ ! -d "$data" ]; then
+	die "$data does not exist; the persistent disk is not mounted"
+fi
+pw=$(getent passwd "$uid" || true)
+if [ -z "$pw" ]; then
+	die "no user with UID $uid in the user database; InstaBox creates the machine user (instabox-user.service), the image must not remove it"
+fi
+user=${pw%%:*}
+gid=$(echo "$pw" | cut -d: -f4)
+log "machine user $user (UID $uid, GID $gid, passwd home $(echo "$pw" | cut -d: -f6)); home $home, display $display"
 
 # Agent home, workspace, and the driver's settings directory on the
 # persistent disk. Only new directories change owner, so a large home is
@@ -29,25 +55,45 @@ fi
 for dir in "$data/home" "$data/workspace" "$data/.lydiabox"; do
 	if [ ! -d "$dir" ]; then
 		mkdir -p "$dir"
-		chown "$uid:$uid" "$dir"
+		chown "$uid:$gid" "$dir"
 	fi
 done
 chmod 0700 "$data/.lydiabox"
-# A new home gets the home content of the image (/home/agent links to
-# /data/home).
+
+# ensure_link LINK TARGET: LINK must be a symbolic link to TARGET. A
+# missing link is made; anything else is an error, because the core's
+# files would then not be on the persistent disk.
+ensure_link() {
+	if [ -L "$1" ]; then
+		[ "$(readlink "$1")" = "$2" ] || die "$1 links to $(readlink "$1"), want $2"
+		return
+	fi
+	[ ! -e "$1" ] || die "$1 exists and is not a link to $2"
+	mkdir -p "$(dirname "$1")"
+	ln -s "$2" "$1"
+	log "made the link $1 -> $2"
+}
+ensure_link "$home" "$data/home"
+ensure_link "$workspace" "$data/workspace"
+
+# The home content of the image (shell profile files) is copied once into
+# the home without replacing a file that is there: on InstaBox, /data/home
+# already has the machine's own files when the image starts first.
 seed=/usr/local/share/lydiabox/home-seed
-[ -d "$seed" ] || seed=/etc/skel
-if [ ! -e "$data/home/.profile" ] && [ -d "$seed" ]; then
-	cp -a -n "$seed/." "$data/home/" 2>/dev/null || true
-	chown -R "$uid:$uid" "$data/home"
+seeded=$data/.lydiabox/home-seeded
+if [ -d "$seed" ] && [ ! -e "$seeded" ]; then
+	cp -a --update=none "$seed/." "$data/home/" || log "the home seed copy was incomplete"
+	chown -R "$uid:$gid" "$data/home"
+	: >"$seeded"
 fi
 
 # Runtime directories of the desktop, the session bus, and the local
 # sockets that lydiabox-guest bridges to the host link
-# (/run/lydiabox/host-9001.sock and host-9002.sock).
+# (/run/lydiabox/host-9001.sock and host-9002.sock). On InstaBox the user
+# lingers, so logind keeps /run/user/1000.
 mkdir -p /tmp/.X11-unix /run/user/$uid /var/log/supervisor /run/dbus /run/lydiabox
 chmod 1777 /tmp /tmp/.X11-unix
-chown "$uid:$uid" /run/user/$uid /run/lydiabox
+chown "$uid:$gid" /run/user/$uid /run/lydiabox
 chmod 0700 /run/user/$uid
 chmod 0755 /run/lydiabox
 dnum=${display#:}
@@ -64,4 +110,7 @@ if [ ! -S /run/dbus/system_bus_socket ]; then
 	dbus-daemon --system --fork || log "no system D-Bus; Xfce runs without it"
 fi
 
-exec /usr/bin/supervisord -n -c /etc/lydiabox/instabox-supervisord.conf
+# The supervisord configuration reads these (%(ENV_...)s).
+export LYDIABOX_DATA_ROOT="$data" LYDIABOX_DISPLAY="$display"
+export LYDIABOX_GUEST_USER="$user" LYDIABOX_GUEST_HOME="$home"
+exec supervisord -n -c /etc/lydiabox/instabox-supervisord.conf

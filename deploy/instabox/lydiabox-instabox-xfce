@@ -1,0 +1,45 @@
+#!/bin/sh
+# Starts the Xfce session of the LydiaBox InstaBox image as the machine
+# user (UID 1000), with a session D-Bus.
+#
+# On InstaBox the machine user lingers: its systemd user manager runs the
+# session bus at $XDG_RUNTIME_DIR/bus, and the image's dbus-run-session
+# cannot run there (it needs LIBDBUS_PRIVATE_1.14.10 of the image's
+# libdbus, but the machine keeps its own, newer libdbus). So the session
+# uses the user bus when there is one. Under systemd the user manager can
+# start after this program, so it waits for the bus. Without systemd (the
+# container test) dbus-run-session gives the session its own bus.
+set -eu
+
+log() { echo "lydiabox-instabox-xfce: $*" >&2; }
+
+# Xvfb starts at the same time; Xfce needs its socket.
+dnum=${DISPLAY:-:0}
+dnum=${dnum#:}
+dnum=${dnum%%.*}
+i=0
+while [ ! -S "/tmp/.X11-unix/X$dnum" ] && [ "$i" -lt 30 ]; do
+	sleep 1
+	i=$((i + 1))
+done
+
+runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+bus=$runtime/bus
+if [ -d /run/systemd/system ] && [ ! -S "$bus" ]; then
+	log "waiting for the session bus $bus of the user manager"
+	i=0
+	while [ ! -S "$bus" ] && [ "$i" -lt 60 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+fi
+if [ -S "$bus" ]; then
+	export DBUS_SESSION_BUS_ADDRESS="unix:path=$bus"
+	log "session bus $bus"
+	exec startxfce4
+fi
+if ! dbus-run-session -- true; then
+	log "ERROR: no session bus at $bus and dbus-run-session does not run"
+	exit 1
+fi
+exec dbus-run-session -- startxfce4

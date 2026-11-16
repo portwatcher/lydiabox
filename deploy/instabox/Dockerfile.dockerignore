@@ -3,3 +3,4 @@
 !deploy/instabox/guest.env.example
 !deploy/instabox/lydiabox-instabox-entry
 !deploy/instabox/lydiabox-instabox-guest
+!deploy/instabox/lydiabox-instabox-xfce
