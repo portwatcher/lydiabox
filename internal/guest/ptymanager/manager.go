@@ -58,8 +58,9 @@ type Options struct {
 	// directory that holds it, for a guest whose trees are elsewhere and
 	// not linked (a test guest). A spec directory below a key moves there.
 	Dirs map[string]string
-	// Env is added to every PTY environment after the daemon's own
-	// environment and before the spec's variables.
+	// Env is added to every PTY environment after the inherited part of
+	// the daemon's own environment (Inherited) and before the spec's
+	// variables.
 	Env map[string]string
 	// RingSize is the replay buffer size (default 1 MiB).
 	RingSize int
@@ -220,15 +221,7 @@ func pollable(ptmx *os.File) (*os.File, error) {
 }
 
 func (m *Manager) environ(extra map[string]string, id string) []string {
-	env := map[string]string{}
-	for _, kv := range os.Environ() {
-		if k, v, ok := strings.Cut(kv, "="); ok {
-			env[k] = v
-		}
-	}
-	if env["LANG"] == "" {
-		env["LANG"] = "C.UTF-8"
-	}
+	env := baseEnv(daemonEnviron())
 	for k, v := range m.opts.Env {
 		env[k] = v
 	}
