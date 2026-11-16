@@ -86,10 +86,13 @@ state. InstaBox changes often: read the pages again before each phase.
    systemd restarts it when it fails (images).
 4. Keep the agent home and the workspace on `/data`: the image
    ([deploy/instabox](../deploy/instabox), [instabox.md](instabox.md)) keeps
-   the guest paths `/home/agent` and `/workspace` as links to `/data/home`
-   (InstaBox's own HOME) and `/data/workspace`. Only `/data` is the user
-   disk. The image runs its programs as UID 1000 by number, never by a
-   user name.
+   the guest paths `/home/agent` and `/workspace` as links to
+   `/data/lydiabox/home` (LydiaBox's own home) and `/data/workspace`.
+   InstaBox's own HOME, `/data/home`, has the template's harness files
+   (MCP servers, skills, `AGENTS.md`) and LydiaBox does not use it. Only
+   `/data` is the user disk. The image runs its programs as UID 1000 by
+   number, never by a user name, and gives them a defined environment
+   ([instabox.md](instabox.md#supplier-files-and-environment)).
 5. The guest needs no `/dev/kvm`: the InstaBox machine is the agent VM.
 
 Guest binary upgrades: the driver compares the version of the running

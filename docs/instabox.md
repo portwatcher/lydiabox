@@ -167,41 +167,69 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
 | Only `linux/amd64` images can be imported. | `build.sh` builds `--platform linux/amd64`, checks the base architecture, and writes a single-platform image (`--provenance=false --sbom=false`). |
 | The import pulls from a registry; a local image cannot be imported. | `build.sh --push`, or `docker tag` and `docker push`; the printed command uses the pushed digest. |
 | `ENTRYPOINT` and `CMD` run as the systemd unit `instabox-image.service`, in `WORKDIR`, as `USER` (root when unset), restarted on failure; output goes to the journal. | `ENTRYPOINT ["/usr/local/sbin/lydiabox-instabox-entry"]`, no `USER`, `WORKDIR /`. The entry point runs supervisord in the foreground, so the unit stays active. |
-| The image's own init (tini, s6) is not run. systemd, sshd, sudo, the UID 1000 user, `/data`, and the machine's shared libraries stay. | The entry point mounts nothing (the `lydiabox-init` of the VM and docker drivers mounts `/run` and `/tmp` and is not used). It starts the system D-Bus only when `/run/dbus/system_bus_socket` is missing. The machine keeps its own `libdbus`, so the image's `dbus-run-session` cannot run: Xfce uses the session bus of the machine's user manager (`/run/user/1000/bus`). |
-| The image's user with UID 1000 is the machine user. | The import keeps the machine's user database: UID 1000 has the account's name (for example `alice`), not `agent`, and the home `/data/home`. The image uses UID 1000 by number (supervisord `user=1000`); the entry point reads the name with `getent passwd 1000`. `HOME` is `/home/agent`, a link to `/data/home`. |
-| `ENV` reaches every session (exec, SSH, login shells). | `ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data`. InstaBox leaves out `HOME` and `PATH`: sessions get `HOME=/data/home`, and the unit gets no `HOME`. |
+| The image's own init (tini, s6) is not run. systemd, sshd, sudo, the UID 1000 user, `/data`, and the machine's shared libraries stay. | Verified: the shared libraries (`*.so`) and some programs (`dbus-daemon` 1.16.2) stay the machine's, while other files are the image's (`xfce4-panel` 4.18, `wrapper-2.0`, `/etc/xdg/xfce4/panel/default.xml`). The entry point therefore sets the files that matter to LydiaBox at each start. It mounts nothing (the `lydiabox-init` of the VM and docker drivers mounts `/run` and `/tmp` and is not used). It starts the system D-Bus only when `/run/dbus/system_bus_socket` is missing. The machine keeps its own `libdbus`, so the image's `dbus-run-session` cannot run: the Xfce wrapper runs `dbus-daemon --session` itself (`/run/user/1000/lydiabox-session-bus`), not the bus of the machine's user manager (`/run/user/1000/bus`), whose services get `HOME=/data/home`. |
+| The image's user with UID 1000 is the machine user. | The import keeps the machine's user database: UID 1000 has the account's name (for example `alice`), not `agent`, and the home `/data/home`. The image uses UID 1000 by number (supervisord `user=1000`); the entry point reads the name with `getent passwd 1000`. `HOME` is `/home/agent`, a link to `/data/lydiabox/home`, not to InstaBox's `/data/home`. |
+| `ENV` reaches every session (exec, SSH, login shells). | `ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data`. InstaBox leaves out `HOME` and `PATH`: sessions get `HOME=/data/home`, and the unit gets no `HOME`. The entry point starts supervisord with a defined environment (`env -i`), not the unit's. |
 | `EXPOSE` is not published. | The driver publishes the link port with `PublishPrivatePort`. |
 | `/etc/instabox/image.json` records the image reference, digest, and config. | The driver can read it to check the snapshot's image. |
 
 ### Run-time layout
 
-- The core uses the guest paths `/home/agent` (agent home, `HOME`) and
-  `/workspace` (PTY and session directories), so both are links onto the
-  persistent disk: `/home/agent` to `/data/home` (also InstaBox's own
-  `HOME`) and `/workspace` to `/data/workspace`.
+| Path | What | Owner |
+| :--- | :--- | :--- |
+| `/home/agent` | link to `/data/lydiabox/home`: LydiaBox's agent home, `HOME` of every LydiaBox program and PTY, the `home` root of the file API | link: root |
+| `/data/lydiabox/home` | the agent home (mode 0700), copied once from the image's home seed (marker `/data/lydiabox/home-seeded`) | UID 1000 |
+| `/workspace` | link to `/data/workspace`: the workspace and PTY directory, the `workspace` root of the file API | link: root |
+| `/data/home` | InstaBox's own home (the passwd home of UID 1000, `HOME` of exec and SSH sessions) with the template's `.claude.json`, `.claude/skills`, `.agents/skills`, `.codex/AGENTS.md`, `AGENTS.md`, and `MACHINE.md`. LydiaBox does not use it and never changes it | UID 1000 |
+| `/data/.lydiabox` | the driver's `guest.env` and the uploaded guest binary `bin/lydiabox-guest` (mode 0700) | UID 1000 |
+
+- The core uses the guest paths `/home/agent` and `/workspace`, so both
+  are links onto the persistent disk. A machine from an image of core
+  `802e85c` or earlier has the old layout, `/home/agent -> /data/home`.
+  At its first start with this image the entry point moves the link to
+  `/data/lydiabox/home` in one step (a new link renamed over the old
+  one), appends a line to `/data/lydiabox/home-moved.log`, and logs
+  `moved the agent home: ...` in the journal. It moves nothing else:
+  the files in `/data/home`, also those that LydiaBox wrote there before
+  (harness sessions in `.claude/projects` and `.codex/sessions`, uploads
+  to the home root, `.gnupg`, the old Xfce settings), stay there and do
+  not move into the new home. LydiaBox's session list no longer shows
+  those old sessions; copy a file by hand if it is still needed. Later
+  starts find the new link and do nothing.
 - `/usr/local/sbin/lydiabox-instabox-entry` (root): checks its
   preconditions (root, the programs, `/data`, a user with UID 1000) and
   exits with an `ERROR:` line in the journal when one is missing; reads the
-  name of UID 1000; creates `/data/home`,
-  `/data/workspace`, and `/data/.lydiabox` (mode 0700) owned by UID 1000
-  when they are missing; makes the links `/home/agent` and `/workspace`
-  when they are missing (anything else there is an error); copies the home
-  content of the base image (`/usr/local/share/lydiabox/home-seed`) once
-  without replacing files (marker `/data/.lydiabox/home-seeded`); prepares
+  name of UID 1000; creates `/data/lydiabox`, `/data/lydiabox/home`,
+  `/data/workspace`, and `/data/.lydiabox` owned by UID 1000 when they
+  are missing; moves the old link; makes the links `/home/agent` and
+  `/workspace` when they are missing (anything else there is an error);
+  copies the home seed once without replacing files; sets the image's
+  `/etc/codex/config.toml`, `/etc/claude-code/managed-settings.json`, and
+  `/etc/xdg/xfce4/panel/default.xml` (from `/usr/local/share/lydiabox/etc`)
+  and links `/usr/local/bin/claude`, `codex`, `opencode`, and `dsh` to
+  `/usr/bin` when they differ, keeping the template's version once as
+  `FILE.instabox-template` and logging each change; prepares
   `/tmp/.X11-unix` and `/run/user/1000`; and runs supervisord with
-  `/etc/lydiabox/instabox-supervisord.conf`.
+  `/etc/lydiabox/instabox-supervisord.conf` and a defined environment
+  (`env -i` with `PATH`, `LANG`, `LC_ALL`, `TZ`, and the `LYDIABOX_*`
+  variables of the configuration).
 - supervisord starts, as UID 1000 (`USER` and `LOGNAME` are the name of
   UID 1000, `HOME=/home/agent`, `XDG_RUNTIME_DIR=/run/user/1000`): Xvfb on
   `LYDIABOX_DISPLAY` (default `:0`), Xfce
-  (`/usr/local/bin/lydiabox-instabox-xfce`: `startxfce4` on the user
-  manager's session bus, or in `dbus-run-session` without systemd), and
+  (`/usr/local/bin/lydiabox-instabox-xfce`: `startxfce4` on a session bus
+  of its own, `dbus-daemon --session` at
+  `/run/user/1000/lydiabox-session-bus`, so that `xfconfd` and the other
+  services of the bus get `HOME=/home/agent` and keep the Xfce settings in
+  LydiaBox's home; supervisord stops the whole process group), and
   `/usr/local/bin/lydiabox-instabox-guest`. The program logs are in
   `/var/log/supervisor` (the guest daemon's in `lydiabox-guest.log`:
   under systemd supervisord cannot open `/dev/stdout`, a journal socket);
   the state changes of the programs are in the journal of the unit.
 - `lydiabox-instabox-guest` waits for `/data/.lydiabox/guest.env`, exports
-  its `LYDIABOX_*` lines (the file is read, never run), sets the file
-  roots, and starts
+  its `LYDIABOX_*` lines (the file is read, never run) except the two
+  file roots, which the image sets (`LYDIABOX_GUEST_HOME_ROOT=/data/lydiabox/home`,
+  `LYDIABOX_GUEST_WORKSPACE_ROOT=/data/workspace`; a root in the file
+  gets an `ignoring ...` line in the guest log), and starts
   `lydiabox-guest serve -workdir $LYDIABOX_GUEST_WORKSPACE_ROOT -display $LYDIABOX_DISPLAY`.
   When `/data/.lydiabox/bin/lydiabox-guest` exists, it runs that binary
   instead of the image's: the driver upgrades the guest with a file upload
@@ -209,6 +237,42 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
 - `/run/lydiabox` belongs to UID 1000, so that the daemon can create the
   link-mode sockets `host-9001.sock` (broker) and `host-9002.sock` (LLM
   gateway) there.
+- The Xfce panel's default (`/etc/xdg/xfce4/panel/default.xml`, from
+  `deploy/instabox/xfce4-panel.xml`) has only plugins that load in the
+  panel's process; a new agent home starts with it.
+
+### Supplier files and environment
+
+The machine template adds harness settings and variables of its own.
+Found on the machine of the first tenant (2026-11-16; names and lengths
+only, no value of a credential was read):
+
+| Supplier item | Effect before | What LydiaBox does now |
+| :--- | :--- | :--- |
+| `/data/home/.claude.json` with the MCP servers `instabox` and `open-computer-use`; `/data/home/.claude/skills`, `/data/home/.agents/skills` (`instabox`, `instabox-snapshots`); `AGENTS.md` linked as `.claude/CLAUDE.md` and `.codex/AGENTS.md` | Claude Code in LydiaBox loaded both MCP servers (`claude mcp list`: `instabox ✔ Connected`), the skills, and InstaBox's instructions | Not used: `HOME` is `/data/lydiabox/home` |
+| `/etc/codex/config.toml` with `[mcp_servers.instabox]` (`env_vars` `INSTABOX_API_KEY`, `INSTABOX_API_URL`, `INSTABOX_MCP_ALLOW_DELETE`) and `[mcp_servers.open-computer-use]`, read by Codex in every home | Codex in LydiaBox loaded both MCP servers (`codex mcp list`) | The entry point sets the image's file at each start (`deploy/instabox/codex-config.toml`: only `check_for_update_on_startup = false`); the template's is kept as `/etc/codex/config.toml.instabox-template` |
+| `/etc/claude-code/managed-settings.json` (`env.DISABLE_AUTOUPDATER=1`) | Claude Code did not update itself | The entry point sets the image's file with the same setting |
+| `/usr/local/bin/claude`, `codex`, `opencode` linked to `/opt/npm` (Claude Code 2.1.288, Codex 0.160.0, updated by the machine user); `/usr/local/bin` is first in `PATH` | LydiaBox ran these instead of the image's (2.1.325, 0.169.0) | The entry point links them (and `dsh`) to the image's CLIs in `/usr/bin` |
+| The user manager's session bus (`/run/user/1000/bus`) starts `xfconfd` with `HOME=/data/home` | Xfce read and wrote its settings in `/data/home/.config/xfce4`, also after `/home/agent` moved | Xfce runs on its own bus with `HOME=/home/agent` |
+| Unit `instabox-image.service`: `EnvironmentFile=/etc/instabox/image.env` (the image `ENV`) and systemd's `INVOCATION_ID`, `JOURNAL_STREAM`, `SYSTEMD_EXEC_PID`, `MEMORY_PRESSURE_WATCH`, `MEMORY_PRESSURE_WRITE` | All reached supervisord, the guest daemon, and every PTY | The entry point starts supervisord with `env -i` and a defined list |
+| supervisord's `SUPERVISOR_ENABLED`, `SUPERVISOR_GROUP_NAME`, `SUPERVISOR_PROCESS_NAME`, `SUPERVISOR_SERVER_URL`; the daemon's `LYDIABOX_GUEST_LISTEN`, `LYDIABOX_GUEST_*_ROOT`, `LYDIABOX_WEBRTC_UDP_PORT`, `LYDIABOX_DATA_ROOT`, `DEBIAN_FRONTEND` | Reached every PTY | The guest daemon gives PTYs only `ptymanager.Inherited` variables (below) |
+| `/etc/profile.d/instabox-npm.sh` (`PATH` + `/opt/npm/bin`), `instabox-universal.sh` (`PATH` + `~/go/bin`, `~/.cargo/bin`, `~/.bun/bin`, `PNPM_HOME`, `~/.yarn/bin`; `JAVA_HOME`), `instabox-tmpdir.sh` (`TMPDIR=/data/tmp`), `instabox-opencode.sh` (`OPENCODE_DISABLE_AUTOUPDATE=1`); `/etc/environment` (`JAVA_HOME`) | Login shells only | Unchanged: the web terminal is a login shell (`bash -l`) and reads them; none holds a credential or an MCP setting. Harness PTYs run the harness directly, not through a login shell, and do not read them |
+| `GEMINI_API_KEY` (14 characters) in a LydiaBox terminal | Not the supplier's: it is LydiaBox's placeholder `lydiabox-local` (`ptymanager.DefaultEnv`); the machine's environment has no `GEMINI_API_KEY`, `ANTHROPIC_*`, `OPENAI_*`, `CLAUDE_*`, `CODEX_*`, or MCP variable | Unchanged |
+
+Environment of LydiaBox processes. supervisord and its programs get
+`PATH`, `LANG`, `LC_ALL`, `TZ`, and the `LYDIABOX_*` variables of the
+entry point, then the program's `environment=` (`HOME=/home/agent`,
+`USER`, `LOGNAME`, `SHELL`, `DISPLAY`, `XDG_RUNTIME_DIR`). A PTY of the
+guest daemon gets only these variables of the daemon
+(`ptymanager.Inherited`): `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`,
+`LANG`, `LANGUAGE`, `LC_*`, `TZ`, `DISPLAY`, `XDG_RUNTIME_DIR`,
+`DBUS_SESSION_BUS_ADDRESS`, the proxy variables, `SSL_CERT_FILE`, and
+`SSL_CERT_DIR`; then LydiaBox's (`LYDIABOX_HOST_ADDR`,
+`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, the
+placeholder `GEMINI_API_KEY`, `TERM`, `COLORTERM`, `DISPLAY`,
+`LYDIABOX_PTY_ID`) and the session's (`LYDIABOX_SESSION_ID`,
+`LYDIABOX_HARNESS`, the binding's variables). The same rule applies in
+the `chv` and `docker` backends.
 
 ### Settings the driver supplies
 
@@ -224,7 +288,7 @@ through exec. `deploy/instabox/guest.env.example` is the contract:
 | `LYDIABOX_GUEST_LISTEN` | `ws://0.0.0.0:9000/`: the host link listener (`rpc.EnvGuestListen`). The driver publishes port 9000 with `PublishPrivatePort` and dials `wss://9000-<id without m_>.<port domain>/` with `Authorization: Bearer <port token>` (`link.Target`) |
 | `LYDIABOX_LINK_SECRET` or `LYDIABOX_LINK_SECRET_FILE` | Link secret, at least 16 bytes; the daemon removes both from its environment after reading |
 | `LYDIABOX_HOST_ADDR`, `LYDIABOX_GATEWAY_ADDR` | Leave out: in link mode they default to `unix:///run/lydiabox/host-9001.sock` and `host-9002.sock` |
-| `LYDIABOX_GUEST_HOME_ROOT`, `LYDIABOX_GUEST_WORKSPACE_ROOT` | The two file roots of the guest file API (provider storage mode); the wrapper defaults them to `/data/home` and `/data/workspace`; the workspace is also the PTY directory |
+| `LYDIABOX_GUEST_HOME_ROOT`, `LYDIABOX_GUEST_WORKSPACE_ROOT` | Not settings: the image sets the two file roots (`/data/lydiabox/home`, `/data/workspace`) and the wrapper ignores them in the file. The driver of core `802e85c` and earlier wrote `LYDIABOX_GUEST_HOME_ROOT=/data/home`; the next driver writes neither, so a machine with the old file gets a new file and one restart of the guest daemon at its next attach |
 | `LYDIABOX_WEBRTC_UDP_PORT` | `0`: the desktop stream uses TURN only (no inbound UDP is documented) |
 | `LYDIABOX_LOG_LEVEL`, `LYDIABOX_CHROME_FLAGS` | Optional |
 
@@ -239,44 +303,81 @@ plane, as in the other drivers.
 
 `deploy/instabox/test.sh` runs the image with Docker as `linux/amd64`
 (emulated on arm64) with a volume as `/data` and port 9000 on
-`127.0.0.1`, in two scenarios (`--scenario plain|machine|precond|all`,
-default `all`):
+`127.0.0.1`, in four scenarios (`--scenario plain|machine|migrate|precond|all`,
+default `all`); `deploy/instabox/test-checks.sh` has the layout,
+desktop, and harness checks:
 
 - `plain`: the image as it is (UID 1000 is `agent`).
 - `machine`: the image as the import makes it
   ([deploy/instabox/machine-model](../deploy/instabox/machine-model)): no
-  user `agent`, UID 1000 named `alice` with the home `/data/home`, a
-  `dbus-run-session` that fails as on the machine, a session bus at
-  `/run/user/1000/bus`, no `HOME`, and a socket as the standard output of
-  the entry point (as the journal). The image of core `23fbf68` fails it
-  with the error of the real machine.
+  user `agent`, UID 1000 named `alice` with the home `/data/home` that has
+  InstaBox's files (`.claude.json` with the `instabox` and
+  `open-computer-use` MCP servers, skills, `AGENTS.md`), a
+  `dbus-run-session` that fails as on the machine, the user manager's
+  session bus at `/run/user/1000/bus` with `HOME=/data/home`, the
+  template's `/etc/codex/config.toml` (with an InstaBox MCP server) and
+  `/usr/local/bin/claude`, `codex`, `opencode` links to `/opt/npm`, no
+  `HOME`, systemd's variables and supplier
+  variables (`ANTHROPIC_API_KEY`, `INSTABOX_API_KEY`, `CLAUDE_CONFIG_DIR`,
+  `CODEX_HOME`, `XDG_CONFIG_HOME`, test values) in the unit's
+  environment, and a socket as the standard output of the entry point
+  (as the journal). The image of core `23fbf68` fails it with the error
+  of the real machine.
+- `migrate`: `machine` on a disk of the old layout: `/home/agent` links
+  to `/data/home`, the old seed marker exists, a harness transcript of
+  LydiaBox is in `/data/home`, and `guest.env` has the old
+  `LYDIABOX_GUEST_HOME_ROOT=/data/home`.
 - `precond`: the entry point exits with a clear `ERROR:` line when UID
   1000 or `/data` is missing, or when `/home/agent` is not a link.
 
-In `plain` and `machine` it checks that:
+In `plain`, `machine`, and `migrate` it checks that:
 
 - the Xvfb socket and display `:0` answer, and `xfwm4` and
   `xfce4-session` run as UID 1000;
-- the guest wrapper waits for `guest.env`; the agent home is
-  `/home/agent`, a link to `/data/home`, `/workspace` links to
+- the guest wrapper waits for `guest.env`; `/home/agent` links to
+  `/data/lydiabox/home` (mode 0700, with the seed), `/workspace` to
   `/data/workspace`, and both directories belong to UID 1000;
+- with the model: `/data/home` is exactly as the template made it (file
+  list, modes, owners, links, and checksums), and none of InstaBox's
+  files is in LydiaBox's home; in `migrate` the link moved one time (one
+  line in `home-moved.log` and one `moved the agent home` log line, also
+  after the restart) and the old transcript is still in `/data/home`;
+- Xfce runs on `/run/user/1000/lydiabox-session-bus`, `xfconfd` has
+  `HOME=/home/agent`, the panel settings are in LydiaBox's home, and
+  `/etc/codex/config.toml` has no MCP server (with the model: the
+  template's file is kept as `config.toml.instabox-template`);
+- the desktop has no window of type `_NET_WM_WINDOW_TYPE_DIALOG` (listed
+  with `xprop`), and, when the image has `xfce4-panel`, no `wrapper-2.0`
+  process and no `was not found` line in `xfce.log`;
+- `claude` and `codex` on `PATH` are the image's `/usr/bin` CLIs, and
+  `codex mcp list` and `claude mcp list` with `HOME=/home/agent` name no
+  InstaBox MCP server (skipped on the slim image, which has no harness
+  CLIs);
 - after the test writes `guest.env` as UID 1000 (link listener and
   secret), `lydiabox-guest serve` runs as UID 1000 with the file's
   variables (and without non-`LYDIABOX_*` lines), with `HOME=/home/agent`,
-  `USER` the name of UID 1000, and `XDG_RUNTIME_DIR=/run/user/1000`, and creates
-  `/run/lydiabox/host-9001.sock`; `supervisorctl restart lydiabox-guest`
-  works;
+  `LYDIABOX_GUEST_HOME_ROOT=/data/lydiabox/home`, `USER` the name of UID
+  1000, and `XDG_RUNTIME_DIR=/run/user/1000`, without any of the unit's
+  variables, and creates `/run/lydiabox/host-9001.sock`;
+  `supervisorctl restart lydiabox-guest` works;
 - the link probe (`internal/instabox/imagetest`, run with `go test`)
   connects over the real host link with the secret, calls `ping`, lists
   the MCP tools and takes a `computer_screenshot` (the daemon reaches X11),
-  and starts a PTY in `/data/workspace` that calls the host broker through
-  `/run/lydiabox/host-9001.sock` and the link;
+  starts a PTY in `/data/workspace` that calls the host broker through
+  `/run/lydiabox/host-9001.sock` and the link, and starts a PTY that
+  reports the names of its variables: `HOME` is `/home/agent` in
+  `/data/lydiabox/home`, and every variable is one of the defined PTY
+  environment;
 - after `docker restart`, the desktop and the guest start again from the
-  kept `guest.env`, and the probe passes again.
+  kept `guest.env`, the probe passes again, and the layout and desktop
+  checks pass again.
 
 Without Docker it prints `SKIP` and exits 0; without Go it skips only the
 probe. Docker is not systemd: the `machine` scenario copies the facts of
 the real machine, but not `instabox-image.service` or the overlay itself.
+So it cannot show the panel defect (the machine's Xfce 4.20 libraries
+under the image's 4.18 panel); it checks the rule that prevents it: no
+plugin outside the panel's process.
 
 ## Driver
 
@@ -374,13 +475,13 @@ port 9000, and the port proxy answered the driver `502 Bad Gateway`.
 | The import keeps the machine's user database; there is no user `agent` | `getent passwd 1000` is `alice:x:1000:1000::/data/home:/bin/bash`; `getent passwd agent` is empty; the import warned `image users not added, UID 1000 being the sandbox's user: agent(1000)`; the snapshot records `guestUser: alice`; the kernel command line has `instabox.user=alice` |
 | Exec runs as the machine user through an SSH login | `id` is `uid=1000(alice) gid=1000(alice) groups=1000(alice),27(sudo),991(docker)`; `SSH_CLIENT` is set; `HOME=/data/home`, `DISPLAY=:0` (image `ENV`), `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus` are set |
 | `sudo` works through exec, and so does the driver's restart | `sudo -n true` succeeds; `sudo supervisorctl -c /etc/lydiabox/instabox-supervisord.conf status` lists the programs |
-| The import keeps the image's links `/home/agent` and `/workspace` | `/home/agent -> /data/home` and `/workspace -> /data/workspace`, both owned by root |
+| The import keeps the image's links `/home/agent` and `/workspace` | image of core `802e85c`: `/home/agent -> /data/home` and `/workspace -> /data/workspace`, both owned by root |
 | `/data/home` has the machine's own files before the image starts | `.bashrc`, `.profile`, `.claude`, `.codex`, `.claude.json`, `AGENTS.md`, `MACHINE.md`; `/data` also has `config`, `state`, `tmp`, and a 4 GiB `swapfile` |
 | The unit runs the entry point through a wrapper, as root, with the image `ENV` except `HOME` and `PATH` | `ExecStart=/usr/local/lib/instabox/image-run` (runs `/etc/instabox/image.argv`), `EnvironmentFile=-/etc/instabox/image.env` with `DEBIAN_FRONTEND`, `LANG`, `LC_ALL`, `TZ`, `DISPLAY`, `LYDIABOX_DATA_ROOT`; no `User=`; `WorkingDirectory=-/`; `After=instabox-data-init.service instabox-user.service`, not after `user@1000.service` |
 | Restart settings of the unit | `Restart=on-failure`, `RestartSec=5`, `StartLimitBurst=5` in `StartLimitIntervalSec=10s` (a failing entry point restarts every 5 seconds without end); `KillMode=mixed` |
 | The unit's standard output is a journal socket | supervisord could not open `stdout_logfile=/dev/stdout`: `spawnerr: unknown error making dispatchers for 'lydiabox-guest': ENXIO` |
 | The machine keeps its own shared libraries | glibc 2.41 (Debian 13) of the template; `libdbus-1.so.3` is the template's 1.16.2, so the image's `dbus-run-session`, `dbus-launch`, `dbus-send`, `dbus-monitor`, and `dbus-uuidgen` fail with ``version `LIBDBUS_PRIVATE_1.14.10' not found``; Xvfb, Xfce, ffmpeg, Chrome, Blender, Node.js, and git load |
-| The machine user lingers and has a session bus | `/var/lib/systemd/linger/alice`; `user@1000.service` runs from boot; `/run/user/1000/bus` exists; Xfce runs on it |
+| The machine user lingers and has a session bus | `/var/lib/systemd/linger/alice`; `user@1000.service` runs from boot; `/run/user/1000/bus` exists; the image of core `802e85c` ran Xfce on it (the next image does not: [below](#panel-dialog-home-and-environment)) |
 | No X server or desktop of the base machine runs at boot; `:0` is free | `/tmp/.X11-unix` is empty, no `Xvfb`, `Xorg`, or VNC process; `tigervncserver@.service` is disabled; only sshd listens (port 22) |
 | The root disk is kept across stop and start | files that exec wrote under `/usr/local/sbin` and `/etc/lydiabox` were there after `stop` and `start`; `MACHINE.md` says both disks survive a stop |
 | A private port with `Authorization: Bearer` reaches the machine from a server | the cell's WebSocket dials got `502` (not `401`) while nothing listened on port 9000 |
@@ -417,6 +518,57 @@ instead of every 10.4 s); with motion the encoder keeps the 2500 kbit/s
 target. `TestRelayedKeyframeFitsPathMTU` repeats the failure without a
 browser: relay-only on both sides through an in-process TURN server, on a
 path that drops packets above 1452 bytes.
+
+### Panel dialog, home, and environment
+
+Read on the same machine (`m_example0000000000000000000`, snapshot of
+core `802e85c`) on 2026-11-16 and 2026-11-17, through exec:
+
+| Fact | Evidence |
+| :--- | :--- |
+| The dialog "Are you sure that you want to remove ...?" comes from the panel plugins that run in `wrapper-2.0` processes | three `wrapper-2.0` processes (`libsystray.so`, `libpulseaudio-plugin.so`, `libactions.so`) each had a mapped 562x123 window of type `_NET_WM_WINDOW_TYPE_DIALOG` with `_NET_WM_STATE_MODAL` (`xprop -root _NET_CLIENT_LIST`, `xwininfo`); the user saw the top one, so its name changed between machines. The plugins that load in the panel's process opened none |
+| The cause is a version mismatch of the panel and its library | `xfce4-panel --version` is `xfce4-panel 4.18.4 (Xfce 4.20)`: the program and `wrapper-2.0` are the image's (Ubuntu 4.18.4, their checksums differ from the machine's packages), but `libxfce4panel-2.0.so.4` and the plugin modules (`libactions.so`) are the machine's Debian 13 packages (4.20.4-1); the 4.20 library has one more provider function (`xfce_panel_plugin_provider_emit_hidden_event`) than the 4.18 one. The machine's dpkg database is Debian 13's, with Xfce 4.20 installed |
+| Some files of the image replace the machine's, others do not | `/etc/xdg/xfce4/panel/default.xml` has the checksum of the image's file (`4f577a33...`), not of the machine's conffile (`9ddd36f5...`); `/usr/bin/xfce4-panel` and `wrapper-2.0` are the image's; the `.so` files and `/usr/bin/dbus-daemon` (1.16.2, the image has 1.14.10) are the machine's |
+| Xfce keeps its settings in InstaBox's home, whatever `HOME` the session has | `xfconfd` is started by the user manager's bus (`/run/user/1000/bus`) with `HOME=/data/home` (`/proc/<pid>/environ`); after `/home/agent` moved to `/data/lydiabox/home` in the trial, the panel still read `/data/home/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml` (with `systray`, `pulseaudio`, `actions`), and the three dialogs came back; `xfconfd` rewrote that file. The machine's `dbus-daemon --session` runs as UID 1000 with an address of its own |
+| The default panel names plugins that are not installed | `xfce.log`: `Plugin "(null)-7"`, `"power-manager-plugin-9"`, and `"notification-plugin-10"` `was not found and has been removed from the configuration` at the first start |
+| `polkit.service` does not exist | the journal has `Activation via systemd failed for unit 'polkit.service'` for `org.freedesktop.PolicyKit1`, asked by `systemd-logind` and `xfce4-session` when the panel started; no window. The image's panel has no `actions` plugin (log out, shut down), which asked for these actions |
+| InstaBox's home is used by LydiaBox in the old layout | `/home/agent -> /data/home`; `claude mcp list` with `HOME=/data/home` connects `instabox` (`open-computer-use` fails to connect), `codex mcp list` lists both from `/etc/codex/config.toml` |
+| `GEMINI_API_KEY` of 14 characters is LydiaBox's | it is only in LydiaBox's PTYs (`ptymanager.DefaultEnv`, `lydiabox-local`); the unit, `/etc/environment`, `/etc/profile.d`, and `/data/home/.profile` set no such variable |
+
+The scripts and settings of this change, installed in place on that
+machine (old layout, released guest binary of core `802e85c`) with one
+`systemctl restart instabox-image.service` (2026-11-16 15:16 UTC):
+
+- the journal has `moved the agent home: /home/agent linked to /data/home
+  ...` (from the first trial restart at 15:11), `set /etc/codex/config.toml
+  from the image`, `set /etc/xdg/xfce4/panel/default.xml from the image`,
+  and `linked /usr/local/bin/claude to /usr/bin/claude` (also `codex`,
+  `opencode`, `dsh`); `/home/agent -> /data/lydiabox/home` (mode 0700,
+  owner `alice`); `/data/lydiabox/home-moved.log` has one line;
+- the windows on `:0` (`xprop -root _NET_CLIENT_LIST`) are three
+  `xfce4-panel` docks and the `xfdesktop` desktop, no dialog; no
+  `wrapper-2.0` process; the new home's panel settings have
+  `applicationsmenu`, `tasklist`, `pager`, `clock`, `showdesktop`,
+  `launcher`, `directorymenu`, and `separator` only; no `was not found`
+  line and no polkit line in the journal after the restart;
+- `xfconfd` has `HOME=/home/agent` on `/run/user/1000/lydiabox-session-bus`;
+- `/data/home` (file list, modes, owners, links, checksums) is the same
+  before and after the restart;
+- the guest daemon has `LYDIABOX_GUEST_HOME_ROOT=/data/lydiabox/home`
+  (the old driver's `guest.env` still sets `/data/home`; the guest log has
+  `ignoring LYDIABOX_GUEST_HOME_ROOT`) and none of systemd's variables;
+- with the PTY environment of the new guest (`HOME=/home/agent`, in
+  `/data/workspace`): `claude` is `/usr/lib/node_modules/@anthropic-ai/claude-code`
+  2.1.325 and `claude mcp list` prints `No MCP servers configured`;
+  `codex` is `/usr/lib/node_modules/@openai/codex` 0.169.0 and
+  `codex mcp list` prints `No MCP servers configured yet`; the new home
+  has no `.claude/skills`, `.agents`, or `AGENTS.md`.
+
+In the first trial restart (15:11), with the image's panel default but
+Xfce still on the user manager's bus, the three dialogs came back, and
+`xfconfd` rewrote `/data/home/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml`
+(a file that LydiaBox's own desktop wrote at the first start of the
+machine): the reason for Xfce's own bus.
 
 ## What the documentation does not state
 
@@ -487,8 +639,15 @@ result in `docs/conformance.md`.
    (`xvfb`, `xfce`, and `lydiabox-guest` `RUNNING`),
    `sudo ss -ltnp | grep :9000` (`lydiabox-guest`),
    `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/` (`426`),
-   `getent passwd 1000`, `readlink /home/agent /workspace`, and
-   `sudo tail /var/log/supervisor/lydiabox-guest.log`.
+   `getent passwd 1000`, `readlink /home/agent /workspace`
+   (`/data/lydiabox/home`, `/data/workspace`), and
+   `sudo tail /var/log/supervisor/lydiabox-guest.log`. Desktop: as UID
+   1000 with `DISPLAY=:0`, no `_NET_WM_WINDOW_TYPE_DIALOG` window among
+   `xprop -root _NET_CLIENT_LIST`, and `pgrep -af wrapper-2.0` finds
+   nothing. Harnesses: with `HOME=/home/agent` in `/data/workspace`,
+   `codex mcp list` and `claude mcp list` name no `instabox` or
+   `open-computer-use` server, and `readlink -f "$(command -v claude)"`
+   is below `/usr/lib/node_modules`.
 6. Write `guest.env` with `PutFileBytes` (WebSocket listener, link
    secret), publish port 9000 with `PublishPrivatePort`, and run the
    probe through the port proxy (fact 8):
@@ -496,7 +655,7 @@ result in `docs/conformance.md`.
    also try a direct UDP candidate and record whether it connects).
 7. Exec: `Exec` and `ExecStream` with a 5-minute command (keepalive),
    a non-zero exit, and 2 MiB of output.
-8. Files: upload and download 100 MB; `StatFile` of `/data/home`.
+8. Files: upload and download 100 MB; `StatFile` of `/data/lydiabox/home`.
 9. Idle pause: `SetIdlePause(5m)`, leave the link idle, record when it
    pauses; then send a request with the port token and record whether it
    wakes and how long it takes (fact 9). Repeat with an open WebSocket

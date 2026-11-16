@@ -294,7 +294,7 @@ when the host runs as root (`juicefs` mode), or by the agent user
 ```
 
 In the `provider` mode `guestPath` is the directory that a running guest
-reports (for example `/data/home` on InstaBox); this route does not wake
+reports (for example `/data/lydiabox/home` on InstaBox); this route does not wake
 the machine, so it shows the last answer or the defaults.
 
 ### `GET /api/v1/fs/{root}/list?path=<dir>`
