@@ -8,14 +8,46 @@ import (
 	"time"
 )
 
+// DefaultRTPPacketSize is the largest RTP packet (header and payload) that
+// ffmpeg sends. ffmpeg's own default is 1472 bytes, and a relayed packet of
+// that size is 1472 + 16 (SRTP tag, AES-GCM; 10 for HMAC-SHA1-80) + 4 (TURN
+// ChannelData) + 8 (UDP) + 20 (IPv4) = 1520 bytes: above a 1500-byte MTU,
+// so it is sent as IP fragments, and many paths drop them (an InstaBox
+// machine and the first tester's network did: every keyframe was lost).
+// With 1100 bytes the worst case is 1100 + 16 + 40 (TURN Send indication)
+// + 8 + 40 (IPv6) = 1204 bytes, below the 1280-byte IPv6 minimum MTU.
+const DefaultRTPPacketSize = 1100
+
+// DefaultKeyframeSeconds is the keyframe (IDR) interval. A viewer can
+// decode only from a keyframe, and the guest cannot ask ffmpeg for one on
+// a picture loss request, so a new viewer or a viewer that lost a packet
+// waits at most this long for a picture.
+const DefaultKeyframeSeconds = 2
+
+// EncoderParams are the ffmpeg settings of the stream.
+type EncoderParams struct {
+	Display    string
+	Width      int
+	Height     int
+	Framerate  int
+	Bitrate    string
+	RTPURL     string // rtp://host:port
+	PacketSize int    // largest RTP packet in bytes
+	GOP        int    // frames from one keyframe to the next
+}
+
 // FFmpegArgs returns the ffmpeg arguments of docs/design.md section 4.5.3:
-// an x11grab capture encoded to H.264 and sent as RTP to rtpURL.
-func FFmpegArgs(display string, width, height, framerate int, bitrate, rtpURL string) []string {
+// an x11grab capture encoded to H.264 and sent as RTP to p.RTPURL, with
+// RTP packets of at most p.PacketSize bytes and a keyframe every p.GOP
+// frames.
+func FFmpegArgs(p EncoderParams) []string {
 	return []string{
-		"-f", "x11grab", "-framerate", fmt.Sprint(framerate), "-video_size", fmt.Sprintf("%dx%d", width, height),
-		"-i", display + ".0",
-		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p", "-b:v", bitrate,
-		"-f", "rtp", rtpURL,
+		"-hide_banner", "-nostats",
+		"-f", "x11grab", "-framerate", fmt.Sprint(p.Framerate), "-video_size", fmt.Sprintf("%dx%d", p.Width, p.Height),
+		"-i", p.Display + ".0",
+		"-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p", "-b:v", p.Bitrate,
+		"-g", fmt.Sprint(p.GOP),
+		"-f", "rtp", fmt.Sprintf("%s?pkt_size=%d", p.RTPURL, p.PacketSize),
 	}
 }
 
@@ -61,6 +93,9 @@ type execProcess struct {
 }
 
 func (p *execProcess) Done() <-chan struct{} { return p.done }
+
+// Err returns the exit error after Done is closed.
+func (p *execProcess) Err() error { return p.err }
 
 func (p *execProcess) Stop() error {
 	select {

@@ -36,8 +36,7 @@ func (f *fakeEncoder) Start(args []string) (Process, error) {
 	f.mu.Lock()
 	f.starts = append(f.starts, args)
 	f.mu.Unlock()
-	target := strings.TrimPrefix(args[len(args)-1], "rtp://")
-	conn, err := net.Dial("udp", target)
+	conn, err := net.Dial("udp", rtpTarget(args))
 	if err != nil {
 		return nil, err
 	}
@@ -70,9 +69,17 @@ func (f *fakeEncoder) count() int {
 	return len(f.starts)
 }
 
+// rtpTarget returns host:port of the rtp:// URL in ffmpeg arguments.
+func rtpTarget(args []string) string {
+	target := strings.TrimPrefix(args[len(args)-1], "rtp://")
+	target, _, _ = strings.Cut(target, "?")
+	return target
+}
+
 func TestFFmpegArgsMatchDesign(t *testing.T) {
-	got := strings.Join(FFmpegArgs(":0", 1920, 1080, 24, "2500k", "rtp://127.0.0.1:5004"), " ")
-	want := "-f x11grab -framerate 24 -video_size 1920x1080 -i :0.0 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -b:v 2500k -f rtp rtp://127.0.0.1:5004"
+	got := strings.Join(FFmpegArgs(EncoderParams{Display: ":0", Width: 1920, Height: 1080, Framerate: 24, Bitrate: "2500k",
+		RTPURL: "rtp://127.0.0.1:5004", PacketSize: DefaultRTPPacketSize, GOP: 48}), " ")
+	want := "-hide_banner -nostats -f x11grab -framerate 24 -video_size 1920x1080 -i :0.0 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -b:v 2500k -g 48 -f rtp rtp://127.0.0.1:5004?pkt_size=1100"
 	if got != want {
 		t.Fatalf("args\n got %s\nwant %s", got, want)
 	}

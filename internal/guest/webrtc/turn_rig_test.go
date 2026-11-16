@@ -120,6 +120,11 @@ type rigConfig struct {
 	guest                PeerConfig
 	browser              pion.Configuration
 	loopback             bool
+	// encoder replaces the fake encoder; stream changes the options.
+	encoder Launcher
+	stream  func(*Options)
+	// onTrack replaces the default video reader of the browser.
+	onTrack func(*pion.TrackRemote)
 }
 
 var fastICE = &ICETimeouts{Disconnected: 2 * time.Second, Failed: 4 * time.Second, KeepAlive: 300 * time.Millisecond}
@@ -131,6 +136,12 @@ func newRig(t *testing.T, cfg rigConfig) *rig {
 		Logger: slog.New(slog.DiscardHandler), Input: func(b []byte) error { r.inputs <- string(b); return nil }}
 	if cfg.guestNet != nil {
 		opts.Net = cfg.guestNet
+	}
+	if cfg.encoder != nil {
+		opts.Encoder = cfg.encoder
+	}
+	if cfg.stream != nil {
+		cfg.stream(&opts)
 	}
 	s, err := New(opts)
 	must(t, err)
@@ -155,6 +166,10 @@ func newRig(t *testing.T, cfg rigConfig) *rig {
 	must(t, err)
 	r.dc.OnOpen(func() { close(r.opened) })
 	r.browser.OnTrack(func(tr *pion.TrackRemote, _ *pion.RTPReceiver) {
+		if cfg.onTrack != nil {
+			cfg.onTrack(tr)
+			return
+		}
 		if _, _, err := tr.ReadRTP(); err == nil {
 			r.gotVideo <- tr.Codec().MimeType
 		}

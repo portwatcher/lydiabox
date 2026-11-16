@@ -105,12 +105,20 @@ func (s *Streamer) NewPeer(cfg PeerConfig, send func(Signal)) (*Peer, error) {
 		})
 	})
 	pc.OnConnectionStateChange(func(st pion.PeerConnectionState) {
-		s.opts.Logger.Debug("viewer connection state", "state", st.String())
-		if st == pion.PeerConnectionStateFailed {
+		switch st {
+		case pion.PeerConnectionStateConnected:
+			local, remote := p.SelectedPair()
+			s.opts.Logger.Info("desktop viewer connected", "local", local, "remote", remote)
+		case pion.PeerConnectionStateFailed:
+			s.opts.Logger.Warn("desktop viewer connection failed")
 			send(Signal{Type: "error", Code: "unavailable", Message: "WebRTC connection failed"})
+		default:
+			s.opts.Logger.Debug("viewer connection state", "state", st.String())
 		}
 	})
 	s.acquire()
+	s.opts.Logger.Info("desktop viewer joined", "viewers", s.Viewers(), "relayOnly", cfg.RelayOnly,
+		"iceServers", len(cfg.ICEServers))
 	return p, nil
 }
 
@@ -148,11 +156,18 @@ func (p *Peer) answer(sdp string) error {
 	if err != nil {
 		return fmt.Errorf("webrtc: add track: %w", err)
 	}
+	// The viewer's RTCP: the NACK interceptor answers retransmission
+	// requests; picture loss requests are counted (the next keyframe comes
+	// within KeyframeInterval, as ffmpeg cannot be asked for one).
 	go func() {
 		buf := make([]byte, 1500)
 		for {
-			if _, _, err := sender.Read(buf); err != nil {
+			n, _, err := sender.Read(buf)
+			if err != nil {
 				return
+			}
+			if st := p.s.stats.Load(); st != nil {
+				st.countRTCP(buf[:n])
 			}
 		}
 	}()
@@ -200,6 +215,7 @@ func (p *Peer) Close() error {
 	p.closeOnce.Do(func() {
 		err = p.pc.Close()
 		p.s.release()
+		p.s.opts.Logger.Info("desktop viewer left", "viewers", p.s.Viewers())
 	})
 	return err
 }
