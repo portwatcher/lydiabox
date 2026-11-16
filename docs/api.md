@@ -56,7 +56,8 @@ Status legend:
 | 413 | `too_large` | Body or file over the limit |
 | 415 | `unsupported_media_type` | File is not UTF-8 text |
 | 429 | `rate_limited` | Too many failed authentication attempts (see `Retry-After`) |
-| 500 | `internal` | Unexpected server error |
+| 499 | `canceled` | The client closed the request before the answer (`GET /api/v1/sessions` while the guest discovery waits); the client does not see it |
+| 500 | `internal` | Unexpected server error. The server logs one `request failed` line at error level with the route, the status, and the cause (credentials removed) |
 | 501 | `not_implemented` | Route exists but the subsystem is not in this build |
 | 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running |
 | 504 | `timeout` | The VM did not reach `RUNNING` in time (`POST /api/v1/vm/wake`) |

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -36,8 +37,12 @@ func harnessStatus(err error) (int, string) {
 		return http.StatusBadRequest, httpx.CodeBadRequest
 	case errors.Is(err, harness.ErrConflict):
 		return http.StatusConflict, httpx.CodeConflict
-	case errors.Is(err, harness.ErrUnavailable):
+	case errors.Is(err, harness.ErrUnavailable), errors.Is(err, context.DeadlineExceeded):
 		return http.StatusServiceUnavailable, httpx.CodeUnavailable
+	case errors.Is(err, context.Canceled):
+		// The client closed the request (for example a page reload while
+		// the guest discovery waited for the machine): not a server error.
+		return httpx.StatusClientClosedRequest, httpx.CodeCanceled
 	}
 	return http.StatusInternalServerError, httpx.CodeInternal
 }

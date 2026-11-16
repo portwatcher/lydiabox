@@ -67,7 +67,7 @@ func (c ConnectorRoutes) writeErr(w http.ResponseWriter, err error) {
 	case errors.As(err, &ae):
 		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, err.Error())
 	default:
-		c.Logger.Error("connector request failed", "err", err)
+		httpx.NoteCause(w, err)
 		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "internal server error")
 	}
 }

@@ -23,7 +23,12 @@ const (
 	CodeUnavailable  = "unavailable"
 	CodeInternal     = "internal"
 	CodeNotImpl      = "not_implemented"
+	CodeCanceled     = "canceled"
 )
+
+// StatusClientClosedRequest (499, a common extension) is the status of a
+// request whose client went away before the answer: not a server error.
+const StatusClientClosedRequest = 499
 
 // ErrorBody is the JSON error envelope: {"error":{"code":"...","message":"..."}}.
 type ErrorBody struct {
@@ -73,4 +78,27 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, v any) e
 		return errors.New("invalid JSON body: unexpected trailing data")
 	}
 	return nil
+}
+
+// CauseNoter is implemented by the API's response recorder: it takes the
+// cause of a 5xx response that the handler does not send to the client,
+// so that the request log line has it.
+type CauseNoter interface {
+	NoteCause(err error)
+}
+
+// NoteCause gives err to the first CauseNoter in the chain of w (through
+// Unwrap). Without one it does nothing.
+func NoteCause(w http.ResponseWriter, err error) {
+	for w != nil {
+		if n, ok := w.(CauseNoter); ok {
+			n.NoteCause(err)
+			return
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return
+		}
+		w = u.Unwrap()
+	}
 }

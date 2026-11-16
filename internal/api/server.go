@@ -124,7 +124,7 @@ func (s *Server) Handle(pattern string, h http.Handler, opts ...RouteOption) {
 	if !cfg.public {
 		h = s.opts.Auth.Require(h, cfg.basicChallenge)
 	}
-	s.mux.Handle(pattern, h)
+	s.mux.Handle(pattern, withRoute(pattern, h))
 }
 
 // HandleFunc implements Router.
@@ -153,45 +153,6 @@ func securityHeaders(next http.Handler) http.Handler {
 			h.Set("X-Frame-Options", "DENY")
 		}
 		next.ServeHTTP(w, r)
-	})
-}
-
-type statusRecorder struct {
-	http.ResponseWriter
-	status int
-	bytes  int64
-}
-
-func (r *statusRecorder) WriteHeader(code int) {
-	if r.status == 0 {
-		r.status = code
-	}
-	r.ResponseWriter.WriteHeader(code)
-}
-
-func (r *statusRecorder) Write(b []byte) (int, error) {
-	if r.status == 0 {
-		r.status = http.StatusOK
-	}
-	n, err := r.ResponseWriter.Write(b)
-	r.bytes += int64(n)
-	return n, err
-}
-
-// Unwrap lets http.ResponseController reach Flush and Hijack (WebSockets).
-func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
-
-func (s *Server) logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w}
-		next.ServeHTTP(rec, r)
-		level := slog.LevelDebug
-		if rec.status >= 500 {
-			level = slog.LevelWarn
-		}
-		s.log.Log(r.Context(), level, "request", "method", r.Method, "path", r.URL.Path,
-			"status", rec.status, "bytes", rec.bytes, "duration", time.Since(start))
 	})
 }
 
