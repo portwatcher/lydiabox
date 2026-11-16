@@ -245,6 +245,7 @@ func (d *Driver) startLease(tid, id string) {
 // machine may have paused itself, so the driver looks now, in the link's
 // goroutine, before the link reconnects.
 func (d *Driver) linkState(tid string, s link.Status) {
+	d.noteLink(tid, s)
 	if s.State != link.StateDown {
 		return
 	}

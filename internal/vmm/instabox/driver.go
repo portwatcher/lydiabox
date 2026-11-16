@@ -87,8 +87,11 @@ type Options struct {
 	LinkMinBackoff  time.Duration
 	LinkMaxBackoff  time.Duration
 	LinkKeepAlive   time.Duration
-	Logger          *slog.Logger
-	Now             func() time.Time
+	// GuestStatusAfter is how long the port proxy answers 502 before the
+	// driver logs one status line of the image's programs (default 45 s).
+	GuestStatusAfter time.Duration
+	Logger           *slog.Logger
+	Now              func() time.Time
 }
 
 // Driver implements vmm.Driver on InstaBox machines.
@@ -122,6 +125,10 @@ type tenant struct {
 	// reported is the last state the watcher saw.
 	reported vmm.State
 	lease    *leaseLoop
+	// statusTimer and statusLogged: the status line after a 502 of the
+	// port proxy (diagnose.go), once for each connection of the link.
+	statusTimer  *time.Timer
+	statusLogged bool
 }
 
 // New validates opts and returns a driver.
@@ -151,6 +158,9 @@ func New(opts Options) (*Driver, error) {
 		// A reconnect through the port wakes an idle-paused machine; the
 		// watcher looks first.
 		opts.LinkMinBackoff = time.Second
+	}
+	if opts.GuestStatusAfter <= 0 {
+		opts.GuestStatusAfter = DefaultGuestStatusAfter
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.DiscardHandler)
@@ -222,7 +232,8 @@ func (d *Driver) DialGuest(ctx context.Context, tid string, port uint32) (net.Co
 			return nil, fmt.Errorf("%w: %v", vmm.ErrUnavailable, err)
 		}
 	}
-	return d.links.DialGuest(ctx, tid, port)
+	c, err := d.links.DialGuest(ctx, tid, port)
+	return c, d.dialError(err)
 }
 
 // ListenGuestPort implements vmm.Driver.
@@ -287,6 +298,7 @@ func (d *Driver) Close() error {
 		return nil
 	}
 	d.closed = true
+	d.stopStatusTimersLocked()
 	stop, done := d.stop, d.done
 	var leases []*leaseLoop
 	for _, t := range d.tenants {

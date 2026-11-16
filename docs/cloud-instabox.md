@@ -50,7 +50,7 @@ state. InstaBox changes often: read the pages again before each phase.
 | A stop asks the guest to power off; `timeoutSeconds` sets the wait before a forced stop | lifecycle, openapi (`StopMachineRequest`) |
 | Create takes `name` (lowercase, unique in the org), `snapshotId`, `vcpus`, `memMiB`, `metadata`, `autoSuspendAfterSeconds`, and `desiredState` (`running` or `stopped`) | openapi (`CreateMachineRequest`) |
 | Delete needs `X-Confirm-Delete` with the ID or name; snapshots of the machine stay | lifecycle, openapi |
-| Custom image import makes a snapshot from a `linux/amd64` OCI image; `ENTRYPOINT` and `CMD` run as `instabox-image.service`; systemd, sshd, the UID 1000 user, and `/data` stay | images |
+| Custom image import makes a snapshot from a `linux/amd64` OCI image; `ENTRYPOINT` and `CMD` run as `instabox-image.service`; systemd, sshd, the UID 1000 user, and `/data` stay. Verified on 2026-11-16: the machine's user database stays, so UID 1000 has the account's name (not `agent`) and the home `/data/home` ([instabox.md](instabox.md#verified-on-a-real-machine-2026-11-16)) | images |
 | A snapshot holds the installed software and `/data`; a running machine can be saved live; a paused one is refused with `409`; restore in place replaces root and `/data` | snapshots |
 | Snapshots are free | pricing |
 | A private port answers only requests with its token: `Authorization: Bearer ibp_...` from a script, or a cookie that the link sets in a browser. The cookie also admits WebSockets. The token is shown once | ports |
@@ -88,7 +88,8 @@ state. InstaBox changes often: read the pages again before each phase.
    ([deploy/instabox](../deploy/instabox), [instabox.md](instabox.md)) keeps
    the guest paths `/home/agent` and `/workspace` as links to `/data/home`
    (InstaBox's own HOME) and `/data/workspace`. Only `/data` is the user
-   disk.
+   disk. The image runs its programs as UID 1000 by number, never by a
+   user name.
 5. The guest needs no `/dev/kvm`: the InstaBox machine is the agent VM.
 
 Guest binary upgrades: the driver compares the version of the running
@@ -126,7 +127,7 @@ secret and the port token are encrypted with the master key.
 | `Resume` | As `Boot` | `wake` for a self-paused machine (`autoSuspendedAt` set), else `resume`. If memory is lost, the guest starts fresh; the controller probes it as after a boot. |
 | `Shutdown` | Close the link; `POST /v1/machines/{id}/resume` first for a paused machine; `POST /v1/machines/{id}/stop` (with `force`: `timeoutSeconds` 5) | `Shutdown` keeps the machine and its disk. Only `lydiabox instabox destroy -confirm <id>` deletes a machine. |
 | `State` | `GET /v1/machines/{id}` | `running` to running; `creating`, `starting`, `resuming` to booting; `suspending`, `suspended` to paused; `stopping`, `stopped`, `error` to stopped; `deleting`, `deleted`, or `404` to an error that names the deleted machine. No recorded machine is stopped. |
-| `DialGuest` | none (guest link) | The first dial after a start of the cell attaches to a running machine. While this cell paused or stopped the machine, a dial fails at once with `ErrUnavailable`. |
+| `DialGuest` | none (guest link); one `POST .../exec` with a status command when the port answers `502` for 45 seconds | The first dial after a start of the cell attaches to a running machine. While this cell paused or stopped the machine, a dial fails at once with `ErrUnavailable`. A `502` from the port (the machine runs, but nothing listens on port 9000) becomes the error "the InstaBox machine runs, but its guest daemon does not answer on port 9000"; after 45 seconds of `502` the driver logs one line with `systemctl is-active instabox-image.service`, `supervisorctl status`, and the last 5 journal lines of the unit (no secrets), once for each connection of the link. |
 | `ListenGuestPort` | none (guest link) | Registers a reverse channel for port 9001 or 9002. It works before boot; streams arrive when the link connects. |
 | `Capabilities` | none | `Remote`, `SelfPause`, and a probe of 60 seconds (a wake can wait 45 seconds). |
 | `WatchState` | `GET /v1/machines/{id}` every 30 seconds, and at once when the link drops or a lease renewal fails | Reports a pause, resume, or stop that the cell did not make; on a self-pause it closes the link (a reconnect would wake the machine) and ends the lease. |

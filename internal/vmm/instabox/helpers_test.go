@@ -35,6 +35,9 @@ type env struct {
 	runner   *fakeguest.Runner
 	store    *store.Store
 	snapshot string
+
+	mu   sync.Mutex
+	cmds []string // the exec commands, in order
 }
 
 // checkLeaks fails the test when goroutines started during the test are
@@ -58,13 +61,24 @@ func checkLeaks(t *testing.T) {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	return newEnvWith(t, nil)
+}
+
+// newEnvWith is newEnv with the guest runner of the fake wrapped by wrap
+// (nil: the runner itself).
+func newEnvWith(t *testing.T, wrap func(*fakeguest.Runner) instaboxtest.GuestRunner) *env {
+	t.Helper()
 	root, err := os.MkdirTemp("", "lbxi")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
 	e := &env{t: t, runner: fakeguest.New(filepath.Join(root, "m"), nil)}
-	e.fake = instaboxtest.New(instaboxtest.Options{OpDelay: 10 * time.Millisecond, Guest: e.runner, Exec: e.exec})
+	var guest instaboxtest.GuestRunner = e.runner
+	if wrap != nil {
+		guest = wrap(e.runner)
+	}
+	e.fake = instaboxtest.New(instaboxtest.Options{OpDelay: 10 * time.Millisecond, Guest: guest, Exec: e.exec})
 	t.Cleanup(func() {
 		e.fake.Close()
 		e.runner.Close()
@@ -82,6 +96,9 @@ func newEnv(t *testing.T) *env {
 // exec answers the guest restart of the image (supervisorctl) by
 // restarting the daemon, and other commands like the default fake.
 func (e *env) exec(id string, req instaboxtest.ExecRequest) instaboxtest.ExecResult {
+	e.mu.Lock()
+	e.cmds = append(e.cmds, req.Cmd)
+	e.mu.Unlock()
 	if strings.Contains(req.Cmd, "supervisorctl") && strings.Contains(req.Cmd, "restart lydiabox-guest") {
 		e.runner.Restart(id)
 		return instaboxtest.ExecResult{Stdout: "lydiabox-guest: started\n"}
