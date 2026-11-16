@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -19,8 +20,8 @@ import (
 // secret), calls it, and checks the reverse bridge from the guest's
 // broker socket to host port 9001.
 func TestImageLink(t *testing.T) {
-	url := os.Getenv("LYDIABOX_IMAGE_LINK_URL")
-	if url == "" {
+	linkURL := os.Getenv("LYDIABOX_IMAGE_LINK_URL")
+	if linkURL == "" {
 		t.Skip("LYDIABOX_IMAGE_LINK_URL is not set; deploy/instabox/test.sh sets it")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -39,7 +40,16 @@ func TestImageLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := make(chan string, 1)
+	envReport := make(chan url.Values, 1)
 	broker := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/env" {
+			select {
+			case envReport <- r.URL.Query():
+			default:
+			}
+			_, _ = io.WriteString(w, "ok\n")
+			return
+		}
 		select {
 		case got <- r.URL.Path:
 		default:
@@ -51,7 +61,7 @@ func TestImageLink(t *testing.T) {
 
 	// Through the InstaBox port proxy the upgrade carries the private
 	// port token.
-	target := link.Target{URL: url}
+	target := link.Target{URL: linkURL}
 	if tok := os.Getenv("LYDIABOX_IMAGE_LINK_TOKEN"); tok != "" {
 		target.Header = http.Header{"Authorization": {"Bearer " + tok}}
 	}
@@ -113,4 +123,6 @@ func TestImageLink(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("the guest did not reach the host broker through the link")
 	}
+
+	checkPTYEnv(ctx, t, sess, envReport)
 }

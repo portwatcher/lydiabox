@@ -11,6 +11,16 @@
 # nothing here or in the supervisord configuration uses a user name from
 # the image; the name comes from `getent passwd 1000` at each start.
 #
+# Disk layout (docs/instabox.md, "Run-time layout"):
+#   /home/agent -> /data/lydiabox/home   LydiaBox's agent home (HOME)
+#   /workspace  -> /data/workspace       the agent workspace
+#   /data/home                           InstaBox's own home (the passwd
+#                                        home of UID 1000); LydiaBox does
+#                                        not use it and never changes it
+# An image of core 802e85c and earlier linked /home/agent to /data/home.
+# On such a machine the start moves the link to /data/lydiabox/home one
+# time and logs it; nothing in /data/home is moved, changed, or deleted.
+#
 # It never mounts anything: under systemd /run, /tmp, /dev, and /data are
 # the machine's. A missing precondition is an error in the journal
 # (journalctl -u instabox-image.service) and a non-zero exit.
@@ -25,6 +35,9 @@ uid=1000
 # PTY directory); both are links onto the persistent disk.
 home=/home/agent
 workspace=/workspace
+lbx=$data/lydiabox
+agent_home=$lbx/home
+legacy_home=$data/home
 
 log() { echo "lydiabox-instabox-entry: $*" >&2; }
 die() {
@@ -35,7 +48,7 @@ die() {
 if [ "$(id -u)" -ne 0 ]; then
 	die "runs as UID $(id -u); the entry point must run as root (no USER in the image)"
 fi
-for cmd in getent supervisord Xvfb startxfce4 dbus-run-session lydiabox-guest lydiabox-instabox-guest; do
+for cmd in getent supervisord Xvfb startxfce4 dbus-daemon cmp lydiabox-guest lydiabox-instabox-guest; do
 	command -v "$cmd" >/dev/null 2>&1 || die "$cmd is missing from the image"
 done
 if [ ! -d "$data" ]; then
@@ -49,16 +62,15 @@ user=${pw%%:*}
 gid=$(echo "$pw" | cut -d: -f4)
 log "machine user $user (UID $uid, GID $gid, passwd home $(echo "$pw" | cut -d: -f6)); home $home, display $display"
 
-# Agent home, workspace, and the driver's settings directory on the
-# persistent disk. Only new directories change owner, so a large home is
-# not walked on every start.
-for dir in "$data/home" "$data/workspace" "$data/.lydiabox"; do
+# LydiaBox's directory with the agent home, the workspace, and the
+# driver's settings directory on the persistent disk. Only new directories
+# change owner, so a large home is not walked on every start.
+for dir in "$lbx" "$agent_home" "$data/workspace" "$data/.lydiabox"; do
 	if [ ! -d "$dir" ]; then
 		mkdir -p "$dir"
 		chown "$uid:$gid" "$dir"
 	fi
 done
-chmod 0700 "$data/.lydiabox"
 
 # ensure_link LINK TARGET: LINK must be a symbolic link to TARGET. A
 # missing link is made; anything else is an error, because the core's
@@ -73,19 +85,77 @@ ensure_link() {
 	ln -s "$2" "$1"
 	log "made the link $1 -> $2"
 }
-ensure_link "$home" "$data/home"
+
+# The old layout (core 802e85c and earlier): /home/agent links to
+# InstaBox's home. The link moves in one step (a new link renamed over
+# the old one), so a failed start leaves either the old or the new link.
+# Only the link changes: the files in $legacy_home stay where they are.
+if [ -L "$home" ] && [ "$(readlink "$home")" = "$legacy_home" ]; then
+	rm -f "$home.lydiabox-new"
+	ln -s "$agent_home" "$home.lydiabox-new"
+	mv -T "$home.lydiabox-new" "$home"
+	echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $home: $legacy_home -> $agent_home" >>"$lbx/home-moved.log"
+	log "moved the agent home: $home linked to $legacy_home (InstaBox's home), now to $agent_home; nothing in $legacy_home was moved, changed, or deleted, and files that LydiaBox wrote there before stay there"
+fi
+ensure_link "$home" "$agent_home"
 ensure_link "$workspace" "$data/workspace"
 
 # The home content of the image (shell profile files) is copied once into
-# the home without replacing a file that is there: on InstaBox, /data/home
-# already has the machine's own files when the image starts first.
+# the new agent home without replacing a file that is there. The marker
+# of the old layout ($data/.lydiabox/home-seeded) is for $legacy_home and
+# does not count here.
 seed=/usr/local/share/lydiabox/home-seed
-seeded=$data/.lydiabox/home-seeded
+seeded=$lbx/home-seeded
 if [ -d "$seed" ] && [ ! -e "$seeded" ]; then
-	cp -a --update=none "$seed/." "$data/home/" || log "the home seed copy was incomplete"
-	chown -R "$uid:$gid" "$data/home"
+	cp -a --update=none "$seed/." "$agent_home/" || log "the home seed copy was incomplete"
+	chown -R "$uid:$gid" "$agent_home"
 	: >"$seeded"
+	log "copied the home seed into $agent_home"
 fi
+# After the seed copy, which gives the home the mode of the seed.
+chmod 0700 "$agent_home" "$data/.lydiabox"
+
+# Files of the machine template that change LydiaBox's harnesses and
+# desktop (docs/instabox.md, "Supplier files and environment"). The import
+# does not always put the image's file over the machine's (the machine's
+# dbus-daemon stays), so the entry point sets the image's version at each
+# start. The template's version is kept once as FILE.instabox-template.
+share=/usr/local/share/lydiabox
+keep_template() {
+	if { [ -e "$1" ] || [ -L "$1" ]; } && [ ! -e "$1.instabox-template" ] && [ ! -L "$1.instabox-template" ]; then
+		cp -a "$1" "$1.instabox-template"
+	fi
+}
+# own_file SOURCE FILE: FILE gets the content of SOURCE (mode 0644).
+own_file() {
+	if [ -f "$2" ] && [ ! -L "$2" ] && cmp -s "$1" "$2"; then
+		return
+	fi
+	keep_template "$2"
+	mkdir -p "$(dirname "$2")"
+	cp "$1" "$2.lydiabox-new"
+	chmod 0644 "$2.lydiabox-new"
+	mv -f "$2.lydiabox-new" "$2"
+	log "set $2 from the image"
+}
+# own_link TARGET LINK: LINK links to TARGET when TARGET exists.
+own_link() {
+	if [ ! -e "$1" ] || [ "$(readlink "$2" 2>/dev/null || true)" = "$1" ]; then
+		return
+	fi
+	keep_template "$2"
+	ln -sfn "$1" "$2.lydiabox-new"
+	mv -Tf "$2.lydiabox-new" "$2"
+	log "linked $2 to $1"
+}
+own_file "$share/etc/codex-config.toml" /etc/codex/config.toml
+own_file "$share/etc/claude-managed-settings.json" /etc/claude-code/managed-settings.json
+own_file "$share/etc/xfce4-panel.xml" /etc/xdg/xfce4/panel/default.xml
+# The template links these to its own copies in /opt/npm (other versions,
+# updated by the machine user); /usr/local/bin is first in PATH.
+for h in claude codex opencode dsh; do
+	own_link "/usr/bin/$h" "/usr/local/bin/$h"
+done
 
 # Runtime directories of the desktop, the session bus, and the local
 # sockets that lydiabox-guest bridges to the host link
@@ -110,7 +180,13 @@ if [ ! -S /run/dbus/system_bus_socket ]; then
 	dbus-daemon --system --fork || log "no system D-Bus; Xfce runs without it"
 fi
 
-# The supervisord configuration reads these (%(ENV_...)s).
-export LYDIABOX_DATA_ROOT="$data" LYDIABOX_DISPLAY="$display"
-export LYDIABOX_GUEST_USER="$user" LYDIABOX_GUEST_HOME="$home"
-exec supervisord -n -c /etc/lydiabox/instabox-supervisord.conf
+# supervisord and its programs get a defined environment, not the unit's:
+# systemd's variables (INVOCATION_ID, JOURNAL_STREAM, ...) and anything
+# that the machine template adds to the unit stay out. The supervisord
+# configuration reads the LYDIABOX_* variables (%(ENV_...)s); the guest
+# wrapper takes the two file roots.
+exec env -i PATH="$PATH" LANG="$LANG" LC_ALL="$LC_ALL" TZ="$TZ" \
+	LYDIABOX_DATA_ROOT="$data" LYDIABOX_DISPLAY="$display" \
+	LYDIABOX_GUEST_USER="$user" LYDIABOX_GUEST_HOME="$home" \
+	LYDIABOX_GUEST_HOME_ROOT="$agent_home" LYDIABOX_GUEST_WORKSPACE_ROOT="$data/workspace" \
+	supervisord -n -c /etc/lydiabox/instabox-supervisord.conf

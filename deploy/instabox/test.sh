@@ -1,20 +1,28 @@
 #!/usr/bin/env sh
 # Container test of the LydiaBox InstaBox image: runs it with Docker as
 # linux/amd64 (emulated on an arm64 host), with a volume as /data, and
-# checks that X11, the Xfce desktop, and lydiabox-guest (as UID 1000, with
-# HOME /home/agent, a link to /data/home) start, that the guest waits for
-# its settings file, that a host link reaches it
-# (internal/instabox/imagetest: ping, a desktop screenshot, a PTY, and the
-# broker bridge), and that it starts again from the kept settings after a
-# restart. Exits 0 with a SKIP line when Docker is not available.
+# checks that X11, the Xfce desktop (with no dialog and no plugin outside
+# the panel's process), and lydiabox-guest (as UID 1000, with HOME
+# /home/agent, a link to /data/lydiabox/home) start, that the guest waits
+# for its settings file, that a host link reaches it
+# (internal/instabox/imagetest: ping, a desktop screenshot, a PTY, the
+# broker bridge, and the PTY environment), that the harness CLIs load no
+# InstaBox MCP server, and that it starts again from the kept settings
+# after a restart. Exits 0 with a SKIP line when Docker is not available.
 #
 # Scenarios:
 #   plain    the image as it is (UID 1000 is "agent", from the base image)
 #   machine  the image as an InstaBox import makes it
 #            (deploy/instabox/machine-model): no user "agent", UID 1000
-#            named "alice" with the home /data/home, the machine's session
-#            bus instead of dbus-run-session, and a socket as the standard
-#            output of the entry point (the journal)
+#            named "alice" with the home /data/home that has InstaBox's own
+#            files, a dbus-run-session that fails, the user manager's
+#            session bus (HOME /data/home), the template's Codex settings
+#            and harness links, systemd's and supplier variables in the
+#            unit, and a socket as the standard output of the entry point
+#            (the journal)
+#   migrate  the machine scenario on a disk of the old layout (core
+#            802e85c and earlier: /home/agent -> /data/home): the start
+#            moves the link one time and leaves /data/home unchanged
 #   precond  the entry point fails with a clear error when UID 1000 or
 #            /data is missing
 #
@@ -22,7 +30,7 @@
 #                                [--build [build.sh flags]]
 #
 #   --image IMAGE    image to test (default lydiabox/instabox:latest)
-#   --scenario NAME  plain, machine, precond, or all (default all)
+#   --scenario NAME  plain, machine, migrate, precond, or all (default all)
 #   --build          build it first with deploy/instabox/build.sh; the
 #                    remaining arguments go to build.sh (for example --slim)
 set -eu
@@ -54,7 +62,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 case "$scenario" in
-plain | machine | precond | all) ;;
+plain | machine | migrate | precond | all) ;;
 *)
 	echo "unknown scenario $scenario" >&2
 	exit 2
@@ -83,7 +91,7 @@ model=lbx-instabox-model-$$:test
 name=$prefix
 volume=$name-data
 cleanup() {
-	for n in "$prefix-plain" "$prefix-machine"; do
+	for n in "$prefix-plain" "$prefix-machine" "$prefix-migrate"; do
 		docker rm -f "$n" >/dev/null 2>&1 || true
 		docker volume rm "$n-data" >/dev/null 2>&1 || true
 	done
@@ -147,12 +155,21 @@ check_guest() {
 	# shellcheck disable=SC2016
 	env_check="$env_check"' && echo "$env" | grep -qx LYDIABOX_GUEST_WORKSPACE_ROOT=/data/workspace && ! echo "$env" | grep -q NOT_LYDIABOX'
 	# shellcheck disable=SC2016
+	env_check="$env_check"' && echo "$env" | grep -qx LYDIABOX_GUEST_HOME_ROOT=/data/lydiabox/home'
+	# The unit's variables (systemd's and the model's supplier variables)
+	# do not reach the programs.
+	# shellcheck disable=SC2016
+	env_check="$env_check"' && ! echo "$env" | grep -qE "^(INVOCATION_ID|JOURNAL_STREAM|SYSTEMD_EXEC_PID|ANTHROPIC_API_KEY|INSTABOX_API_KEY|CLAUDE_CONFIG_DIR|CODEX_HOME|XDG_CONFIG_HOME|DEBIAN_FRONTEND)="'
+	# shellcheck disable=SC2016
 	env_check="$env_check"' && echo "$env" | grep -qx USER='"$user"' && echo "$env" | grep -qx XDG_RUNTIME_DIR=/run/user/1000'
 	as_user=1000
 	wait_for "$env_check" "guest environment from guest.env, USER=$user ($1)" 30
 	as_user=0
 	probe "$1"
 }
+
+# shellcheck source=deploy/instabox/test-checks.sh
+. "$script_dir/test-checks.sh"
 
 # run_desktop SCENARIO IMAGE USER: the full check of one image.
 run_desktop() {
@@ -161,8 +178,10 @@ run_desktop() {
 	name=$prefix-$1
 	volume=$name-data
 	docker volume create "$volume" >/dev/null
+	model_env=""
+	[ "$current" != migrate ] || model_env=INSTABOX_MODEL_OLD_LAYOUT=1
 	docker run -d --name "$name" --platform linux/amd64 --shm-size 1g \
-		-p 127.0.0.1::9000 -v "$volume:/data" "$2" >/dev/null
+		-p 127.0.0.1::9000 -v "$volume:/data" -e "${model_env:-INSTABOX_MODEL_OLD_LAYOUT=0}" "$2" >/dev/null
 
 	wait_for 'test -S /tmp/.X11-unix/X0' "Xvfb socket :0"
 	as_user=1000
@@ -178,19 +197,14 @@ run_desktop() {
 	echo "ok ($current): lydiabox-guest waits for guest.env"
 
 	[ "$(in_ctr 'getent passwd 1000 | cut -d: -f1')" = "$user" ] || fail "UID 1000 is not $user"
-	[ "$(in_ctr 'readlink /home/agent')" = /data/home ] || fail "/home/agent does not link to /data/home"
-	[ "$(in_ctr 'readlink /workspace')" = /data/workspace ] || fail "/workspace does not link to /data/workspace"
-	owner=$(in_ctr 'stat -c %u:%g /data/home /data/workspace | sort -u')
-	[ "$owner" = 1000:1000 ] || fail "/data/home and /data/workspace owner $owner, want 1000:1000"
-	in_ctr 'test -f /data/home/.profile' || fail "the home seed was not copied"
-	echo "ok ($current): UID 1000 is $user; /home/agent -> /data/home, /workspace -> /data/workspace, owner UID 1000"
-	if [ "$current" = machine ]; then
+	check_layout
+	echo "ok ($current): UID 1000 is $user; /home/agent -> /data/lydiabox/home, /workspace -> /data/workspace, owner UID 1000"
+	check_desktop
+	check_harnesses
+	if [ "$current" != plain ]; then
 		in_ctr '! getent passwd agent' || fail "the machine model has a user agent"
-		as_user=1000
-		# shellcheck disable=SC2016 # expanded in the container
-		wait_for 'pid=$(pgrep -u 1000 -x xfce4-session | head -n 1); tr "\0" "\n" </proc/$pid/environ | grep -qx DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus' "Xfce uses the session bus of the user manager" 30
-		as_user=0
 	fi
+	check_session_bus
 
 	# The driver writes the settings file as UID 1000 (the InstaBox files
 	# API): the host link listener on port 9000 and its secret.
@@ -202,9 +216,17 @@ LYDIABOX_WEBRTC_UDP_PORT=0
 NOT_LYDIABOX=ignored
 LYDIABOX_LOG_LEVEL=debug
 EOF'
+	if [ "$current" = migrate ]; then
+		# The driver of core 802e85c and earlier also wrote the old root.
+		docker exec -u 1000 "$name" sh -c 'echo LYDIABOX_GUEST_HOME_ROOT=/data/home >>/data/.lydiabox/guest.env'
+	fi
 	check_guest "first start"
 	in_ctr "grep -q 'lydiabox-guest serving' $guest_log" || fail "no 'lydiabox-guest serving' line in $guest_log"
 	echo "ok ($current): guest log line"
+	if [ "$current" = migrate ]; then
+		in_ctr "grep -q 'ignoring LYDIABOX_GUEST_HOME_ROOT' $guest_log" || fail "the wrapper did not ignore the old file root in guest.env"
+		echo "ok ($current): the wrapper ignores the old file root in guest.env"
+	fi
 	# The driver's restart after changed settings (sudo through exec).
 	in_ctr 'supervisorctl -c /etc/lydiabox/instabox-supervisord.conf restart lydiabox-guest' >/dev/null ||
 		fail "supervisorctl restart lydiabox-guest"
@@ -216,6 +238,9 @@ EOF'
 	wait_for 'test -S /tmp/.X11-unix/X0' "Xvfb after restart"
 	wait_for 'pgrep -u 1000 -x xfwm4' "Xfce after restart"
 	check_guest "after restart"
+	check_layout
+	check_desktop
+	echo "ok ($current): layout and desktop after restart"
 	docker rm -f "$name" >/dev/null
 	docker volume rm "$volume" >/dev/null
 }
@@ -247,6 +272,10 @@ fi
 if [ "$scenario" = machine ] || [ "$scenario" = all ]; then
 	build_model
 	run_desktop machine "$model" alice
+fi
+if [ "$scenario" = migrate ] || [ "$scenario" = all ]; then
+	build_model
+	run_desktop migrate "$model" alice
 fi
 if [ "$scenario" = precond ] || [ "$scenario" = all ]; then
 	build_model

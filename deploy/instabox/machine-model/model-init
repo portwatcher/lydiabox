@@ -5,14 +5,54 @@
 # its standard output.
 set -eu
 
-# The lingering user manager of UID 1000 runs the session bus.
+state=/var/lib/instabox-model
+
+# instabox-data-init: InstaBox's own home with the template's files (the
+# real machine has them before the image starts; docs/instabox.md). The
+# test checks that the image never changes them: home.sum is their state.
+if [ ! -d /data/home ]; then
+	mkdir -p /data/home/.claude/skills/instabox /data/home/.codex /data/home/.agents/skills/instabox
+	printf '# instabox template profile\n' >/data/home/.profile
+	printf '# InstaBox machine\n' >/data/home/AGENTS.md
+	ln -s /data/home/AGENTS.md /data/home/.claude/CLAUDE.md
+	ln -s /data/home/AGENTS.md /data/home/.codex/AGENTS.md
+	printf -- '---\nname: instabox\n---\n' >/data/home/.claude/skills/instabox/SKILL.md
+	cp /data/home/.claude/skills/instabox/SKILL.md /data/home/.agents/skills/instabox/SKILL.md
+	printf '{"mcpServers":{"instabox":{"type":"stdio","command":"/usr/local/bin/instabox-mcp","args":["mcp"]},"open-computer-use":{"type":"stdio","command":"/usr/local/bin/instabox-computer-use","args":["mcp"]}}}\n' \
+		>/data/home/.claude.json
+	# The old layout (core 802e85c and earlier) on request: /home/agent
+	# links to /data/home, the old seed marker exists, and LydiaBox wrote a
+	# harness transcript there.
+	if [ "${INSTABOX_MODEL_OLD_LAYOUT:-}" = 1 ]; then
+		mkdir -p /data/.lydiabox /data/home/.claude/projects/-data-workspace
+		: >/data/.lydiabox/home-seeded
+		printf '{"type":"user"}\n' >/data/home/.claude/projects/-data-workspace/old-session.jsonl
+		ln -sfn /data/home /home/agent
+	fi
+	chown -R 1000:1000 /data/home
+	if [ -d /data/.lydiabox ]; then chown 1000:1000 /data/.lydiabox; fi
+	mkdir -p "$state"
+	# .cache is left out: the amd64 emulation of Docker on arm64 (Rosetta)
+	# writes .cache/rosetta in the HOME of the processes it runs.
+	(cd /data/home && find . -path ./.cache -prune -o -printf '%y %m %U %p %l\n' | sort &&
+		find . -path ./.cache -prune -o -type f -exec md5sum {} + | sort) >"$state/home.sum"
+fi
+
+# The lingering user manager of UID 1000 runs the session bus, with the
+# user manager's environment: HOME is the passwd home /data/home. The
+# services that it starts (xfconfd) write there.
 mkdir -p /run/user/1000
 chown 1000:1000 /run/user/1000
 chmod 0700 /run/user/1000
 rm -f /run/user/1000/bus
-setpriv --reuid=1000 --regid=1000 --init-groups \
+env HOME=/data/home XDG_RUNTIME_DIR=/run/user/1000 setpriv --reuid=1000 --regid=1000 --init-groups \
 	dbus-daemon --session --address=unix:path=/run/user/1000/bus --fork --nopidfile
 
-# The unit gets the image ENV without HOME.
+# The unit gets the image ENV without HOME, and systemd's own variables.
+# The test adds variables that a supplier's template could add, to check
+# that LydiaBox's PTYs do not get them (the values are not real).
 unset HOME
+export INVOCATION_ID=0123456789abcdef0123456789abcdef JOURNAL_STREAM=8:4242 SYSTEMD_EXEC_PID=1
+export ANTHROPIC_API_KEY=model-supplier-value INSTABOX_API_KEY=model-supplier-value
+export CLAUDE_CONFIG_DIR=/data/home/.claude CODEX_HOME=/data/home/.codex XDG_CONFIG_HOME=/data/home/.config
 exec /usr/local/sbin/instabox-model-stdout-socket /usr/local/sbin/lydiabox-instabox-entry "$@"

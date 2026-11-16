@@ -4,3 +4,6 @@
 !deploy/instabox/lydiabox-instabox-entry
 !deploy/instabox/lydiabox-instabox-guest
 !deploy/instabox/lydiabox-instabox-xfce
+!deploy/instabox/xfce4-panel.xml
+!deploy/instabox/codex-config.toml
+!deploy/instabox/claude-managed-settings.json

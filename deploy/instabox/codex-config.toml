@@ -1,0 +1,7 @@
+# LydiaBox (deploy/instabox): the system layer of the Codex configuration,
+# /etc/codex/config.toml. The machine template has its own file here that
+# adds InstaBox's MCP servers ("instabox", "open-computer-use"); the image
+# replaces it, so that Codex in LydiaBox loads only what LydiaBox wires in
+# ~/.codex/config.toml (the gateway provider and LydiaBox's MCP servers).
+# The image pins the Codex version, so the update check stays off.
+check_for_update_on_startup = false

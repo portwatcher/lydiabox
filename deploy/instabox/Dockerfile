@@ -14,10 +14,16 @@
 # deploy/rootfs/Dockerfile, built for linux/amd64. Build both with
 # deploy/instabox/build.sh (or `make instabox-image`).
 #
+# The import keeps the machine's shared libraries (*.so) over the image's,
+# but the image's other files (programs, /etc, links) replace the
+# machine's: verified on a real machine (docs/instabox.md).
+#
 # Run-time layout (the core uses the guest paths /home/agent and
 # /workspace, so both stay as links onto the persistent disk):
-#   /home/agent -> /data/home         agent home (InstaBox's HOME is /data/home)
-#   /workspace  -> /data/workspace    agent workspace
+#   /home/agent -> /data/lydiabox/home   LydiaBox's agent home
+#   /workspace  -> /data/workspace       agent workspace
+#   /data/home                           InstaBox's own home (HOME of exec
+#                                        and SSH sessions); not used
 #   /data/.lydiabox/guest.env
 #                      lydiabox-guest settings the driver writes before
 #                      the guest daemon starts (guest.env.example)
@@ -25,18 +31,30 @@
 ARG BASE_IMAGE=lydiabox/guest:instabox-base
 FROM ${BASE_IMAGE}
 
-# The home content of the base image becomes the seed of /data/home, and
-# /home/agent and /workspace become links onto the persistent disk (the
-# import keeps both links; the entry point makes them when they are
-# missing).
+# The home content of the base image becomes the seed of the agent home,
+# and /home/agent and /workspace become links onto the persistent disk
+# (the import keeps both links; the entry point makes them when they are
+# missing and moves the link of the old layout).
 RUN set -eux; \
-	mkdir -p /usr/local/share/lydiabox; \
+	mkdir -p /usr/local/share/lydiabox/etc; \
 	mv /home/agent /usr/local/share/lydiabox/home-seed; \
-	ln -s /data/home /home/agent; \
+	ln -s /data/lydiabox/home /home/agent; \
 	rm -rf /workspace; \
 	ln -s /data/workspace /workspace; \
 	mkdir -p /etc/lydiabox
 
+# Harness and desktop settings that replace the machine template's; the
+# entry point installs them at each start and links claude, codex,
+# opencode, and dsh in /usr/local/bin to the image's CLIs
+# (docs/instabox.md, "Supplier files and environment"):
+# - /etc/codex/config.toml: the template's adds InstaBox's MCP servers.
+# - /etc/claude-code/managed-settings.json: the template's sets
+#   DISABLE_AUTOUPDATER=1; the image keeps that one setting as its own.
+# - /etc/xdg/xfce4/panel/default.xml: a panel with only the plugins that
+#   load in the panel's process (xfce4-panel.xml has the reason).
+COPY deploy/instabox/codex-config.toml /usr/local/share/lydiabox/etc/codex-config.toml
+COPY deploy/instabox/claude-managed-settings.json /usr/local/share/lydiabox/etc/claude-managed-settings.json
+COPY deploy/instabox/xfce4-panel.xml /usr/local/share/lydiabox/etc/xfce4-panel.xml
 COPY deploy/instabox/supervisord.conf /etc/lydiabox/instabox-supervisord.conf
 COPY deploy/instabox/guest.env.example /etc/lydiabox/guest.env.example
 COPY --chmod=0755 deploy/instabox/lydiabox-instabox-entry /usr/local/sbin/lydiabox-instabox-entry
@@ -45,7 +63,7 @@ COPY --chmod=0755 deploy/instabox/lydiabox-instabox-xfce /usr/local/bin/lydiabox
 
 # InstaBox exports the image ENV into sessions (exec, SSH) and into
 # instabox-image.service, except HOME and PATH: there HOME is the machine
-# user's /data/home (the same directory as /home/agent). DISPLAY matches
+# user's /data/home (InstaBox's home, not /home/agent). DISPLAY matches
 # the desktop that the entry point starts.
 ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data
 
@@ -54,7 +72,7 @@ LABEL org.opencontainers.image.title="lydiabox-instabox" \
 	org.opencontainers.image.source="https://github.com/portwatcher/lydiabox"
 
 # systemd starts the unit in WORKDIR before the entry point creates
-# /data/home, so the work directory is /.
+# /data/lydiabox/home, so the work directory is /.
 WORKDIR /
 ENTRYPOINT ["/usr/local/sbin/lydiabox-instabox-entry"]
 CMD []

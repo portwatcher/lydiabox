@@ -1,14 +1,16 @@
 #!/bin/sh
 # Starts the Xfce session of the LydiaBox InstaBox image as the machine
-# user (UID 1000), with a session D-Bus.
+# user (UID 1000), on a session D-Bus of its own.
 #
-# On InstaBox the machine user lingers: its systemd user manager runs the
-# session bus at $XDG_RUNTIME_DIR/bus, and the image's dbus-run-session
+# The session needs its own bus. On InstaBox the machine user lingers and
+# its systemd user manager runs a session bus at $XDG_RUNTIME_DIR/bus, but
+# that bus starts D-Bus activated services (xfconfd, which reads and
+# writes the Xfce settings) with the user manager's environment: HOME is
+# InstaBox's /data/home, not /home/agent. The image's dbus-run-session
 # cannot run there (it needs LIBDBUS_PRIVATE_1.14.10 of the image's
-# libdbus, but the machine keeps its own, newer libdbus). So the session
-# uses the user bus when there is one. Under systemd the user manager can
-# start after this program, so it waits for the bus. Without systemd (the
-# container test) dbus-run-session gives the session its own bus.
+# libdbus, but the machine keeps its own, newer libdbus), so this program
+# runs dbus-daemon itself (the machine's on InstaBox) for the life of
+# startxfce4, with this program's environment.
 set -eu
 
 log() { echo "lydiabox-instabox-xfce: $*" >&2; }
@@ -24,22 +26,40 @@ while [ ! -S "/tmp/.X11-unix/X$dnum" ] && [ "$i" -lt 30 ]; do
 done
 
 runtime=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
-bus=$runtime/bus
-if [ -d /run/systemd/system ] && [ ! -S "$bus" ]; then
-	log "waiting for the session bus $bus of the user manager"
-	i=0
-	while [ ! -S "$bus" ] && [ "$i" -lt 60 ]; do
-		sleep 1
-		i=$((i + 1))
-	done
-fi
-if [ -S "$bus" ]; then
-	export DBUS_SESSION_BUS_ADDRESS="unix:path=$bus"
-	log "session bus $bus"
-	exec startxfce4
-fi
-if ! dbus-run-session -- true; then
-	log "ERROR: no session bus at $bus and dbus-run-session does not run"
+sock=$runtime/lydiabox-session-bus
+rm -f "$sock"
+dbus-daemon --session --nofork --nopidfile --address="unix:path=$sock" &
+bus=$!
+i=0
+while [ ! -S "$sock" ] && [ "$i" -lt 20 ]; do
+	if ! kill -0 "$bus" 2>/dev/null; then
+		log "ERROR: dbus-daemon --session exited"
+		exit 1
+	fi
+	sleep 0.5
+	i=$((i + 1))
+done
+if [ ! -S "$sock" ]; then
+	log "ERROR: no session bus at $sock"
+	kill "$bus" 2>/dev/null || true
 	exit 1
 fi
-exec dbus-run-session -- startxfce4
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$sock"
+log "session bus $sock (HOME $HOME)"
+
+startxfce4 &
+xfce=$!
+# shellcheck disable=SC2329 # called by the trap
+stop() {
+	kill -TERM "$xfce" 2>/dev/null || true
+}
+trap stop TERM INT HUP
+status=0
+wait "$xfce" || status=$?
+# A signal interrupts the first wait; wait for the session to end.
+if kill -0 "$xfce" 2>/dev/null; then
+	wait "$xfce" || status=$?
+fi
+kill -TERM "$bus" 2>/dev/null || true
+wait "$bus" 2>/dev/null || true
+exit "$status"
