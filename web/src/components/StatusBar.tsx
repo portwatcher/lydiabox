@@ -15,6 +15,7 @@ import { NavLink } from "react-router";
 import { useSystem } from "../hooks/useSystem";
 import { useNow } from "../hooks/useResource";
 import { formatAgo, formatDateTime, formatMemory, parseTime, vmProblem } from "../lib/format";
+import { syncState } from "../lib/sync";
 import { VmPower } from "./VmPower";
 import { IconButton, cx } from "./ui";
 
@@ -33,12 +34,11 @@ function SyncIndicator() {
     return null;
   }
   const storage = status.storage;
-  const provider = storage.mode === "provider";
-  if (provider && !storage.lastSyncError && !storage.lastSyncAt) {
-    // The files are on the machine disk and no state backup ran (or none is configured).
+  const sync = syncState(storage);
+  if (sync.kind === "none") {
     return null;
   }
-  if (!provider && !storage.mounted) {
+  if (sync.kind === "unmounted") {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-warning-fg">
         <CloudOff aria-hidden className="size-4" />
@@ -46,16 +46,16 @@ function SyncIndicator() {
       </span>
     );
   }
-  if (storage.lastSyncError) {
+  if (sync.kind === "failed") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-danger-fg" title={storage.lastSyncError}>
+      <span className="inline-flex items-center gap-1.5 text-xs text-danger-fg" title={sync.error}>
         <CloudAlert aria-hidden className="size-4" />
         Sync failed
-        <span className="sr-only">: {storage.lastSyncError}</span>
+        <span className="sr-only">: {sync.error}</span>
       </span>
     );
   }
-  const synced = parseTime(storage.lastSyncAt);
+  const synced = sync.kind === "synced" ? parseTime(sync.at) : null;
   const serverNow = parseTime(status.time);
   const label =
     synced === null || serverNow === null

@@ -106,8 +106,8 @@ func TestFreshStartFormatsMountsAndProvisions(t *testing.T) {
 	if err != nil || fi.Size() != 1<<20 {
 		t.Fatalf("root-upper.img: %v size %d", err, fi.Size())
 	}
-	if !sup.Status("default").Mounted {
-		t.Fatal("status must report mounted")
+	if st := sup.Status("default"); !st.Mounted || !st.SyncEnabled {
+		t.Fatal("status must report mounted with sync")
 	}
 	if err := sup.Start(ctx, "default"); err == nil {
 		t.Fatal("double start must fail")

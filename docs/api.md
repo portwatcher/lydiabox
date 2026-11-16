@@ -184,6 +184,7 @@ the right cell. The VM can be stopped or paused: it wakes on the first use.
     "tenantId": "default",
     "mode": "juicefs",
     "mounted": true,
+    "syncEnabled": true,
     "lastSyncAt": "2026-11-10T06:29:41Z",
     "lastUploadAt": "2026-11-10T06:20:41Z",
     "lastSyncError": "",
@@ -199,6 +200,11 @@ the right cell. The VM can be stopped or paused: it wakes on the first use.
   (`LYDIABOX_STORAGE_MODE`). In the `provider` mode `mounted` is always
   false, `lastSyncAt` and `lastUploadAt` refer to the state database backup
   only (zero time without S3 settings), and `s3Gateway.enabled` is false.
+- `storage.syncEnabled` is true when the server backs up to S3: always in
+  the `juicefs` mode, and in the `provider` mode only with S3 settings. The
+  UI shows no sync state when it is false. Older servers omit it; clients
+  then treat a zero `lastSyncAt` without `lastSyncError` in the `provider`
+  mode as no sync.
 - `storage.lastSyncAt` is the last successful metadata backup check (the UI
   shows "Synced Xs ago" from `time - lastSyncAt`). `lastUploadAt` is the
   last time a changed snapshot was uploaded. `lastSyncError` is omitted when

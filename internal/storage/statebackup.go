@@ -57,6 +57,7 @@ func NewStateBackup(opts StateBackupOptions) (*StateBackup, error) {
 	if opts.Objects != nil {
 		b.up = &snapshotUploader{objects: opts.Objects, tmpDir: c.TmpDir(), log: b.log, sums: map[string]string{}}
 	}
+	b.status.SyncEnabled = b.up != nil && opts.State != nil
 	return b, nil
 }
 

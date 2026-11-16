@@ -36,7 +36,7 @@ func TestStateBackupWithoutS3(t *testing.T) {
 	if _, err := b.HomeDir("default"); !errors.Is(err, ErrNoHostDirs) {
 		t.Fatalf("HomeDir = %v", err)
 	}
-	if st := b.Status("default"); st.Mode != config.StorageProvider || st.Mounted {
+	if st := b.Status("default"); st.Mode != config.StorageProvider || st.Mounted || st.SyncEnabled {
 		t.Fatalf("status = %+v", st)
 	}
 	if err := b.Start(ctx, "other"); !errors.Is(err, ErrUnknownTenant) {
@@ -78,7 +78,7 @@ func TestStateBackupUploadsState(t *testing.T) {
 	if objs.putCount(StateBackupKey("default")) != 2 {
 		t.Fatal("Stop must upload the final snapshot")
 	}
-	if st := b.Status("default"); st.LastUploadAt.IsZero() || st.LastSyncError != "" {
+	if st := b.Status("default"); st.LastUploadAt.IsZero() || st.LastSyncError != "" || !st.SyncEnabled {
 		t.Fatalf("status = %+v", st)
 	}
 }

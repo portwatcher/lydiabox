@@ -49,6 +49,8 @@ export interface StorageStatus {
   /** `juicefs` (host volume) or `provider` (machine disk); absent on older servers. */
   mode?: StorageMode;
   mounted: boolean;
+  /** True when the server backs up to S3; absent on older servers. */
+  syncEnabled?: boolean;
   lastSyncAt: string;
   lastUploadAt: string;
   lastSyncError?: string;

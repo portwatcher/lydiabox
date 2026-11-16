@@ -91,6 +91,9 @@ func printStatus(w io.Writer, base string, st api.StatusResponse) {
 	}
 	fmt.Fprintf(w, "Storage:  %s\n", mounted)
 	switch {
+	case st.Storage.Mode == config.StorageProvider && !st.Storage.SyncEnabled &&
+		st.Storage.LastSyncError == "" && st.Storage.LastSyncAt.IsZero():
+		fmt.Fprintln(w, "S3 sync:  off (no S3 settings)")
 	case st.Storage.LastSyncError != "":
 		fmt.Fprintf(w, "S3 sync:  failed: %s\n", st.Storage.LastSyncError)
 	case st.Storage.LastSyncAt.IsZero():

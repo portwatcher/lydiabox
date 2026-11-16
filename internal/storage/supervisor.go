@@ -32,8 +32,11 @@ type Provider interface {
 type Status struct {
 	TenantID string `json:"tenantId"`
 	// Mode is the storage mode: "juicefs" or "provider".
-	Mode          string    `json:"mode"`
-	Mounted       bool      `json:"mounted"`
+	Mode    string `json:"mode"`
+	Mounted bool   `json:"mounted"`
+	// SyncEnabled is true when the server backs up to S3: always in the
+	// juicefs mode, and in the provider mode only with S3 settings.
+	SyncEnabled   bool      `json:"syncEnabled"`
 	LastSyncAt    time.Time `json:"lastSyncAt"`
 	LastUploadAt  time.Time `json:"lastUploadAt"`
 	LastSyncError string    `json:"lastSyncError,omitempty"`
@@ -145,7 +148,7 @@ func NewSupervisor(opts Options) (*Supervisor, error) {
 		tenant: c.TenantID,
 		log:    opts.Logger.With("component", "storage", "tenant", c.TenantID),
 		jfs:    JuiceFS{Binary: opts.JuiceFSBinary, MetaURL: c.JuiceFSMetaURL(), MountDir: c.MountDir(), CacheDir: c.CacheDir()},
-		status: Status{TenantID: c.TenantID, Mode: config.StorageJuiceFS},
+		status: Status{TenantID: c.TenantID, Mode: config.StorageJuiceFS, SyncEnabled: true},
 		sums:   map[string]string{},
 	}, nil
 }

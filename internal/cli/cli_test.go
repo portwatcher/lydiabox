@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/lydiabox/lydiabox/internal/config"
 	"github.com/lydiabox/lydiabox/internal/storage"
 )
 
@@ -119,6 +120,24 @@ func TestStatusCommand(t *testing.T) {
 	t.Setenv("LYDIABOX_AUTH_TOKEN", "")
 	if code, _, errOut := run(t, "status"); code != 1 || !strings.Contains(errOut, "no admin token") {
 		t.Fatalf("status without token: %d %q", code, errOut)
+	}
+}
+
+func TestPrintStatusProviderSync(t *testing.T) {
+	now := time.Now().UTC()
+	for _, tc := range []struct {
+		st   storage.Status
+		want string
+	}{
+		{storage.Status{Mode: config.StorageProvider}, "S3 sync:  off"},
+		{storage.Status{Mode: config.StorageProvider, SyncEnabled: true}, "S3 sync:  not yet"},
+		{storage.Status{Mode: config.StorageProvider, SyncEnabled: true, LastSyncAt: now.Add(-5 * time.Second)}, "5s ago"},
+	} {
+		var out strings.Builder
+		printStatus(&out, "http://x", api.StatusResponse{Time: now, Storage: tc.st})
+		if !strings.Contains(out.String(), tc.want) {
+			t.Errorf("%+v: got %q, want %q", tc.st, out.String(), tc.want)
+		}
 	}
 }
 
