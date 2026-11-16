@@ -99,7 +99,7 @@ lydiabox/
         ├── api/                    # Typed REST & WebSocket clients
         └── pages/
             ├── StudioPage.tsx      # Sessions sidebar + xterm.js terminal
-            ├── DesktopPage.tsx     # WebRTC video canvas + Agent action overlay + Observer/Takeover toggle + VM power bar
+            ├── DesktopPage.tsx     # WebRTC video canvas + Agent action overlay + Observer/Takeover toggle (VM power controls: status bar only)
             ├── FilesPage.tsx       # Offline-capable file tree, code editor, drag-drop folder upload, WebDAV/S3 mount info
             ├── ModelsPage.tsx      # Magpie provider/routing management & per-Harness model selector
             └── ConnectorsPage.tsx  # OAuth2 / PAT setup cards (GitHub, Google Drive, Notion, Slack) + audit log
@@ -266,7 +266,8 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 Build a responsive, dark-themed workstation UI (TailwindCSS + Lucide icons + `xterm.js`) embedded into `cmd/lydiabox`:
 
 1. **Top Global Status Bar**:
-   - VM Status pill (`STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`) with 1-click Wake / Hibernate / Stop buttons, CPU/RAM & S3 sync indicator (`Synced Xs ago`).
+   - VM Status pill (`STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`) with 1-click Wake / Hibernate / Stop buttons, CPU/RAM & S3 sync indicator (`Synced Xs ago`). The sync indicator shows only when the server syncs to S3 (always in the `juicefs` storage mode; in the `provider` mode only with S3 settings for the state database backup).
+   - On 2026-11-17 the owner asked for the VM power controls (state pill, Wake / Hibernate / Stop) to show only in this global status bar. No page repeats them; the Desktop page wakes a stopped or paused VM from its own "Start desktop" action.
 2. **Studio Tab (`/studio`)**:
    - Left pane: Unified Sessions list filterable by Harness (`claude-code`, `codex`, `dsh`, `antigravity`, `opencode`) and Workspace directory; works even when VM is `STOPPED`.
    - Center pane: Live `xterm.js` WebSocket PTY terminal attached to the active Harness session.

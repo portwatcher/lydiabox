@@ -255,7 +255,8 @@ makes these changes; the `vm.create` row above is `done` with them.
 
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
-| Status bar: VM pill, Wake / Hibernate / Stop, CPU/RAM, "Synced Xs ago" | done | `web/src/components` | web tests; E2E (browser) |
+| Status bar: VM pill, Wake / Hibernate / Stop, CPU/RAM, "Synced Xs ago" (only when the server syncs to S3: `storage.syncEnabled`) | done | `web/src/components`, `web/src/lib/sync.ts` | web tests (`sync.test.ts`); E2E (browser) |
+| VM power controls only in the status bar (owner request, 2026-11-17); the Desktop toolbar does not repeat them, and its "Start desktop" action wakes a stopped or paused VM | done | `web/src/pages/desktop/DesktopToolbar.tsx` | web tests (`DesktopToolbar.test.ts`); browser check |
 | Studio: session list with harness and workspace filters, xterm.js | done | `web/src/pages/studio` | web tests; E2E (browser) |
 | Desktop: WebRTC video, overlay, Observer/Takeover, Chrome/Blender launch | done | `web/src/pages/desktop` | web tests; E2E (browser, signaling) |
 | Files: tree, editor, drag-and-drop upload, download, WebDAV dialog | done | `web/src/pages/files` | web tests; E2E (browser) |

@@ -1,60 +1,18 @@
-import { Box, Eye, Globe, Monitor, MousePointer2, PanelRightClose, PanelRightOpen, Play, RotateCw, SquareTerminal, Users } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Monitor, Play, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { desktop } from "../api/domains";
 import { availabilityOf, describeError } from "../api/errors";
 import type { AgentAction, DesktopMode, LaunchApp } from "../api/types";
 import { ErrorView, LoadingView, StateView } from "../components/StateView";
 import { useToast } from "../components/Toast";
-import { VmPower } from "../components/VmPower";
 import { Banner, Button, cx } from "../components/ui";
 import { useSystem } from "../hooks/useSystem";
-import { count } from "../lib/format";
 import { ActionFeed } from "./desktop/ActionFeed";
 import { DesktopOverlay } from "./desktop/DesktopOverlay";
+import { DesktopToolbar } from "./desktop/DesktopToolbar";
 import { initialOverlay, overlayReducer } from "./desktop/overlay";
 import { useDesktopStream } from "./desktop/useDesktopStream";
 import { useTakeoverInput } from "./desktop/useTakeoverInput";
-
-const apps: { app: LaunchApp; label: string; icon: LucideIcon }[] = [
-  { app: "chrome", label: "Chrome", icon: Globe },
-  { app: "blender", label: "Blender", icon: Box },
-  { app: "terminal", label: "Terminal", icon: SquareTerminal },
-];
-
-function ModeSwitch({ mode, busy, disabled, onChange }: { mode: DesktopMode; busy: boolean; disabled: boolean; onChange: (m: DesktopMode) => void }) {
-  const options: { value: DesktopMode; label: string; icon: LucideIcon }[] = [
-    { value: "OBSERVER", label: "Observer", icon: Eye },
-    { value: "TAKEOVER", label: "Takeover", icon: MousePointer2 },
-  ];
-  return (
-    <div role="group" aria-label="Control mode" className="inline-flex rounded-md border border-border bg-bg p-0.5">
-      {options.map(({ value, label, icon: Icon }) => {
-        const active = mode === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={active}
-            disabled={disabled || busy}
-            onClick={() => !active && onChange(value)}
-            className={cx(
-              "inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-[13px] font-medium transition-colors duration-150 disabled:opacity-50",
-              active
-                ? value === "TAKEOVER"
-                  ? "bg-accent-solid text-on-accent"
-                  : "bg-surface-active text-fg"
-                : "text-fg-muted hover:text-fg",
-            )}
-          >
-            <Icon aria-hidden className="size-4" />
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function DesktopPage() {
   const toast = useToast();
@@ -182,33 +140,16 @@ export default function DesktopPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-subtle px-3 py-2">
-        <ModeSwitch mode={stream.mode} busy={modeBusy} disabled={!connected} onChange={(m) => void changeMode(m)} />
-        <div className="flex flex-wrap items-center gap-1">
-          {apps.map(({ app, label, icon }) => (
-            <Button key={app} size="sm" variant="ghost" icon={icon} disabled={!connected} onClick={() => launch(app, label)}>
-              {label}
-            </Button>
-          ))}
-        </div>
-        <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted tabular-nums">
-          <Users aria-hidden className="size-4" />
-          {count(stream.viewers, { one: "# viewer", other: "# viewers" })}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <VmPower compact />
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={sidebar ? PanelRightClose : PanelRightOpen}
-            aria-expanded={sidebar}
-            aria-controls="desktop-feed"
-            onClick={() => setSidebar((s) => !s)}
-          >
-            Activity
-          </Button>
-        </div>
-      </div>
+      <DesktopToolbar
+        mode={stream.mode}
+        modeBusy={modeBusy}
+        connected={connected}
+        viewers={stream.viewers}
+        sidebar={sidebar}
+        onModeChange={(m) => void changeMode(m)}
+        onLaunch={launch}
+        onToggleSidebar={() => setSidebar((s) => !s)}
+      />
       {stream.error ? (
         <div className="px-3 pt-2">
           <Banner tone="danger">{stream.error}</Banner>
