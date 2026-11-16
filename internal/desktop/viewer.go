@@ -111,10 +111,15 @@ func (v *viewer) pump(ctx context.Context, sig SignalConn, gen int) {
 		}
 		if err != nil {
 			v.mu.Unlock()
-			if ctx.Err() == nil {
-				v.c.sendJSON(errorMsg{Type: "error", Code: "unavailable", Message: "desktop stream ended"})
+			switch {
+			case ctx.Err() != nil:
+				v.cancel()
+			case v.rl.opts.Stopped(v.tid):
+				// The user stopped the VM: not a fault, and not retried.
+				v.c.end(CodeStopped, "the VM was stopped")
+			default:
+				v.c.fail("unavailable", "desktop stream ended")
 			}
-			v.cancel()
 			return
 		}
 		v.c.send(msg)

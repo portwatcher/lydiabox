@@ -4,7 +4,8 @@
 //
 // Every operation first takes a "files" lease on the VM controller and
 // calls EnsureRunning, so a request wakes a paused or stopped machine and
-// the machine does not hibernate while a transfer runs. When the machine
+// the machine does not hibernate while a transfer runs. A machine that the
+// user stopped is not started: the operation fails with agentfs.ErrStopped. When the machine
 // does not answer within WakeTimeout, the operation fails with
 // agentfs.ErrUnavailable (HTTP 503).
 package remotefs
@@ -37,7 +38,8 @@ type Client interface {
 	FSWrite(ctx context.Context, tenantID string, p rpc.FSWriteParams, src io.Reader) (rpc.FSWriteResult, error)
 }
 
-// Waker boots or resumes the VM (vmm.Controller).
+// Waker boots or resumes the VM (vmm.Controller). For a VM that the user
+// stopped it returns an error that wraps agentfs.ErrStopped.
 type Waker interface {
 	EnsureRunning(ctx context.Context, tenantID string) error
 }
@@ -92,6 +94,9 @@ func (f *FS) Begin(ctx context.Context, tenantID string) (release func(), err er
 		release()
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		if errors.Is(err, agentfs.ErrStopped) {
+			return nil, agentfs.ErrStopped
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, agentfs.Unavailable("the agent machine did not start within %s; retry the request", f.opts.WakeTimeout)

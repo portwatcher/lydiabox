@@ -240,3 +240,17 @@ func TestWakeTimeoutAndContext(t *testing.T) {
 		t.Fatal("Roots woke the machine")
 	}
 }
+
+// A file request does not start a machine that the user stopped: it fails
+// with agentfs.ErrStopped (an expected 503).
+func TestStoppedMachineIsNotStarted(t *testing.T) {
+	g, _ := start(t)
+	g.Waker.Set(0, agentfs.ErrStopped)
+	_, err := g.FS.Lstat(context.Background(), tid, agentfs.RootHome, "")
+	if !errors.Is(err, agentfs.ErrStopped) || !errors.Is(err, agentfs.ErrUnavailable) {
+		t.Fatalf("request to a stopped machine = %v", err)
+	}
+	if g.Waker.Leases(remotefs.LeaseFiles) != 0 {
+		t.Fatal("lease leaked")
+	}
+}

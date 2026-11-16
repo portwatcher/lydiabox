@@ -280,3 +280,97 @@ func TestRefreshAdoptsRunningVM(t *testing.T) {
 		t.Fatalf("calls %s", d.Calls())
 	}
 }
+
+func TestUserStopHoldsUntilStart(t *testing.T) {
+	d := &fakeDriver{}
+	c := newCtl(t, d, 0, nil)
+	ctx := context.Background()
+	if err := c.EnsureRunning(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Stop(ctx, "default", false); err != nil {
+		t.Fatal(err)
+	}
+	// A wake on demand (desktop, terminal, files) does not start it.
+	if err := c.EnsureRunning(ctx, "default"); !errors.Is(err, ErrStopped) || !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("EnsureRunning after a user stop: %v", err)
+	}
+	if !c.Held("default") || c.State("default") != StateStopped || d.count("boot") != 1 {
+		t.Fatalf("held %v state %s calls %s", c.Held("default"), c.State("default"), d.Calls())
+	}
+	// An explicit start lifts the hold, again and again.
+	for i := 0; i < 2; i++ {
+		if err := c.Start(ctx, "default"); err != nil {
+			t.Fatal(err)
+		}
+		if c.Held("default") || c.State("default") != StateRunning {
+			t.Fatalf("after start: held %v state %s", c.Held("default"), c.State("default"))
+		}
+		if err := c.EnsureRunning(ctx, "default"); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Stop(ctx, "default", false); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.EnsureRunning(ctx, "default"); !errors.Is(err, ErrStopped) {
+			t.Fatalf("round %d: %v", i, err)
+		}
+	}
+	if d.count("boot") != 3 {
+		t.Fatalf("calls %s", d.Calls())
+	}
+}
+
+func TestIdlePauseIsNotAUserStop(t *testing.T) {
+	d := &fakeDriver{}
+	c := newCtl(t, d, 0, nil)
+	ctx := context.Background()
+	if err := c.EnsureRunning(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Hibernate(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.EnsureRunning(ctx, "default"); err != nil || c.Held("default") {
+		t.Fatalf("wake of a paused VM: %v held %v", err, c.Held("default"))
+	}
+	// A failed stop does not hold the VM.
+	c2 := newCtl(t, &fakeDriver{}, 0, func(context.Context, string) error { return errors.New("guest gone") })
+	if err := c2.EnsureRunning(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c2.Stop(ctx, "default", false); err == nil || c2.Held("default") {
+		t.Fatalf("failed stop: %v held %v", err, c2.Held("default"))
+	}
+}
+
+// A wake asked for before a Stop, which runs after the stop, must not
+// start the VM again.
+func TestWakeQueuedBehindAStopDoesNotBoot(t *testing.T) {
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	d := &fakeDriver{}
+	var once sync.Once
+	c := newCtl(t, d, 0, func(context.Context, string) error {
+		once.Do(func() { close(entered); <-release })
+		return nil
+	})
+	ctx := context.Background()
+	if err := c.EnsureRunning(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	stopped := make(chan error, 1)
+	go func() { stopped <- c.Stop(ctx, "default", false) }()
+	<-entered
+	// The stop holds the VM from its start: a wake fails at once.
+	if err := c.EnsureRunning(ctx, "default"); !errors.Is(err, ErrStopped) {
+		t.Fatalf("wake during the stop: %v", err)
+	}
+	close(release)
+	if err := <-stopped; err != nil {
+		t.Fatal(err)
+	}
+	if d.count("boot") != 1 || c.State("default") != StateStopped {
+		t.Fatalf("calls %s state %s", d.Calls(), c.State("default"))
+	}
+}

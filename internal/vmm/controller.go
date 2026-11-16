@@ -73,6 +73,9 @@ type tenantVM struct {
 	boot      *bootCall
 	timer     *time.Timer
 	pausing   bool
+	// held is set by Stop (from its start) and cleared by Start: a VM
+	// that the user stopped is not woken on demand (EnsureRunning).
+	held bool
 }
 
 type bootCall struct {
@@ -167,12 +170,18 @@ func (c *Controller) Refresh(ctx context.Context, tid string) error {
 	return nil
 }
 
-// EnsureRunning boots a stopped VM or resumes a paused one and waits until
-// the guest daemon answers. Concurrent calls share one boot, which keeps
-// running when a caller's ctx ends.
+// EnsureRunning wakes the VM on demand: it boots a stopped VM or resumes a
+// paused one and waits until the guest daemon answers. Concurrent calls
+// share one boot, which keeps running when a caller's ctx ends. A VM that
+// the user stopped (Stop, until Start) is not woken: EnsureRunning returns
+// ErrStopped at once.
 func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
 	c.mu.Lock()
 	t := c.tenant(tid)
+	if t.held {
+		c.mu.Unlock()
+		return ErrStopped
+	}
 	if t.state == StateRunning && !t.pausing && t.boot == nil {
 		c.mu.Unlock()
 		return nil
@@ -211,6 +220,13 @@ func (c *Controller) runBoot(tid string, t *tenantVM, call *bootCall) {
 }
 
 func (c *Controller) bootLocked(ctx context.Context, tid string, t *tenantVM) error {
+	c.mu.Lock()
+	held := t.held
+	c.mu.Unlock()
+	if held {
+		// A Stop came after this wake was asked for.
+		return ErrStopped
+	}
 	st, err := c.opts.Driver.State(ctx, tid)
 	if err != nil {
 		return fmt.Errorf("vmm: read VM state: %w", err)
@@ -420,10 +436,24 @@ func (c *Controller) recordError(t *tenantVM, err error) {
 
 // Stop flushes guest filesystems and shuts the VM down. Without force a
 // failed flush aborts the stop; with force the VM is shut down anyway.
+// From its start until Start, the VM is held stopped: EnsureRunning does
+// not wake it (a failed or refused stop restores the previous hold).
 func (c *Controller) Stop(ctx context.Context, tid string, force bool) error {
 	c.mu.Lock()
 	t := c.tenant(tid)
+	wasHeld := t.held
+	t.held = true
 	c.mu.Unlock()
+	err := c.stop(ctx, tid, t, force)
+	if err != nil {
+		c.mu.Lock()
+		t.held = wasHeld
+		c.mu.Unlock()
+	}
+	return err
+}
+
+func (c *Controller) stop(ctx context.Context, tid string, t *tenantVM, force bool) error {
 	t.trans.Lock()
 	defer t.trans.Unlock()
 	c.mu.Lock()
@@ -450,6 +480,22 @@ func (c *Controller) Stop(ctx context.Context, tid string, force bool) error {
 	}
 	c.setState(tid, t, StateStopped)
 	return nil
+}
+
+// Start is an explicit start by the user: it lifts the hold of Stop and
+// then boots or resumes the VM like EnsureRunning.
+func (c *Controller) Start(ctx context.Context, tid string) error {
+	c.mu.Lock()
+	c.tenant(tid).held = false
+	c.mu.Unlock()
+	return c.EnsureRunning(ctx, tid)
+}
+
+// Held reports whether the user stopped the VM (Stop, until Start).
+func (c *Controller) Held(tid string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.tenant(tid).held
 }
 
 // Close stops every running VM (host shutdown, before storage unmounts).

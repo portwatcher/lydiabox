@@ -33,6 +33,7 @@ var (
 	ErrTooLarge    = agentfs.ErrTooLarge
 	ErrConflict    = agentfs.ErrConflict
 	ErrUnavailable = agentfs.ErrUnavailable
+	ErrStopped     = agentfs.ErrStopped
 )
 
 // ErrNotText is returned when a text read finds binary content.

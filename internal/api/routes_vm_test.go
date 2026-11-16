@@ -24,7 +24,7 @@ func (f *fakeVM) Status(string) VMDetail {
 	return VMDetail{State: f.state, Driver: "docker", CPUs: 4, MemMB: 8192, Leases: map[string]int{"pty": 0, "desktop": 0}}
 }
 
-func (f *fakeVM) EnsureRunning(ctx context.Context, _ string) error {
+func (f *fakeVM) Start(ctx context.Context, _ string) error {
 	if f.wakeErr != nil {
 		return f.wakeErr
 	}

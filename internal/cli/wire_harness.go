@@ -148,8 +148,13 @@ func (g guestRunner) ListPTYs(ctx context.Context, tenantID string) ([]harness.P
 	return out, nil
 }
 
-type wakeOnly struct{ w harness.VMWaker }
+type wakeOnly struct{ w *vmm.Controller }
 
 func (w wakeOnly) EnsureRunning(ctx context.Context, tenantID string) error {
 	return w.w.EnsureRunning(ctx, tenantID)
+}
+
+// Start implements harness.VMStarter.
+func (w wakeOnly) Start(ctx context.Context, tenantID string) error {
+	return w.w.Start(ctx, tenantID)
 }

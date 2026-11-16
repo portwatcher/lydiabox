@@ -129,6 +129,10 @@ var ErrConflict = api.ErrVMConflict
 // ErrUnavailable is returned when the VM or its guest cannot be reached.
 var ErrUnavailable = api.ErrVMUnavailable
 
+// ErrStopped marks a wake on demand of a VM that the user stopped (it
+// wraps ErrUnavailable).
+var ErrStopped = api.ErrVMStopped
+
 // ValidTenantID checks that a tenant ID is safe in file names, interface
 // names, and container names: 1 to 64 letters, digits, '-', or '_'.
 func ValidTenantID(id string) error {

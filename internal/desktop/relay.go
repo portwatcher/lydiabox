@@ -16,6 +16,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/desktop/ice"
 	"github.com/lydiabox/lydiabox/internal/guest/rpc"
 	"github.com/lydiabox/lydiabox/internal/tenant"
@@ -26,6 +27,11 @@ const Subprotocol = "lydiabox.desktop.v1"
 
 // LeaseDesktop is the controller lease kind held per open socket.
 const LeaseDesktop = "desktop"
+
+// CodeStopped is the error code of a socket refused or ended because the
+// user stopped the VM. The browser does not reconnect after it; it waits
+// for an explicit start (POST /api/v1/vm/wake).
+const CodeStopped = api.CodeVMStopped
 
 // SignalConn is one viewer's signaling stream to the guest.
 type SignalConn interface {
@@ -49,7 +55,9 @@ type Guest interface {
 	LaunchApp(ctx context.Context, tenantID, app string) error
 }
 
-// Power wakes the VM and holds leases (vmm.Controller).
+// Power wakes the VM and holds leases (vmm.Controller). EnsureRunning
+// does not start a VM that the user stopped: it returns an error that
+// wraps api.ErrVMStopped.
 type Power interface {
 	EnsureRunning(ctx context.Context, tenantID string) error
 	AcquireLease(tenantID, kind string) (release func())
@@ -64,6 +72,9 @@ type Options struct {
 	Power Power
 	// Running reports whether the VM runs (mode routes answer 503 otherwise).
 	Running func(tenantID string) bool
+	// Stopped reports whether the user stopped the VM (default: never).
+	// A stream that ends while it is true ends with CodeStopped.
+	Stopped func(tenantID string) bool
 	// PublicIP returns the address at which the browser that sent r reaches
 	// the forwarded WebRTC UDP port ("" lets the guest advertise its own).
 	PublicIP func(r *http.Request) string
@@ -97,6 +108,9 @@ func New(opts Options) (*Relay, error) {
 	}
 	if opts.Running == nil {
 		opts.Running = func(string) bool { return true }
+	}
+	if opts.Stopped == nil {
+		opts.Stopped = func(string) bool { return false }
 	}
 	if opts.PublicIP == nil {
 		opts.PublicIP = func(*http.Request) string { return "" }
@@ -182,6 +196,10 @@ func (rl *Relay) ServeWS(w http.ResponseWriter, r *http.Request) {
 	wctx, wcancel := context.WithTimeout(ctx, rl.opts.WakeTimeout)
 	err = rl.opts.Power.EnsureRunning(wctx, tid)
 	wcancel()
+	if errors.Is(err, api.ErrVMStopped) {
+		c.end(CodeStopped, "the VM was stopped")
+		return
+	}
 	if err != nil {
 		c.fail("unavailable", "VM is not running: "+err.Error())
 		return
@@ -281,10 +299,20 @@ func (c *client) sendJSON(v any) {
 }
 
 func (c *client) fail(code, msg string) {
+	c.finish(code, msg, websocket.StatusInternalError)
+}
+
+// end closes the socket with an error message that is an expected state,
+// not a fault.
+func (c *client) end(code, msg string) {
+	c.finish(code, msg, websocket.StatusNormalClosure)
+}
+
+func (c *client) finish(code, msg string, status websocket.StatusCode) {
 	c.sendJSON(errorMsg{Type: "error", Code: code, Message: msg})
 	// Give the writer a moment to deliver the error before closing.
 	time.Sleep(100 * time.Millisecond)
-	c.close(websocket.StatusInternalError, msg)
+	c.close(status, msg)
 }
 
 func (c *client) writeLoop(ctx context.Context) {

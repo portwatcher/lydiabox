@@ -177,7 +177,8 @@ type CreateRequest struct {
 	Rows           uint16 `json:"rows"`
 }
 
-// Create starts a harness terminal in the guest. It wakes the VM.
+// Create starts a harness terminal in the guest. It starts the VM, also
+// one that the user stopped (an explicit request).
 func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest) (Session, error) {
 	ws, err := CleanGuestDir(req.WorkspaceDir)
 	if err != nil {
@@ -203,6 +204,9 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	if provisional {
 		nativeID = randomID("new-")
 	}
+	if err := m.startVM(ctx, tenantID); err != nil {
+		return Session{}, err
+	}
 	if err := m.ensureWorkspace(ctx, tenantID, ws); err != nil {
 		return Session{}, err
 	}
@@ -214,6 +218,24 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	return m.sessionOf(ls), nil
 }
 
+// startVM starts the VM for a new or resumed session, an explicit request
+// of the user: it also starts a VM that the user stopped (VMStarter).
+func (m *Manager) startVM(ctx context.Context, tenantID string) error {
+	st, ok := m.opts.Waker.(VMStarter)
+	if !ok {
+		return nil
+	}
+	wctx, cancel := context.WithTimeout(ctx, m.opts.WakeTimeout)
+	defer cancel()
+	if err := st.Start(wctx, tenantID); err != nil {
+		if errors.Is(err, ErrUnavailable) {
+			return err
+		}
+		return fmt.Errorf("%w: start VM: %w", ErrUnavailable, err)
+	}
+	return nil
+}
+
 func (m *Manager) ensureWorkspace(ctx context.Context, tenantID, guestDir string) error {
 	root, rel, err := guestRoot(guestDir)
 	if err != nil {
@@ -221,7 +243,7 @@ func (m *Manager) ensureWorkspace(ctx context.Context, tenantID, guestDir string
 	}
 	if err := m.opts.Files.MkdirAll(ctx, tenantID, root, rel); err != nil {
 		if errors.Is(err, agentfs.ErrUnavailable) {
-			return fmt.Errorf("%w: %v", ErrUnavailable, err)
+			return fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 		return fmt.Errorf("%w: workspace %s: %v", ErrBadRequest, guestDir, err)
 	}
@@ -244,7 +266,7 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 		if errors.Is(err, ErrUnavailable) {
 			return err
 		}
-		return fmt.Errorf("%w: wake VM: %v", ErrUnavailable, err)
+		return fmt.Errorf("%w: wake VM: %w", ErrUnavailable, err)
 	}
 	if la, ok := m.opts.Waker.(LeaseAcquirer); ok {
 		ls.release = la.AcquireLease(ls.tenantID, "pty")
@@ -401,7 +423,8 @@ func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) 
 			break
 		}
 		if err := m.opts.Waker.EnsureRunning(ctx, tenantID); err != nil {
-			return nil, fmt.Errorf("%w: wake VM: %v", ErrUnavailable, err)
+			// A VM that the user stopped is not started for a reconnect.
+			return nil, fmt.Errorf("%w: wake VM: %w", ErrUnavailable, err)
 		}
 		pty, err := m.opts.Runner.AttachPTY(ctx, tenantID, x.PTYID)
 		if err != nil {

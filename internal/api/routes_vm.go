@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -35,11 +36,23 @@ var ErrVMConflict = errors.New("vm: transition not possible in the current state
 // (503 unavailable).
 var ErrVMUnavailable = errors.New("vm: unavailable")
 
+// CodeVMStopped is the WebSocket error code (desktop and terminal sockets)
+// of a socket refused or ended because the user stopped the VM. Clients do
+// not reconnect after it.
+const CodeVMStopped = "stopped"
+
+// ErrVMStopped marks a request that needs the VM while the user has
+// stopped it: only an explicit start (POST /api/v1/vm/wake) starts it
+// again. It wraps ErrVMUnavailable (503 unavailable).
+var ErrVMStopped = fmt.Errorf("%w: the VM was stopped; start it to use it", ErrVMUnavailable)
+
 // VMController is the VM power API (*vmm.Controller implements it).
 type VMController interface {
 	VMStatusSource
 	Status(tenantID string) VMDetail
-	EnsureRunning(ctx context.Context, tenantID string) error
+	// Start is an explicit start: it also starts a VM that the user
+	// stopped (EnsureRunning does not).
+	Start(ctx context.Context, tenantID string) error
 	Hibernate(ctx context.Context, tenantID string) error
 	Stop(ctx context.Context, tenantID string, force bool) error
 }
@@ -68,7 +81,7 @@ func (v VMRoutes) wake(w http.ResponseWriter, r *http.Request) {
 	tid := tenant.FromContext(r.Context())
 	ctx, cancel := context.WithTimeout(r.Context(), WakeTimeout)
 	defer cancel()
-	if err := v.Controller.EnsureRunning(ctx, tid); err != nil {
+	if err := v.Controller.Start(ctx, tid); err != nil {
 		writeVMError(w, err)
 		return
 	}

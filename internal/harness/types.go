@@ -140,6 +140,14 @@ type VMWaker interface {
 	EnsureRunning(ctx context.Context, tenantID string) error
 }
 
+// VMStarter is implemented by wakers that tell an explicit start from a
+// wake on demand (vmm.Controller): EnsureRunning does not start a VM that
+// the user stopped, Start does. A new or resumed session is an explicit
+// request of the user, so Create starts the VM with Start.
+type VMStarter interface {
+	Start(ctx context.Context, tenantID string) error
+}
+
 // LeaseAcquirer is implemented by wakers that track activity leases. The
 // manager holds a "pty" lease for every live harness terminal.
 type LeaseAcquirer interface {

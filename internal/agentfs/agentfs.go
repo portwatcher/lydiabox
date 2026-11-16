@@ -60,6 +60,9 @@ var (
 	// ErrUnavailable means the guest that holds the files cannot be reached
 	// (provider storage mode: the machine did not wake in time).
 	ErrUnavailable = errors.New("the agent machine that holds the files is not available")
+	// ErrStopped means the user stopped the agent machine: a file request
+	// does not start it (it wraps ErrUnavailable).
+	ErrStopped = fmt.Errorf("%w: the VM was stopped; start it to use these files", ErrUnavailable)
 )
 
 // Entry describes one file or directory.

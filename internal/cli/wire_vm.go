@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/bootstrap"
@@ -85,7 +86,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 	if cfg.ProviderStorage() {
 		// The guest trees are on the machine disk: file requests take a
 		// lease and wake the machine (remotefs).
-		rfs, err := remotefs.New(remotefs.Options{Client: guest, Waker: ctl, Leaser: ctl})
+		rfs, err := remotefs.New(remotefs.Options{Client: guest, Waker: filesWaker{ctl}, Leaser: ctl})
 		if err != nil {
 			return nil, err
 		}
@@ -293,4 +294,16 @@ func isELF(path string) bool {
 		return false
 	}
 	return bytes.Equal(magic, []byte("\x7fELF"))
+}
+
+// filesWaker is the controller as the waker of remotefs: a VM that the
+// user stopped gives agentfs.ErrStopped.
+type filesWaker struct{ ctl *vmm.Controller }
+
+func (w filesWaker) EnsureRunning(ctx context.Context, tid string) error {
+	err := w.ctl.EnsureRunning(ctx, tid)
+	if errors.Is(err, vmm.ErrStopped) {
+		return agentfs.ErrStopped
+	}
+	return err
 }

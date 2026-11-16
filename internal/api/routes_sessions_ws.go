@@ -55,6 +55,12 @@ func (s SessionsRoutes) ws(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	room, err := s.Manager.Room(ctx, tenant.FromContext(ctx), r.PathValue("id"))
+	if errors.Is(err, ErrVMStopped) {
+		// The user stopped the VM: the client does not retry.
+		writeControl(ctx, conn, harness.CtlError{Type: "error", Code: CodeVMStopped, Message: "the VM was stopped"})
+		conn.Close(websocket.StatusNormalClosure, "")
+		return
+	}
 	if err != nil {
 		_, code := harnessStatus(err)
 		writeControl(ctx, conn, harness.CtlError{Type: "error", Code: code, Message: err.Error()})

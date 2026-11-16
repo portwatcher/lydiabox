@@ -32,6 +32,7 @@ func wireDesktop(ctx context.Context, d *deps) (*component, error) {
 		Guest:     desktop.GuestAdapter{Client: d.Guest},
 		Power:     ctl,
 		Running:   func(tid string) bool { return ctl.State(tid) == vmm.StateRunning },
+		Stopped:   ctl.Held,
 		PublicIP:  func(r *http.Request) string { return desktop.RequestIP(r, keepLoopback) },
 		ICE:       iceProvider,
 		RelayOnly: d.Config.WebRTC.RelayOnly,
