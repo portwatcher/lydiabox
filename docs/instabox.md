@@ -177,7 +177,7 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
 
 | Path | What | Owner |
 | :--- | :--- | :--- |
-| `/home/agent` | link to `/data/lydiabox/home`: LydiaBox's agent home, `HOME` of every LydiaBox program and PTY, the `home` root of the file API | link: root |
+| `/home/agent` | link to `/data/lydiabox/home`: LydiaBox's agent home, `HOME` of every LydiaBox program and PTY, the `home` root of the file API. The desktop session and the programs that the Desktop page starts (Terminal, Chrome, Blender) start in it with `PWD=/home/agent`, so that a shell and a terminal title show `~`, not `/data/lydiabox/home`. The Desktop page's programs use the Xfce session's own bus (the guest daemon has its address), not the user manager's bus, whose `xfconfd` writes into `/data/home` | link: root |
 | `/data/lydiabox/home` | the agent home (mode 0700), copied once from the image's home seed (marker `/data/lydiabox/home-seeded`) | UID 1000 |
 | `/workspace` | link to `/data/workspace`: the workspace and PTY directory, the `workspace` root of the file API | link: root |
 | `/data/home` | InstaBox's own home (the passwd home of UID 1000, `HOME` of exec and SSH sessions) with the template's `.claude.json`, `.claude/skills`, `.agents/skills`, `.codex/AGENTS.md`, `AGENTS.md`, and `MACHINE.md`. LydiaBox does not use it and never changes it | UID 1000 |
@@ -367,7 +367,12 @@ In `plain`, `machine`, and `migrate` it checks that:
   `/run/lydiabox/host-9001.sock` and the link, and starts a PTY that
   reports the names of its variables: `HOME` is `/home/agent` in
   `/data/lydiabox/home`, and every variable is one of the defined PTY
-  environment;
+  environment; then it starts a terminal with `desktop.launch` (the
+  Desktop page's Terminal button): the shell's directory is
+  `/data/lydiabox/home` with `PWD=/home/agent`, the window title shows
+  `~`, and `xfce4-panel` (the parent of the panel's and the menu's
+  terminals) has the same directory and `PWD`; the launched terminal
+  leaves `/data/home` unchanged (the layout check after the restart);
 - after `docker restart`, the desktop and the guest start again from the
   kept `guest.env`, the probe passes again, and the layout and desktop
   checks pass again.

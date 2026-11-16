@@ -22,6 +22,15 @@ curl -s -G --unix-socket /run/lydiabox/host-9001.sock http://broker/env \
 // shellNames are set by the shell that runs ptyEnvScript, not inherited.
 var shellNames = map[string]bool{"PWD": true, "OLDPWD": true, "SHLVL": true, "_": true}
 
+// agentHome is the directory of /home/agent in the image
+// (LYDIABOX_IMAGE_AGENT_HOME, default /data/lydiabox/home).
+func agentHome() string {
+	if h := os.Getenv("LYDIABOX_IMAGE_AGENT_HOME"); h != "" {
+		return h
+	}
+	return "/data/lydiabox/home"
+}
+
 // checkPTYEnv checks the environment of a PTY in the image: HOME is
 // /home/agent in LydiaBox's home (LYDIABOX_IMAGE_AGENT_HOME, default
 // /data/lydiabox/home), and every variable is either inherited by rule
@@ -41,10 +50,7 @@ func checkPTYEnv(ctx context.Context, t *testing.T, sess *rpc.Session, report <-
 	case <-ctx.Done():
 		t.Fatal("the PTY did not report its environment")
 	}
-	wantHome := os.Getenv("LYDIABOX_IMAGE_AGENT_HOME")
-	if wantHome == "" {
-		wantHome = "/data/lydiabox/home"
-	}
+	wantHome := agentHome()
 	if q.Get("home") != "/home/agent" || q.Get("realhome") != wantHome {
 		t.Errorf("PTY HOME = %q (resolves to %q), want /home/agent in %s", q.Get("home"), q.Get("realhome"), wantHome)
 	}

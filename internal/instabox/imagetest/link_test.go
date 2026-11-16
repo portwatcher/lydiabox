@@ -41,10 +41,15 @@ func TestImageLink(t *testing.T) {
 	}
 	got := make(chan string, 1)
 	envReport := make(chan url.Values, 1)
+	launchReport := make(chan url.Values, 1)
 	broker := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/env" {
+		if r.URL.Path == "/env" || r.URL.Path == "/launch" {
+			ch := envReport
+			if r.URL.Path == "/launch" {
+				ch = launchReport
+			}
 			select {
-			case envReport <- r.URL.Query():
+			case ch <- r.URL.Query():
 			default:
 			}
 			_, _ = io.WriteString(w, "ok\n")
@@ -125,4 +130,5 @@ func TestImageLink(t *testing.T) {
 	}
 
 	checkPTYEnv(ctx, t, sess, envReport)
+	checkLaunchDir(ctx, t, sess, launchReport, agentHome())
 }

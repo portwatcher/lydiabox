@@ -6,9 +6,10 @@
 # /home/agent, a link to /data/lydiabox/home) start, that the guest waits
 # for its settings file, that a host link reaches it
 # (internal/instabox/imagetest: ping, a desktop screenshot, a PTY, the
-# broker bridge, and the PTY environment), that the harness CLIs load no
-# InstaBox MCP server, and that it starts again from the kept settings
-# after a restart. Exits 0 with a SKIP line when Docker is not available.
+# broker bridge, the PTY environment, and a terminal that desktop.launch
+# starts in /home/agent with PWD=/home/agent, as the Xfce panel does),
+# that the harness CLIs load no InstaBox MCP server, and that it starts
+# again from the kept settings after a restart. Exits 0 with a SKIP line when Docker is not available.
 #
 # Scenarios:
 #   plain    the image as it is (UID 1000 is "agent", from the base image)
