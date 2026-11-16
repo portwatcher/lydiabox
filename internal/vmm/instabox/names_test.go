@@ -47,7 +47,7 @@ func TestMachineNameAndStates(t *testing.T) {
 func TestGuestEnvHasOnlyGuestSettings(t *testing.T) {
 	env := string(guestEnv("s3cret-link-secret-0123", 9000))
 	want := "LYDIABOX_GUEST_LISTEN=ws://0.0.0.0:9000/\nLYDIABOX_LINK_SECRET=s3cret-link-secret-0123\n" +
-		"LYDIABOX_GUEST_HOME_ROOT=/data/home\nLYDIABOX_GUEST_WORKSPACE_ROOT=/data/workspace\nLYDIABOX_WEBRTC_UDP_PORT=0\n"
+		"LYDIABOX_WEBRTC_UDP_PORT=0\n"
 	if env != want {
 		t.Fatalf("guest.env:\n%s", env)
 	}

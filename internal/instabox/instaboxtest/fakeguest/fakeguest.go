@@ -222,7 +222,9 @@ func (r *Runner) start(id string, env map[string]string) (*guest, int, error) {
 		return nil, 0, fmt.Errorf("guest.env: %s has no port", rpc.EnvGuestListen)
 	}
 	data := r.DataDir(id)
-	home := mapData(data, env[rpc.EnvGuestHomeRoot], "home")
+	// The image's layout (deploy/instabox): the agent home is
+	// /data/lydiabox/home unless guest.env names another root.
+	home := mapData(data, env[rpc.EnvGuestHomeRoot], "lydiabox/home")
 	ws := mapData(data, env[rpc.EnvGuestWorkspaceRoot], "workspace")
 	run := r.RunDir(id)
 	for _, d := range []string{home, ws, run} {

@@ -118,11 +118,14 @@ func TestLifecycleThroughTheGuestLink(t *testing.T) {
 	if !ok || mode != 0o600 {
 		t.Fatalf("guest.env %v mode %o", ok, mode)
 	}
-	for _, want := range []string{"LYDIABOX_GUEST_LISTEN=ws://0.0.0.0:9000/", "LYDIABOX_LINK_SECRET=", "LYDIABOX_GUEST_HOME_ROOT=/data/home",
-		"LYDIABOX_GUEST_WORKSPACE_ROOT=/data/workspace", "LYDIABOX_WEBRTC_UDP_PORT=0"} {
+	for _, want := range []string{"LYDIABOX_GUEST_LISTEN=ws://0.0.0.0:9000/", "LYDIABOX_LINK_SECRET=", "LYDIABOX_WEBRTC_UDP_PORT=0"} {
 		if !strings.Contains(string(envFile), want) {
 			t.Errorf("guest.env lacks %q", want)
 		}
+	}
+	// The image owns the file roots (deploy/instabox): the driver sets none.
+	if strings.Contains(string(envFile), "_ROOT=") {
+		t.Errorf("guest.env sets a file root:\n%s", envFile)
 	}
 	if strings.Contains(string(envFile), e.fake.APIKey()) || strings.Contains(string(envFile), "ibp_") {
 		t.Fatal("guest.env holds the API key or the port token")

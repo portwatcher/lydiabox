@@ -22,13 +22,14 @@ import (
 
 // guestEnv is the content of /data/.lydiabox/guest.env
 // (deploy/instabox/guest.env.example). It holds the link secret, never an
-// LLM key, a refresh token, or the InstaBox API key.
+// LLM key, a refresh token, or the InstaBox API key. The file roots are
+// not in it: the image owns its disk layout (the agent home
+// /data/lydiabox/home and the workspace /data/workspace), and its wrapper
+// ignores root settings in this file.
 func guestEnv(secret string, port int) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s=ws://0.0.0.0:%d/\n", rpc.EnvGuestListen, port)
 	fmt.Fprintf(&b, "%s=%s\n", guestlink.EnvSecret, secret)
-	fmt.Fprintf(&b, "%s=/data/home\n", rpc.EnvGuestHomeRoot)
-	fmt.Fprintf(&b, "%s=/data/workspace\n", rpc.EnvGuestWorkspaceRoot)
 	fmt.Fprintf(&b, "%s=0\n", rpc.EnvWebRTCPort)
 	return []byte(b.String())
 }
