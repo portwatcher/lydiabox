@@ -139,3 +139,29 @@ func TestSessionListClientGoneIsNotServerError(t *testing.T) {
 		t.Fatalf("a closed request was logged as a server error:\n%s", buf)
 	}
 }
+
+// A 503 for an expected state (a VM that is not running or that the user
+// stopped) is not logged at the error level; other 503s are.
+func TestExpectedUnavailableIsNotAnError(t *testing.T) {
+	h, buf := newLoggedServer(t, api.RegistrarFunc(func(r api.Router) {
+		r.HandleFunc("GET /api/v1/expected", func(w http.ResponseWriter, _ *http.Request) {
+			httpx.NoteExpected(w)
+			httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, "VM is not running")
+		})
+		r.HandleFunc("GET /api/v1/fault", func(w http.ResponseWriter, _ *http.Request) {
+			httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, "guest link: connection reset")
+		})
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), authed(http.MethodGet, "/api/v1/expected"))
+	h.ServeHTTP(httptest.NewRecorder(), authed(http.MethodGet, "/api/v1/fault"))
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want 2 lines, got:\n%s", buf.String())
+	}
+	if !strings.Contains(lines[0], "level=INFO") || !strings.Contains(lines[0], "status=503") || !strings.Contains(lines[0], "VM is not running") {
+		t.Errorf("expected 503: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], "level=ERROR") || !strings.Contains(lines[1], "connection reset") {
+		t.Errorf("fault 503: %s", lines[1])
+	}
+}

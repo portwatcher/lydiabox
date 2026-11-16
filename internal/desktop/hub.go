@@ -106,6 +106,9 @@ func (rl *Relay) pumpEvents(ctx context.Context, tid string) {
 func (rl *Relay) ServeMode(w http.ResponseWriter, r *http.Request) {
 	tid := tenant.FromContext(r.Context())
 	if !rl.opts.Running(tid) {
+		// An expected state, not a fault: the request log keeps it out of
+		// the error level.
+		httpx.NoteExpected(w)
 		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, "VM is not running")
 		return
 	}

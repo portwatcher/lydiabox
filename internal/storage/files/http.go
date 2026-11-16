@@ -49,6 +49,10 @@ func writeErr(w http.ResponseWriter, err error) {
 		status, code = http.StatusForbidden, httpx.CodeForbidden
 	case errors.Is(err, ErrUnavailable):
 		status, code = http.StatusServiceUnavailable, httpx.CodeUnavailable
+		if errors.Is(err, ErrStopped) {
+			// The user stopped the VM: an expected state, not a fault.
+			httpx.NoteExpected(w)
+		}
 	}
 	httpx.WriteError(w, status, code, err.Error())
 }

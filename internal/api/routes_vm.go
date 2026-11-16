@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/httpx"
 	"github.com/lydiabox/lydiabox/internal/tenant"
 )
@@ -149,7 +150,16 @@ func (v VMRoutes) stop(w http.ResponseWriter, r *http.Request) {
 // CodeTimeout is the error code of 504 responses.
 const CodeTimeout = "timeout"
 
+// noteVMStopped tells the request log that a 503 for a VM that the user
+// stopped is an expected state, not a fault.
+func noteVMStopped(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrVMStopped) || errors.Is(err, agentfs.ErrStopped) {
+		httpx.NoteExpected(w)
+	}
+}
+
 func writeVMError(w http.ResponseWriter, err error) {
+	noteVMStopped(w, err)
 	switch {
 	case errors.Is(err, ErrVMConflict):
 		httpx.WriteError(w, http.StatusConflict, httpx.CodeConflict, err.Error())

@@ -87,6 +87,30 @@ type CauseNoter interface {
 	NoteCause(err error)
 }
 
+// ExpectedNoter is implemented by the API's response recorder: it marks a
+// 5xx response as an expected state (for example "VM is not running"), not
+// a fault, so that the request log does not log it at the error level.
+type ExpectedNoter interface {
+	NoteExpected()
+}
+
+// NoteExpected marks the response of w as an expected state through the
+// first ExpectedNoter in the chain of w (through Unwrap). Without one it
+// does nothing.
+func NoteExpected(w http.ResponseWriter) {
+	for w != nil {
+		if n, ok := w.(ExpectedNoter); ok {
+			n.NoteExpected()
+			return
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return
+		}
+		w = u.Unwrap()
+	}
+}
+
 // NoteCause gives err to the first CauseNoter in the chain of w (through
 // Unwrap). Without one it does nothing.
 func NoteCause(w http.ResponseWriter, err error) {

@@ -28,6 +28,8 @@ type statusRecorder struct {
 	route  string
 	cause  error
 	body   bytes.Buffer
+	// expected marks a 5xx that is an expected state (httpx.NoteExpected).
+	expected bool
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
@@ -60,6 +62,9 @@ func (r *statusRecorder) NoteCause(err error) {
 	}
 }
 
+// NoteExpected implements httpx.ExpectedNoter.
+func (r *statusRecorder) NoteExpected() { r.expected = true }
+
 func (r *statusRecorder) setRoute(pattern string) { r.route = pattern }
 
 // withRoute tells the request log the ServeMux pattern of the request.
@@ -84,6 +89,8 @@ func withRoute(pattern string, h http.Handler) http.Handler {
 // logRequests writes one line per request: at debug level, or for a 5xx
 // response at error level with the route and the cause (the cause that the
 // handler noted, else the message of the error envelope), without secrets.
+// A 5xx that the handler marked as an expected state (httpx.NoteExpected,
+// for example a VM that is not running) is logged at info level.
 func (s *Server) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -98,6 +105,10 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		attrs = append(attrs, "cause", redactCause(rec.causeText()))
 		if r.Context().Err() != nil {
 			attrs = append(attrs, "client_gone", true)
+		}
+		if rec.expected {
+			s.log.Info("request refused", attrs...)
+			return
 		}
 		s.log.Error("request failed", attrs...)
 	})

@@ -26,6 +26,7 @@ func (s SessionsRoutes) RegisterRoutes(r Router) {
 // writeHarnessError maps harness error classes to the error envelope.
 func writeHarnessError(w http.ResponseWriter, err error) {
 	status, code := harnessStatus(err)
+	noteVMStopped(w, err)
 	httpx.WriteError(w, status, code, err.Error())
 }
 
