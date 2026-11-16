@@ -13,7 +13,9 @@ disk at `/data`. The core reaches it through the `instabox` VM driver
 - `internal/vmm/instabox`: the `instabox` VM driver
   ([Driver](#driver)), and the operator command `lydiabox instabox`.
 
-Nothing here was checked against the real service: no account was used.
+The first real tenant (2026-11-16) checked the image on a real machine:
+[Verified on a real machine](#verified-on-a-real-machine-2026-11-16) has
+the results.
 [What the documentation does not state](#what-the-documentation-does-not-state)
 lists the open facts, and [First check with a real account](#first-check-with-a-real-account)
 is the checklist for the first run.
@@ -165,9 +167,9 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
 | Only `linux/amd64` images can be imported. | `build.sh` builds `--platform linux/amd64`, checks the base architecture, and writes a single-platform image (`--provenance=false --sbom=false`). |
 | The import pulls from a registry; a local image cannot be imported. | `build.sh --push`, or `docker tag` and `docker push`; the printed command uses the pushed digest. |
 | `ENTRYPOINT` and `CMD` run as the systemd unit `instabox-image.service`, in `WORKDIR`, as `USER` (root when unset), restarted on failure; output goes to the journal. | `ENTRYPOINT ["/usr/local/sbin/lydiabox-instabox-entry"]`, no `USER`, `WORKDIR /`. The entry point runs supervisord in the foreground, so the unit stays active. |
-| The image's own init (tini, s6) is not run. systemd, sshd, sudo, the UID 1000 user, `/data`, and the machine's shared libraries stay. | The entry point mounts nothing (the `lydiabox-init` of the VM and docker drivers mounts `/run` and `/tmp` and is not used). It starts the system D-Bus only when `/run/dbus/system_bus_socket` is missing. |
-| The image's user with UID 1000 is the machine user. | `agent` is UID 1000 in the base image; its home stays `/home/agent`, a link to `/data/home`. |
-| `ENV` reaches every session (exec, SSH, login shells). | `ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data`. |
+| The image's own init (tini, s6) is not run. systemd, sshd, sudo, the UID 1000 user, `/data`, and the machine's shared libraries stay. | The entry point mounts nothing (the `lydiabox-init` of the VM and docker drivers mounts `/run` and `/tmp` and is not used). It starts the system D-Bus only when `/run/dbus/system_bus_socket` is missing. The machine keeps its own `libdbus`, so the image's `dbus-run-session` cannot run: Xfce uses the session bus of the machine's user manager (`/run/user/1000/bus`). |
+| The image's user with UID 1000 is the machine user. | The import keeps the machine's user database: UID 1000 has the account's name (for example `alice`), not `agent`, and the home `/data/home`. The image uses UID 1000 by number (supervisord `user=1000`); the entry point reads the name with `getent passwd 1000`. `HOME` is `/home/agent`, a link to `/data/home`. |
+| `ENV` reaches every session (exec, SSH, login shells). | `ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data`. InstaBox leaves out `HOME` and `PATH`: sessions get `HOME=/data/home`, and the unit gets no `HOME`. |
 | `EXPOSE` is not published. | The driver publishes the link port with `PublishPrivatePort`. |
 | `/etc/instabox/image.json` records the image reference, digest, and config. | The driver can read it to check the snapshot's image. |
 
@@ -177,15 +179,26 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
   `/workspace` (PTY and session directories), so both are links onto the
   persistent disk: `/home/agent` to `/data/home` (also InstaBox's own
   `HOME`) and `/workspace` to `/data/workspace`.
-- `/usr/local/sbin/lydiabox-instabox-entry` (root): creates `/data/home`,
+- `/usr/local/sbin/lydiabox-instabox-entry` (root): checks its
+  preconditions (root, the programs, `/data`, a user with UID 1000) and
+  exits with an `ERROR:` line in the journal when one is missing; reads the
+  name of UID 1000; creates `/data/home`,
   `/data/workspace`, and `/data/.lydiabox` (mode 0700) owned by UID 1000
-  when they are missing, copies the home content of the base image
-  (`/usr/local/share/lydiabox/home-seed`) into a new home, prepares
-  `/tmp/.X11-unix` and `/run/user/1000`, and runs supervisord with
+  when they are missing; makes the links `/home/agent` and `/workspace`
+  when they are missing (anything else there is an error); copies the home
+  content of the base image (`/usr/local/share/lydiabox/home-seed`) once
+  without replacing files (marker `/data/.lydiabox/home-seeded`); prepares
+  `/tmp/.X11-unix` and `/run/user/1000`; and runs supervisord with
   `/etc/lydiabox/instabox-supervisord.conf`.
-- supervisord starts, as `agent`: Xvfb on `LYDIABOX_DISPLAY` (default
-  `:0`), Xfce (`dbus-run-session startxfce4`), and
-  `/usr/local/bin/lydiabox-instabox-guest`.
+- supervisord starts, as UID 1000 (`USER` and `LOGNAME` are the name of
+  UID 1000, `HOME=/home/agent`, `XDG_RUNTIME_DIR=/run/user/1000`): Xvfb on
+  `LYDIABOX_DISPLAY` (default `:0`), Xfce
+  (`/usr/local/bin/lydiabox-instabox-xfce`: `startxfce4` on the user
+  manager's session bus, or in `dbus-run-session` without systemd), and
+  `/usr/local/bin/lydiabox-instabox-guest`. The program logs are in
+  `/var/log/supervisor` (the guest daemon's in `lydiabox-guest.log`:
+  under systemd supervisord cannot open `/dev/stdout`, a journal socket);
+  the state changes of the programs are in the journal of the unit.
 - `lydiabox-instabox-guest` waits for `/data/.lydiabox/guest.env`, exports
   its `LYDIABOX_*` lines (the file is read, never run), sets the file
   roots, and starts
@@ -226,7 +239,21 @@ plane, as in the other drivers.
 
 `deploy/instabox/test.sh` runs the image with Docker as `linux/amd64`
 (emulated on arm64) with a volume as `/data` and port 9000 on
-`127.0.0.1`. It checks that:
+`127.0.0.1`, in two scenarios (`--scenario plain|machine|precond|all`,
+default `all`):
+
+- `plain`: the image as it is (UID 1000 is `agent`).
+- `machine`: the image as the import makes it
+  ([deploy/instabox/machine-model](../deploy/instabox/machine-model)): no
+  user `agent`, UID 1000 named `alice` with the home `/data/home`, a
+  `dbus-run-session` that fails as on the machine, a session bus at
+  `/run/user/1000/bus`, no `HOME`, and a socket as the standard output of
+  the entry point (as the journal). The image of core `23fbf68` fails it
+  with the error of the real machine.
+- `precond`: the entry point exits with a clear `ERROR:` line when UID
+  1000 or `/data` is missing, or when `/home/agent` is not a link.
+
+In `plain` and `machine` it checks that:
 
 - the Xvfb socket and display `:0` answer, and `xfwm4` and
   `xfce4-session` run as UID 1000;
@@ -235,8 +262,10 @@ plane, as in the other drivers.
   `/data/workspace`, and both directories belong to UID 1000;
 - after the test writes `guest.env` as UID 1000 (link listener and
   secret), `lydiabox-guest serve` runs as UID 1000 with the file's
-  variables (and without non-`LYDIABOX_*` lines), with `HOME=/home/agent`, and creates
-  `/run/lydiabox/host-9001.sock`;
+  variables (and without non-`LYDIABOX_*` lines), with `HOME=/home/agent`,
+  `USER` the name of UID 1000, and `XDG_RUNTIME_DIR=/run/user/1000`, and creates
+  `/run/lydiabox/host-9001.sock`; `supervisorctl restart lydiabox-guest`
+  works;
 - the link probe (`internal/instabox/imagetest`, run with `go test`)
   connects over the real host link with the secret, calls `ping`, lists
   the MCP tools and takes a `computer_screenshot` (the daemon reaches X11),
@@ -246,8 +275,8 @@ plane, as in the other drivers.
   kept `guest.env`, and the probe passes again.
 
 Without Docker it prints `SKIP` and exits 0; without Go it skips only the
-probe. Docker is not systemd: the test does not cover
-`instabox-image.service` or the overlay on an `agent-browser` machine.
+probe. Docker is not systemd: the `machine` scenario copies the facts of
+the real machine, but not `instabox-image.service` or the overlay itself.
 
 ## Driver
 
@@ -295,6 +324,12 @@ that is not an InstaBox size, a GPU, and a UDP port.
   seconds (or `Retry-After`) before it calls the API again for the tenant.
 - A deleted machine is an error that names it. The driver never deletes a
   machine.
+- A `502` of the port proxy means that the machine runs but nothing
+  listens on port 9000. The dial error then says "the InstaBox machine
+  runs, but its guest daemon does not answer on port 9000"; after 45
+  seconds of `502` the driver logs one line `instabox: the guest daemon
+  does not answer; machine status` with the unit state, `supervisorctl
+  status`, and the last 5 journal lines of `instabox-image.service`.
 
 ### Operator command
 
@@ -325,6 +360,37 @@ key, API key).
   with the link open, and a restart that adopts the same machine, with a
   goroutine leak check.
 
+## Verified on a real machine, 2026-11-16
+
+Machine `lbx-0000000000000000` of the first tenant (template
+`agent-browser@2026-11-14.2815`, snapshot of the image of core `23fbf68`,
+free plan, 4 vCPU / 8 GiB), read through exec. The image of core `23fbf68`
+did not start: supervisord stopped at
+`Invalid user name agent in section 'program:xvfb'`, nothing listened on
+port 9000, and the port proxy answered the driver `502 Bad Gateway`.
+
+| Fact | Evidence |
+| :--- | :--- |
+| The import keeps the machine's user database; there is no user `agent` | `getent passwd 1000` is `alice:x:1000:1000::/data/home:/bin/bash`; `getent passwd agent` is empty; the import warned `image users not added, UID 1000 being the sandbox's user: agent(1000)`; the snapshot records `guestUser: alice`; the kernel command line has `instabox.user=alice` |
+| Exec runs as the machine user through an SSH login | `id` is `uid=1000(alice) gid=1000(alice) groups=1000(alice),27(sudo),991(docker)`; `SSH_CLIENT` is set; `HOME=/data/home`, `DISPLAY=:0` (image `ENV`), `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus` are set |
+| `sudo` works through exec, and so does the driver's restart | `sudo -n true` succeeds; `sudo supervisorctl -c /etc/lydiabox/instabox-supervisord.conf status` lists the programs |
+| The import keeps the image's links `/home/agent` and `/workspace` | `/home/agent -> /data/home` and `/workspace -> /data/workspace`, both owned by root |
+| `/data/home` has the machine's own files before the image starts | `.bashrc`, `.profile`, `.claude`, `.codex`, `.claude.json`, `AGENTS.md`, `MACHINE.md`; `/data` also has `config`, `state`, `tmp`, and a 4 GiB `swapfile` |
+| The unit runs the entry point through a wrapper, as root, with the image `ENV` except `HOME` and `PATH` | `ExecStart=/usr/local/lib/instabox/image-run` (runs `/etc/instabox/image.argv`), `EnvironmentFile=-/etc/instabox/image.env` with `DEBIAN_FRONTEND`, `LANG`, `LC_ALL`, `TZ`, `DISPLAY`, `LYDIABOX_DATA_ROOT`; no `User=`; `WorkingDirectory=-/`; `After=instabox-data-init.service instabox-user.service`, not after `user@1000.service` |
+| Restart settings of the unit | `Restart=on-failure`, `RestartSec=5`, `StartLimitBurst=5` in `StartLimitIntervalSec=10s` (a failing entry point restarts every 5 seconds without end); `KillMode=mixed` |
+| The unit's standard output is a journal socket | supervisord could not open `stdout_logfile=/dev/stdout`: `spawnerr: unknown error making dispatchers for 'lydiabox-guest': ENXIO` |
+| The machine keeps its own shared libraries | glibc 2.41 (Debian 13) of the template; `libdbus-1.so.3` is the template's 1.16.2, so the image's `dbus-run-session`, `dbus-launch`, `dbus-send`, `dbus-monitor`, and `dbus-uuidgen` fail with ``version `LIBDBUS_PRIVATE_1.14.10' not found``; Xvfb, Xfce, ffmpeg, Chrome, Blender, Node.js, and git load |
+| The machine user lingers and has a session bus | `/var/lib/systemd/linger/alice`; `user@1000.service` runs from boot; `/run/user/1000/bus` exists; Xfce runs on it |
+| No X server or desktop of the base machine runs at boot; `:0` is free | `/tmp/.X11-unix` is empty, no `Xvfb`, `Xorg`, or VNC process; `tigervncserver@.service` is disabled; only sshd listens (port 22) |
+| The root disk is kept across stop and start | files that exec wrote under `/usr/local/sbin` and `/etc/lydiabox` were there after `stop` and `start`; `MACHINE.md` says both disks survive a stop |
+| A private port with `Authorization: Bearer` reaches the machine from a server | the cell's WebSocket dials got `502` (not `401`) while nothing listened on port 9000 |
+
+With the fixes of this page applied in place, after `systemctl restart`
+and after a stop and start: all three programs `RUNNING` as `alice`,
+`lydiabox-guest` listens on `*:9000` and answers `426` to a plain GET and
+`101` to a WebSocket upgrade, Xfce runs on `/run/user/1000/bus`, and
+`xdpyinfo` answers on `:0`.
+
 ## What the documentation does not state
 
 Each item needs a check with a real account (see the checklist below).
@@ -335,11 +401,8 @@ Each item needs a check with a real account (see the checklist below).
    the TURN relay ([turn-manual-test.md](turn-manual-test.md), the TURN key
    of `lydiabox cloudflare setup`). Outbound UDP to the TURN server is
    also not stated.
-2. **Root disk across stop and start.** `/data` is kept across stop,
-   pause, and start. The root disk (the image's files, `/etc`, installed
-   packages) is in snapshots, but its persistence across a plain stop and
-   start of one machine is not stated. The image keeps all state on
-   `/data`, so either answer works; the check confirms it.
+2. **Root disk across stop and start.** Verified on a real machine,
+   2026-11-16: the root disk is kept ([above](#verified-on-a-real-machine-2026-11-16)).
 3. **Cold start, resume, and import times.** `readyAt - createdAt` is the
    create time, but no figures are given for create from a large
    snapshot, start from stopped, resume from paused, or the import of a
@@ -347,18 +410,18 @@ Each item needs a check with a real account (see the checklist below).
 4. **Image size limits.** No limit on the image or the root disk it fills
    (16 GiB on `agent-browser`) is stated; the full desktop image is
    6.65 GB in Docker (the slim one 1.1 GB).
-5. **Machine user of an imported image.** The image's UID 1000 user "is
-   that user", but whether exec, SSH, and files log in as `agent` (and
-   which `guestUser` the snapshot records), and whether the overlay keeps
-   the image's `/home/agent` link while the machine's HOME is
-   `/data/home`, are not stated.
-6. **Display conflicts.** `agent-browser` has its own desktop (Xfce, VNC,
-   Chromium) that `POST /v1/machines/{id}/desktop` starts. Whether it runs
-   an X server on `:0` at boot after the overlay is not stated;
-   `LYDIABOX_DISPLAY` moves the LydiaBox display if it does.
-7. **Unit environment.** Whether `instabox-image.service` gets the image
-   `ENV` and the create-time `env` (stated for sessions only), and its
-   restart delay and limits.
+5. **Machine user of an imported image.** Verified on a real machine,
+   2026-11-16: UID 1000 keeps the machine's name and home; exec runs as
+   that user; the links stay
+   ([above](#verified-on-a-real-machine-2026-11-16)); the files API writes
+   as that user (the driver's `guest.env` belongs to `alice`, mode 0600).
+   SSH was not checked.
+6. **Display conflicts.** Verified on a real machine, 2026-11-16: nothing
+   takes `:0` at boot. Which display `POST /v1/machines/{id}/desktop`
+   (the base machine's VNC desktop) uses is not checked.
+7. **Unit environment.** Verified on a real machine, 2026-11-16 (image
+   `ENV` without `HOME` and `PATH`, `Restart=on-failure`, 5 s). Whether the
+   create-time `env` reaches the unit is not checked (the driver sets none).
 8. **Private ports from a server.** `Authorization: Bearer <token>` is
    stated for scripts and the cookie for browser WebSockets; a WebSocket
    upgrade with the Bearer header from the core, its idle timeout, and its
@@ -388,11 +451,15 @@ result in `docs/conformance.md`.
    same image under another name.
 4. Create a machine from the snapshot with `CreateMachine` (2/4 and 4/8),
    `WaitOperation`; record `readyAt - createdAt`.
-5. In the machine: `journalctl -u instabox-image.service`,
-   `systemctl show instabox-image.service -p Environment,Restart,RestartUSec`,
-   `cat /etc/instabox/image.json`, `id`, `echo $HOME`, `readlink /home/agent /workspace`, `ls -la /data`,
-   `pgrep -a Xvfb`, `pgrep -a Xorg`, `ls /tmp/.X11-unix`
-   (facts 5, 6, 7).
+5. In the machine (done once on 2026-11-16; repeat for each new
+   snapshot): `journalctl -u instabox-image.service -b` (a
+   `machine user ... home /home/agent` line, no `ERROR:`),
+   `sudo supervisorctl -c /etc/lydiabox/instabox-supervisord.conf status`
+   (`xvfb`, `xfce`, and `lydiabox-guest` `RUNNING`),
+   `sudo ss -ltnp | grep :9000` (`lydiabox-guest`),
+   `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/` (`426`),
+   `getent passwd 1000`, `readlink /home/agent /workspace`, and
+   `sudo tail /var/log/supervisor/lydiabox-guest.log`.
 6. Write `guest.env` with `PutFileBytes` (WebSocket listener, link
    secret), publish port 9000 with `PublishPrivatePort`, and run the
    probe through the port proxy (fact 8):
