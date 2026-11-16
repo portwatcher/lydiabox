@@ -291,3 +291,40 @@ func TestCDPEndpointWaitsForStartingChrome(t *testing.T) {
 		t.Fatalf("live profile lock: err %v, starts %d, want no new start", err, starts)
 	}
 }
+
+func TestLocalAppsStartInTheWorkDirWithPWD(t *testing.T) {
+	t.Setenv("PWD", "/somewhere/else")
+	type start struct {
+		dir string
+		env []string
+	}
+	var starts []start
+	apps := NewLocalApps(LocalAppsOptions{
+		WorkDir:  "/home/agent",
+		CDPPort:  1,
+		LookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		Start: func(_ string, _, env []string, dir string) error {
+			starts = append(starts, start{dir, env})
+			return nil
+		},
+	})
+	for _, app := range []string{"terminal", "blender", "chrome"} {
+		if err := apps.Launch(context.Background(), app); err != nil {
+			t.Fatalf("launch %s: %v", app, err)
+		}
+	}
+	if len(starts) != 3 {
+		t.Fatalf("starts = %d, want 3", len(starts))
+	}
+	for i, s := range starts {
+		var pwds []string
+		for _, kv := range s.env {
+			if strings.HasPrefix(kv, "PWD=") {
+				pwds = append(pwds, kv)
+			}
+		}
+		if s.dir != "/home/agent" || !slices.Equal(pwds, []string{"PWD=/home/agent"}) {
+			t.Errorf("start %d: dir %q, PWD entries %v; want /home/agent with PWD=/home/agent", i, s.dir, pwds)
+		}
+	}
+}

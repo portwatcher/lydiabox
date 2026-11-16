@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,7 +43,8 @@ type LocalAppsOptions struct {
 	// ChromeFlags are added to every Chrome launch (for example
 	// --no-sandbox inside an unprivileged container).
 	ChromeFlags []string
-	// WorkDir is the working directory of launched applications.
+	// WorkDir is the working directory of launched applications (the
+	// agent home). Their PWD names it by this path, also when it is a link.
 	WorkDir string
 	// Start launches a detached process (tests replace it).
 	Start func(path string, args, env []string, dir string) error
@@ -108,6 +110,21 @@ func (a *LocalApps) env() []string {
 	return append(env, "DISPLAY="+a.opts.Display)
 }
 
+// launchEnv is the environment of a program started on the desktop. PWD
+// names WorkDir by the path it was given: in a linked directory (the
+// InstaBox image's /home/agent links to /data/lydiabox/home) the kernel
+// keeps only the target, and a shell or a terminal (GLib's
+// g_get_current_dir) uses PWD when it names the same directory. A shell
+// prompt and a terminal title then show "~", not the target.
+func (a *LocalApps) launchEnv() []string {
+	env := a.env()
+	if a.opts.WorkDir == "" {
+		return env
+	}
+	env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "PWD=") })
+	return append(env, "PWD="+a.opts.WorkDir)
+}
+
 // chromeEnv returns the Chrome environment. Chrome 136 and later ignore
 // --remote-debugging-port when --user-data-dir is the default profile
 // directory ("DevTools remote debugging requires a non-default data
@@ -116,7 +133,7 @@ func (a *LocalApps) env() []string {
 // so the profile keeps its path and CDP stays on.
 func (a *LocalApps) chromeEnv() []string {
 	home := filepath.Join(filepath.Dir(filepath.Clean(a.opts.ChromeUserDataDir)), "lydiabox-chrome")
-	return append(a.env(), "CHROME_CONFIG_HOME="+home)
+	return append(a.launchEnv(), "CHROME_CONFIG_HOME="+home)
 }
 
 // ChromeArgs returns the Chrome command line used for every launch.
@@ -140,13 +157,13 @@ func (a *LocalApps) Launch(ctx context.Context, app string) error {
 		if err != nil {
 			return err
 		}
-		return a.opts.Start(p, nil, a.env(), a.opts.WorkDir)
+		return a.opts.Start(p, nil, a.launchEnv(), a.opts.WorkDir)
 	case "terminal":
 		p, err := a.find(terminalCandidates)
 		if err != nil {
 			return err
 		}
-		return a.opts.Start(p, nil, a.env(), a.opts.WorkDir)
+		return a.opts.Start(p, nil, a.launchEnv(), a.opts.WorkDir)
 	}
 	return fmt.Errorf("app must be chrome, blender, or terminal")
 }

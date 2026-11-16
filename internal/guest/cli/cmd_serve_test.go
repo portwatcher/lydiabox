@@ -73,3 +73,23 @@ func TestServeRejectsBadFlags(t *testing.T) {
 		t.Fatalf("bad listen accepted: %d", code)
 	}
 }
+
+func TestDesktopDirIsTheLogicalHome(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "data", "home")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "agent")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", link)
+	if got := desktopDir("/workspace"); got != link {
+		t.Fatalf("desktopDir = %q, want the linked home %q", got, link)
+	}
+	t.Setenv("HOME", filepath.Join(root, "missing"))
+	if got := desktopDir("/workspace"); got != "/workspace" {
+		t.Fatalf("desktopDir without a home = %q, want /workspace", got)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -182,7 +183,7 @@ func startDesktop(ctx context.Context, f *serveFlags, log *slog.Logger, opts *da
 	}
 	display := f.display
 	desk := x11.NewController(x11.Options{Dial: func() (x11.Backend, error) { return x11.DialXGB(display) }})
-	apps := mcp.NewLocalApps(mcp.LocalAppsOptions{Display: display, WorkDir: workdir, ChromeFlags: strings.Fields(f.chromeFlags)})
+	apps := mcp.NewLocalApps(mcp.LocalAppsOptions{Display: display, WorkDir: desktopDir(workdir), ChromeFlags: strings.Fields(f.chromeFlags)})
 	server := mcp.NewServer(desk, apps)
 	stream, err := webrtc.New(webrtc.Options{
 		Display: display, Width: w, Height: h, RTPAddr: f.rtpAddr, UDPPort: f.webrtcPort,
@@ -220,4 +221,19 @@ func serveHTTPListener(ctx context.Context, ln net.Listener, h http.Handler) err
 		return err
 	}
 	return nil
+}
+
+// desktopDir is the working directory of the programs that the guest
+// starts on the desktop (Terminal, Chrome, Blender): the agent home by the
+// path in $HOME (/home/agent, also when it is a link), as for the desktop
+// session itself. Without a home directory it is the PTY directory.
+func desktopDir(workdir string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return workdir
+	}
+	if fi, err := os.Stat(home); err != nil || !fi.IsDir() {
+		return workdir
+	}
+	return filepath.Clean(home)
 }
