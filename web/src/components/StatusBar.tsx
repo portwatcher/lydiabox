@@ -4,6 +4,7 @@ import {
   CloudOff,
   Cpu,
   FolderTree,
+  Hourglass,
   LogOut,
   Monitor,
   Plug,
@@ -104,6 +105,21 @@ function VmProblem() {
   );
 }
 
+/** A start or resume that takes long: the provider is slow, LydiaBox is not stuck. */
+function VmSlow() {
+  const { slowStart } = useSystem();
+  if (!slowStart) {
+    return null;
+  }
+  const message = "The VM provider is slow; this can take a few minutes.";
+  return (
+    <span role="status" className="inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning-fg" title={message}>
+      <Hourglass aria-hidden className="size-4 shrink-0" />
+      <span className="truncate">{message}</span>
+    </span>
+  );
+}
+
 export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
   const { error, status } = useSystem();
   return (
@@ -142,6 +158,7 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
         ) : null}
         <SyncIndicator />
         <VmProblem />
+        <VmSlow />
         <VmResources />
         <VmPower compact />
         {email ? <span className="hidden text-xs text-fg-muted md:inline">{email}</span> : null}

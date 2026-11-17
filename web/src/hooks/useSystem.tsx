@@ -19,9 +19,14 @@ export interface SystemState {
   /** Set when the last status poll failed. */
   error: unknown;
   pending: VMAction | null;
+  /** The VM has been starting or resuming for more than SLOW_START_MS. */
+  slowStart: boolean;
   runVM: (action: VMAction) => Promise<boolean>;
   refresh: () => void;
 }
+
+/** After this time, a start or resume is slow, and the status bar says that the provider is slow. */
+export const SLOW_START_MS = 15_000;
 
 const SystemContext = createContext<SystemState | null>(null);
 
@@ -55,6 +60,19 @@ export function SystemProvider({ children }: { children: ReactNode }) {
 
   const vmState: VMState = pending === "wake" ? "BOOTING" : (vmStatus?.state ?? status?.vm.state ?? "STOPPED");
   const fast = vmState === "BOOTING" || pending !== null;
+
+  // A start or resume can take minutes at a cloud provider: say so after
+  // SLOW_START_MS, so that LydiaBox does not look stuck.
+  const booting = vmState === "BOOTING";
+  const [slowStart, setSlowStart] = useState(false);
+  useEffect(() => {
+    if (!booting) {
+      setSlowStart(false);
+      return;
+    }
+    const id = setTimeout(() => setSlowStart(true), SLOW_START_MS);
+    return () => clearTimeout(id);
+  }, [booting]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,8 +149,8 @@ export function SystemProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<SystemState>(
-    () => ({ status, vmStatus, vmState, vmControl, fetchedAt, error, pending, runVM, refresh }),
-    [status, vmStatus, vmState, vmControl, fetchedAt, error, pending, runVM, refresh],
+    () => ({ status, vmStatus, vmState, vmControl, fetchedAt, error, pending, slowStart, runVM, refresh }),
+    [status, vmStatus, vmState, vmControl, fetchedAt, error, pending, slowStart, runVM, refresh],
   );
 
   return <SystemContext.Provider value={value}>{children}</SystemContext.Provider>;
