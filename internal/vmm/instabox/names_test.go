@@ -111,3 +111,20 @@ func TestPauseReason(t *testing.T) {
 		}
 	}
 }
+
+func TestStartBlockedUntilFollowsTheGate(t *testing.T) {
+	now := time.Date(2026, 11, 17, 13, 51, 0, 0, time.UTC)
+	d := &Driver{opts: Options{Now: func() time.Time { return now }}}
+	if got := d.StartBlockedUntil("t"); !got.IsZero() {
+		t.Fatalf("no gate: %v", got)
+	}
+	cool := classify(&ib.APIError{Status: 409, ErrorDetail: ib.ErrorDetail{Code: ib.CodeMachineCooldown}, RetryAfter: 15 * time.Minute}, now, time.Minute)
+	d.gate.record("t", cool)
+	if got := d.StartBlockedUntil("t"); !got.Equal(now.Add(15 * time.Minute)) {
+		t.Fatalf("cooldown: %v", got)
+	}
+	now = now.Add(16 * time.Minute)
+	if got := d.StartBlockedUntil("t"); !got.IsZero() {
+		t.Fatalf("after the cooldown: %v", got)
+	}
+}

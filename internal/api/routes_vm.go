@@ -28,6 +28,13 @@ type VMDetail struct {
 	IdleTimeoutSeconds int64          `json:"idleTimeoutSeconds"`
 	IdleSince          time.Time      `json:"idleSince"`
 	LastError          string         `json:"lastError,omitempty"`
+	// Transition is "pausing" or "stopping" while that change runs (the
+	// state stays RUNNING until it ends), else empty.
+	Transition string `json:"transition,omitempty"`
+	// StartBlockedUntil is set while the provider refuses a start or resume
+	// (for example the InstaBox cooldown after the maximum run time);
+	// LastError says why.
+	StartBlockedUntil *time.Time `json:"startBlockedUntil,omitempty"`
 }
 
 // ErrVMConflict marks a power transition that is not possible in the

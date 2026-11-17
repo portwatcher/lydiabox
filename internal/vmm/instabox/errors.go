@@ -123,3 +123,15 @@ func (g *gate) record(tid string, err error) {
 		g.blocked[tid] = acc
 	}
 }
+
+// StartBlockedUntil implements vmm.StartBlocker: the end of the gate after
+// an account error (for example the cooldown after the maximum run time),
+// or the zero time.
+func (d *Driver) StartBlockedUntil(tid string) time.Time {
+	d.gate.mu.Lock()
+	defer d.gate.mu.Unlock()
+	if e := d.gate.blocked[tid]; e != nil && e.After.After(d.opts.Now()) {
+		return e.After
+	}
+	return time.Time{}
+}

@@ -123,6 +123,20 @@ func CapabilitiesOf(d Driver) Capabilities {
 // Status is the VMStatus object of docs/api.md section 7.
 type Status = api.VMDetail
 
+// Transitions of Status.Transition.
+const (
+	TransitionPausing  = "pausing"
+	TransitionStopping = "stopping"
+)
+
+// StartBlocker is implemented by drivers whose provider can refuse a start
+// for a known time (the InstaBox driver after an account error such as the
+// cooldown of the maximum run time). StartBlockedUntil returns the zero
+// time when a start can be tried now.
+type StartBlocker interface {
+	StartBlockedUntil(tenantID string) time.Time
+}
+
 // ErrConflict is returned for an impossible power transition.
 var ErrConflict = api.ErrVMConflict
 

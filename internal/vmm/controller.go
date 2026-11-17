@@ -76,6 +76,7 @@ type tenantVM struct {
 	boot      *bootCall
 	timer     *time.Timer
 	pausing   bool
+	stopping  bool
 	// held is set by Stop (from its start) and cleared by Start: a VM
 	// that the user stopped is not woken on demand (EnsureRunning).
 	// holdMu orders the changes of held with their writes to Options.Holds;
@@ -462,6 +463,15 @@ func (c *Controller) stop(ctx context.Context, tid string, t *tenantVM, force bo
 			return fmt.Errorf("%w: stop while %s", ErrConflict, st)
 		}
 	}
+	// Other clients see the stop while it runs (Status.Transition).
+	c.mu.Lock()
+	t.stopping = true
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		t.stopping = false
+		c.mu.Unlock()
+	}()
 	if st == StatePaused && !force {
 		if err := c.opts.Driver.Resume(ctx, tid); err != nil {
 			return fmt.Errorf("vmm: resume before stop: %w", err)
@@ -519,11 +529,24 @@ func (c *Controller) Status(tid string) Status {
 	for k, v := range t.leases {
 		leases[k] = v
 	}
-	return Status{
+	st := Status{
 		State: string(t.state), Driver: c.opts.Driver.Name(), CPUs: c.opts.CPUs, MemMB: c.opts.MemMB, GPU: c.opts.GPU,
 		BootedAt: t.bootedAt, Leases: leases, IdleTimeoutSeconds: int64(c.opts.IdleTimeout / time.Second),
 		IdleSince: t.idleSince, LastError: t.lastError,
 	}
+	switch {
+	case t.stopping:
+		st.Transition = TransitionStopping
+	case t.pausing && t.state == StateRunning:
+		st.Transition = TransitionPausing
+	}
+	if b, ok := c.opts.Driver.(StartBlocker); ok && t.state != StateRunning {
+		if until := b.StartBlockedUntil(tid); until.After(c.opts.Now()) {
+			u := until.UTC()
+			st.StartBlockedUntil = &u
+		}
+	}
+	return st
 }
 
 // VMStatus implements api.VMStatusSource.
