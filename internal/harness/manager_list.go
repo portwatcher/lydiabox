@@ -83,13 +83,17 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 		order = append(order, s.ID)
 		return &s
 	}
+	dismissed, err := m.dismissed(ctx, tenantID)
+	if err != nil {
+		return SessionList{}, err
+	}
 	discovered := map[string][]SessionMeta{}
 	for _, name := range names {
 		if err := found.Errors[name]; err != nil {
 			m.log.Warn("session discovery failed", "harness", name, "err", err)
 			continue
 		}
-		metas := found.Sessions[name]
+		metas := dismissed.filter(name, found.Sessions[name])
 		discovered[name] = metas
 		for _, sm := range metas {
 			put(Session{ID: SessionID(name, sm.NativeID), Harness: name, NativeID: sm.NativeID, Title: sm.Title,
@@ -260,6 +264,42 @@ func (m *Manager) adoptProvisional(tenantID string, discovered map[string][]Sess
 			harness: ls.harness, nativeID: ls.nativeID, workspace: ls.workspace, model: ls.model, title: ls.title,
 			ptyID: ls.ptyID, startedAt: ls.startedAt}})
 		m.log.Info("provisional session adopted its native ID", "from", oldID, "to", newID)
+	}
+	return out
+}
+
+// dismissals maps SessionID(harness, native ID) to the time of the delete.
+type dismissals map[string]time.Time
+
+func (m *Manager) dismissed(ctx context.Context, tenantID string) (dismissals, error) {
+	dis, ok := m.opts.Store.(SessionDismisser)
+	if !ok {
+		return nil, nil
+	}
+	list, err := dis.ListDismissedSessions(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(dismissals, len(list))
+	for _, d := range list {
+		out[SessionID(d.Harness, d.SessionID)] = d.DismissedAt
+	}
+	return out, nil
+}
+
+// filter leaves out the discovered sessions that the user deleted, unless
+// the transcript has activity after the delete (the session was used again,
+// for example with `claude --resume` in a shell).
+func (d dismissals) filter(harness string, metas []SessionMeta) []SessionMeta {
+	if len(d) == 0 {
+		return metas
+	}
+	out := metas[:0:0]
+	for _, sm := range metas {
+		if at, ok := d[SessionID(harness, sm.NativeID)]; ok && !sm.UpdatedAt.After(at) {
+			continue
+		}
+		out = append(out, sm)
 	}
 	return out
 }

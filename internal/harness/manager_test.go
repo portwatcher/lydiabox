@@ -230,6 +230,55 @@ func TestPurgeDeletesTranscript(t *testing.T) {
 	}
 }
 
+// TestDeleteWithoutPurgeStaysDeleted: discovery finds a deleted session
+// again in its transcript, so the delete is recorded and the list leaves the
+// session out; the transcript stays. New activity in the transcript (the
+// session was used again) shows it again.
+func TestDeleteWithoutPurgeStaysDeleted(t *testing.T) {
+	e := newEnv(t, &harnesstest.Runner{})
+	ctx := context.Background()
+	id := "dsh:" + adapterstest.DSHID
+	listed := func() bool {
+		all, err := e.mgr.List(ctx, tenant, harness.Filter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range all {
+			if s.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	if !listed() {
+		t.Fatal("the fixture session is not listed")
+	}
+	if err := e.mgr.Delete(ctx, tenant, id, false); err != nil {
+		t.Fatal(err)
+	}
+	if listed() {
+		t.Fatal("a deleted session is listed again")
+	}
+	if _, err := os.Stat(filepath.Join(e.home, ".dsh/sessions/---workspace-lydiabox--", adapterstest.DSHID)); err != nil {
+		t.Fatalf("the transcript was removed: %v", err)
+	}
+	if err := e.mgr.Delete(ctx, tenant, id, false); !errors.Is(err, harness.ErrNotFound) {
+		t.Fatalf("second delete = %v", err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	writeDSHSession(t, e.home, "/workspace/lydiabox", adapterstest.DSHID)
+	if !listed() {
+		t.Fatal("a session with new activity after the delete is not listed")
+	}
+	// A purge removes the transcript and the record of the delete.
+	if err := e.mgr.Delete(ctx, tenant, id, true); err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := e.store.ListDismissedSessions(ctx, tenant); len(d) != 0 {
+		t.Fatalf("dismissals after a purge = %+v", d)
+	}
+}
+
 func TestProvisionalSessionAdoptsNativeID(t *testing.T) {
 	e := newEnv(t, &harnesstest.Runner{})
 	ctx := context.Background()

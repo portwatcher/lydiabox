@@ -10,6 +10,7 @@ import (
 	"io"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -372,10 +373,43 @@ func (d Dirs) HomeDir(string) (string, error) { return d.Home, nil }
 // WorkspaceDir implements harness.Dirs.
 func (d Dirs) WorkspaceDir(string) (string, error) { return d.Workspace, nil }
 
-// Store is an in-memory harness.SessionStore.
+// Store is an in-memory harness.SessionStore and harness.SessionDismisser.
 type Store struct {
-	mu sync.Mutex
-	m  map[string]store.SessionMeta
+	mu        sync.Mutex
+	m         map[string]store.SessionMeta
+	dismissed map[string]store.DismissedSession
+}
+
+// DismissSession implements harness.SessionDismisser.
+func (s *Store) DismissSession(_ context.Context, tenantID, h, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dismissed == nil {
+		s.dismissed = map[string]store.DismissedSession{}
+	}
+	s.dismissed[key(tenantID, h, id)] = store.DismissedSession{Harness: h, SessionID: id, DismissedAt: time.Now().UTC()}
+	return nil
+}
+
+// UndismissSession implements harness.SessionDismisser.
+func (s *Store) UndismissSession(_ context.Context, tenantID, h, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.dismissed, key(tenantID, h, id))
+	return nil
+}
+
+// ListDismissedSessions implements harness.SessionDismisser.
+func (s *Store) ListDismissedSessions(_ context.Context, tenantID string) ([]store.DismissedSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []store.DismissedSession
+	for k, v := range s.dismissed {
+		if strings.HasPrefix(k, tenantID+"\x00") {
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 
 func key(t, h, s string) string { return t + "\x00" + h + "\x00" + s }

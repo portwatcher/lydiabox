@@ -13,3 +13,18 @@ export function listOutOfDate(previous: VMState, next: VMState): boolean {
 export function deletesWithoutConfirm(session: Pick<Session, "harness" | "live">): boolean {
   return session.harness === "shell" && !session.live;
 }
+
+/**
+ * The text of the delete dialog. A delete without the transcript keeps the
+ * files in the VM, and the session stays out of the list; a shell has no
+ * transcript.
+ */
+export function deleteText(session: Pick<Session, "harness">): { body: string; purgeLabel: string | null } {
+  if (session.harness === "shell") {
+    return { body: "The terminal stops and the shell leaves the list.", purgeLabel: null };
+  }
+  return {
+    body: "The terminal stops and the session leaves the list. Its transcript files stay in the VM.",
+    purgeLabel: "Also delete the transcript files (cannot be undone)",
+  };
+}

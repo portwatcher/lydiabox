@@ -58,6 +58,16 @@ type SessionStore interface {
 	DeleteSessionMeta(ctx context.Context, tenantID, harness, sessionID string) error
 }
 
+// SessionDismisser keeps the discovered sessions that the user deleted
+// without their transcript (implemented by *store.Store). Discovery finds
+// such a session again in its transcript; the list leaves it out until the
+// transcript has newer activity.
+type SessionDismisser interface {
+	DismissSession(ctx context.Context, tenantID, harness, sessionID string) error
+	UndismissSession(ctx context.Context, tenantID, harness, sessionID string) error
+	ListDismissedSessions(ctx context.Context, tenantID string) ([]store.DismissedSession, error)
+}
+
 // Wiring points harness configs at the gateway before a start and supplies
 // the gateway environment (implemented by *magpie.Bindings).
 type Wiring interface {
@@ -223,6 +233,12 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 		title: req.Title, provisional: provisional}
 	if err := m.start(ctx, ls, cmd, req.Cols, req.Rows); err != nil {
 		return Session{}, err
+	}
+	if dis, ok := m.opts.Store.(SessionDismisser); ok && req.ResumeNativeID != "" {
+		// A resumed session is wanted again.
+		if err := dis.UndismissSession(context.WithoutCancel(ctx), tenantID, req.Harness, nativeID); err != nil {
+			m.log.Warn("drop a session dismissal", "session", SessionID(req.Harness, nativeID), "err", err)
+		}
 	}
 	return m.sessionOf(ls), nil
 }
@@ -448,12 +464,29 @@ func (m *Manager) Delete(ctx context.Context, tenantID, id string, purge bool) e
 	if err := m.opts.Store.DeleteSessionMeta(ctx, tenantID, harness, nativeID); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	if purge {
-		if _, ok := m.adapters[harness]; !ok {
-			return nil
+	if _, ok := m.adapters[harness]; !ok {
+		return nil
+	}
+	dis, canDismiss := m.opts.Store.(SessionDismisser)
+	if !purge {
+		// The transcript stays, and discovery would list the session
+		// again: record that the user deleted it.
+		if canDismiss {
+			if err := dis.DismissSession(context.WithoutCancel(ctx), tenantID, harness, nativeID); err != nil {
+				return err
+			}
 		}
-		if err := m.opts.Discovery.Purge(ctx, tenantID, harness, nativeID); err != nil {
-			return fmt.Errorf("purge %s: %w", id, err)
+		return nil
+	}
+	if err := m.opts.Discovery.Purge(ctx, tenantID, harness, nativeID); err != nil {
+		// Not dismissed: the session stays in the list, so the purge can
+		// be tried again.
+		return fmt.Errorf("purge %s: %w", id, err)
+	}
+	if canDismiss {
+		// The transcript is gone; a dismissal of an earlier delete is not needed.
+		if err := dis.UndismissSession(context.WithoutCancel(ctx), tenantID, harness, nativeID); err != nil {
+			m.log.Warn("drop a session dismissal", "session", id, "err", err)
 		}
 	}
 	return nil

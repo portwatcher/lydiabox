@@ -15,7 +15,7 @@ import { harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { NoModelNotice, modelProblem } from "./studio/NoModelNotice";
 import { SessionList } from "./studio/SessionList";
-import { deletesWithoutConfirm, listOutOfDate } from "./studio/sessionActions";
+import { deleteText, deletesWithoutConfirm, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
 import { TerminalView } from "./studio/TerminalView";
 
@@ -154,6 +154,8 @@ export default function StudioPage() {
     list.reload();
   };
 
+  const deleteCopy = deleteText(deleting ?? { harness: "shell" });
+
   const confirmDelete = async () => {
     if (deleting) {
       await remove(deleting, purge);
@@ -262,12 +264,14 @@ export default function StudioPage() {
         confirmLabel="Delete session"
         failed="Session not deleted"
         onConfirm={confirmDelete}
-        body="The terminal stops and LydiaBox forgets this session."
+        body={deleteCopy.body}
         extra={
-          <label className="flex items-center gap-2 text-sm text-fg">
-            <input type="checkbox" checked={purge} onChange={(e) => setPurge(e.target.checked)} className="size-4 accent-danger-solid" />
-            Also delete the harness transcript files (cannot be undone)
-          </label>
+          deleteCopy.purgeLabel ? (
+            <label className="flex items-center gap-2 text-sm text-fg">
+              <input type="checkbox" checked={purge} onChange={(e) => setPurge(e.target.checked)} className="size-4 accent-danger-solid" />
+              {deleteCopy.purgeLabel}
+            </label>
+          ) : undefined
         }
       />
     </div>

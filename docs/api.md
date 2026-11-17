@@ -640,6 +640,13 @@ cannot be reached, the next reconcile ends it. With `purge=true`, the native tra
 (`provider` mode: in the guest, which wakes the machine; `503` when it does
 not start). Response `204`.
 
+Without `purge`, the transcript stays, and discovery would find the session
+again. The host records the delete (table `session_dismissed`, per tenant),
+and the list leaves the session out until its transcript has activity after
+the delete (for example `claude --resume` in a shell). A resume through
+`POST /api/v1/sessions` with `resumeNativeId` and a purge remove the record. A
+failed purge records nothing, so the session stays listed for another try.
+
 ### `GET /api/v1/sessions/{id}/ws` — WebSocket
 
 Subprotocol: `lydiabox.pty.v1`. Several clients may attach to one session
