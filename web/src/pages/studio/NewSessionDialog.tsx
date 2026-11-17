@@ -10,6 +10,7 @@ import { ModelInput } from "../../components/ModelInput";
 import { Banner, Button, Field, Select, TextInput } from "../../components/ui";
 import { harnessLabels } from "../../lib/harness";
 import { NoModelNotice } from "./NoModelNotice";
+import type { ModelProblem } from "./NoModelNotice";
 
 interface NewSessionDialogProps {
   open: boolean;
@@ -17,8 +18,8 @@ interface NewSessionDialogProps {
   onCreated: (session: Session) => void;
   workspaces: string[];
   models: Model[];
-  /** No model is set up (the models list loaded and is empty). */
-  noModel: boolean;
+  /** Why an agent cannot reach a model, or null. */
+  noModel: ModelProblem | null;
   size: () => { cols: number; rows: number };
   defaultHarness: HarnessID | "";
 }
@@ -96,7 +97,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
     >
       <form id="new-session" onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
         {error ? <Banner tone="danger">{error}</Banner> : null}
-        {noModel && harness !== "shell" ? <NoModelNotice onNavigate={onClose} /> : null}
+        {noModel && harness !== "shell" ? <NoModelNotice problem={noModel} onNavigate={onClose} /> : null}
         <Field id="ns-harness" label="Harness">
           <Select
             id="ns-harness"

@@ -13,7 +13,7 @@ import { useResource } from "../hooks/useResource";
 import { useSystem } from "../hooks/useSystem";
 import { harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
-import { NoModelNotice } from "./studio/NoModelNotice";
+import { NoModelNotice, modelProblem } from "./studio/NoModelNotice";
 import { SessionList } from "./studio/SessionList";
 import { deletesWithoutConfirm, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
@@ -34,8 +34,8 @@ export default function StudioPage() {
   const [purge, setPurge] = useState(false);
   const termSize = useRef<{ cols: number; rows: number } | null>(null);
   const centerRef = useRef<HTMLDivElement>(null);
-  const { models, available: modelsLoaded } = useModelOptions();
-  const noModel = modelsLoaded && models.length === 0;
+  const { models, state: modelState } = useModelOptions();
+  const noModel = modelProblem(modelState, models.length);
 
   useEffect(() => {
     const id = setTimeout(() => setFilter((f) => ({ ...f, workspace: workspaceInput.trim() })), 300);
@@ -210,7 +210,7 @@ export default function StudioPage() {
         ) : null}
         {noModel && selected && selected.harness !== "shell" ? (
           <div className="border-b border-border-subtle px-3 py-2">
-            <NoModelNotice />
+            <NoModelNotice problem={noModel} />
           </div>
         ) : null}
         <div className="min-h-0 flex-1">
