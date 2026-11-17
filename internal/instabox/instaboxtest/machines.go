@@ -30,6 +30,10 @@ type machine struct {
 	dirs                           map[string]bool
 	ports                          map[int]*port
 	leases                         map[string]time.Time
+	// preserved is runtime.processesPreserved after a resume; freshResume
+	// makes the next resume boot the machine fresh (FreshResumeNext).
+	preserved   *bool
+	freshResume bool
 }
 
 type operation struct {
@@ -81,7 +85,7 @@ func (m *machine) json() map[string]any {
 		"template":                map[string]any{"id": m.template, "version": "2026-11-01.1", "digest": "sha256:" + strings.Repeat("0", 64)},
 		"spec":                    map[string]any{"vcpus": m.vcpus, "memMiB": m.memMiB, "persistentDiskGiB": 20},
 		"storage":                 map[string]any{"sizeGiB": 20, "mountPath": "/data", "persistent": true, "synced": !transitional[m.state]},
-		"runtime":                 map[string]any{"ready": m.state == "running"},
+		"runtime":                 m.runtimeJSON(),
 		"autoSuspendAfterSeconds": autoSuspend, "maxRunMinutes": m.maxRun,
 		"runStartedAt": m.runStartedAt, "cooldownUntil": nil,
 		"metadata": m.metadata, "vault": false, "guestUser": "user", "orgId": "org_fake",
@@ -94,6 +98,14 @@ func (m *machine) json() map[string]any {
 		out["snapshot"] = map[string]any{"id": m.snapshotID}
 	}
 	return out
+}
+
+func (m *machine) runtimeJSON() map[string]any {
+	rt := map[string]any{"ready": m.state == "running"}
+	if m.preserved != nil {
+		rt["processesPreserved"] = *m.preserved
+	}
+	return rt
 }
 
 func (o *operation) json(m *machine) map[string]any {
@@ -141,8 +153,19 @@ func (s *Server) advance() {
 		m.updatedAt = now
 		if o.final == "running" {
 			m.runStartedAt = &now
+			m.preserved = nil
 			if o.typ == "create" || o.typ == "start" || o.typ == "resize" {
 				s.queueGuest(true, m.id)
+			}
+			if o.typ == "resume" {
+				// A resume keeps the memory, unless FreshResumeNext asked
+				// for a resume that cannot bring the processes back.
+				kept := !m.freshResume
+				m.preserved, m.freshResume = &kept, false
+				if !kept {
+					s.queueGuest(false, m.id)
+					s.queueGuest(true, m.id)
+				}
 			}
 		}
 		if o.final == "stopped" || o.final == "deleted" {
@@ -215,6 +238,20 @@ func (s *Server) IdlePause(id string) bool {
 	m.state, m.autoSuspendedAt = "suspended", &now
 	m.revision++
 	s.pauseConns(m.id)
+	return true
+}
+
+// FreshResumeNext makes the next resume of a machine boot it fresh, as
+// InstaBox does when it cannot restore the processes: the programs start
+// again and runtime.processesPreserved is false.
+func (s *Server) FreshResumeNext(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.lookup(id)
+	if m == nil {
+		return false
+	}
+	m.freshResume = true
 	return true
 }
 

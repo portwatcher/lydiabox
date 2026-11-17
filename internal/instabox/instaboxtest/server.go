@@ -32,6 +32,8 @@ type Options struct {
 	// OpDelay is how long an operation runs before it ends (default
 	// 20ms). Machines are in a transitional state meanwhile.
 	OpDelay time.Duration
+	// ResumeDelay, when set, is how long a resume runs instead.
+	ResumeDelay time.Duration
 	// MaxMachines and MaxSnapshots are the plan limits (0: no limit).
 	MaxMachines  int
 	MaxSnapshots int

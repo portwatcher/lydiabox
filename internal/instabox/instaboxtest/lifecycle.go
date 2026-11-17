@@ -163,6 +163,9 @@ func (s *Server) lifecycle(action string) http.HandlerFunc {
 		case "start/suspended", "resume/suspended":
 			m.autoSuspendedAt = nil
 			op = s.startOp(m, action, "resuming", "running")
+			if s.opts.ResumeDelay > 0 {
+				op.doneAt = op.createdAt.Add(s.opts.ResumeDelay)
+			}
 		case "stop/running":
 			op = s.startOp(m, "stop", "stopping", "stopped")
 		case "suspend/running":
