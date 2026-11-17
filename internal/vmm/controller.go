@@ -46,6 +46,9 @@ type Options struct {
 	CPUs  int
 	MemMB int
 	GPU   string
+	// Holds keeps the hold of a user stop across host restarts (optional;
+	// without it the hold is in memory only).
+	Holds HoldStore
 	// Logger and Now are optional.
 	Logger *slog.Logger
 	Now    func() time.Time
@@ -75,7 +78,11 @@ type tenantVM struct {
 	pausing   bool
 	// held is set by Stop (from its start) and cleared by Start: a VM
 	// that the user stopped is not woken on demand (EnsureRunning).
-	held bool
+	// holdMu orders the changes of held with their writes to Options.Holds;
+	// holdGen counts the changes.
+	held    bool
+	holdMu  sync.Mutex
+	holdGen uint64
 }
 
 type bootCall struct {
@@ -434,25 +441,6 @@ func (c *Controller) recordError(t *tenantVM, err error) {
 	c.mu.Unlock()
 }
 
-// Stop flushes guest filesystems and shuts the VM down. Without force a
-// failed flush aborts the stop; with force the VM is shut down anyway.
-// From its start until Start, the VM is held stopped: EnsureRunning does
-// not wake it (a failed or refused stop restores the previous hold).
-func (c *Controller) Stop(ctx context.Context, tid string, force bool) error {
-	c.mu.Lock()
-	t := c.tenant(tid)
-	wasHeld := t.held
-	t.held = true
-	c.mu.Unlock()
-	err := c.stop(ctx, tid, t, force)
-	if err != nil {
-		c.mu.Lock()
-		t.held = wasHeld
-		c.mu.Unlock()
-	}
-	return err
-}
-
 func (c *Controller) stop(ctx context.Context, tid string, t *tenantVM, force bool) error {
 	t.trans.Lock()
 	defer t.trans.Unlock()
@@ -482,38 +470,23 @@ func (c *Controller) stop(ctx context.Context, tid string, t *tenantVM, force bo
 	return nil
 }
 
-// Start is an explicit start by the user: it lifts the hold of Stop and
-// then boots or resumes the VM like EnsureRunning.
-func (c *Controller) Start(ctx context.Context, tid string) error {
-	c.mu.Lock()
-	c.tenant(tid).held = false
-	c.mu.Unlock()
-	return c.EnsureRunning(ctx, tid)
-}
-
-// Held reports whether the user stopped the VM (Stop, until Start).
-func (c *Controller) Held(tid string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.tenant(tid).held
-}
-
 // Close stops every running VM (host shutdown, before storage unmounts).
 // A remote VM (Capabilities.Remote) is left as it is: it keeps its files,
 // the next host process adopts it, and the provider's idle pause applies.
+// A host shutdown is not a user stop: it does not set the hold.
 func (c *Controller) Close(ctx context.Context) error {
 	c.mu.Lock()
-	var ids []string
+	running := map[string]*tenantVM{}
 	for id, t := range c.tenants {
 		c.stopTimerLocked(t)
 		if t.state != StateStopped && !c.caps.Remote {
-			ids = append(ids, id)
+			running[id] = t
 		}
 	}
 	c.mu.Unlock()
 	var errs []error
-	for _, id := range ids {
-		if err := c.Stop(ctx, id, true); err != nil && !errors.Is(err, ErrConflict) {
+	for id, t := range running {
+		if err := c.stop(ctx, id, t, true); err != nil && !errors.Is(err, ErrConflict) {
 			errs = append(errs, err)
 		}
 	}

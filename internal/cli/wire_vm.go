@@ -55,7 +55,14 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 		return nil, err
 	}
 	guest := guestclient.New(guestclient.Options{Dialer: drv, Logger: log})
+	var holds vmm.HoldStore
+	if d.Store != nil {
+		// The hold of a user stop is in the state database, so a new host
+		// process (a release, or the idle exit of a cell) keeps it.
+		holds = d.Store
+	}
 	ctl, err := vmm.NewController(vmm.Options{
+		Holds:       holds,
 		Driver:      drv,
 		Spec:        func(ctx context.Context, tid string) (vmm.Spec, error) { return vmSpec(ctx, d, tid, webrtcPort) },
 		IdleTimeout: cfg.VM.IdleTimeout,
@@ -102,6 +109,9 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 			if err := ctl.Refresh(ctx, tid); err != nil {
 				log.Warn("read VM state", "err", err)
 			}
+			// Before the server serves requests: an open page must not wake
+			// a VM that the user stopped before this process started.
+			_ = ctl.LoadHold(ctx, tid)
 			ln, err := drv.ListenGuestPort(ctx, tid, rpc.PortHostGateway)
 			if err != nil {
 				return fmt.Errorf("listen for the guest LLM gateway tunnel: %w", err)
