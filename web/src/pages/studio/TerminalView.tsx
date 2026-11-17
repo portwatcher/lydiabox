@@ -189,7 +189,7 @@ export function TerminalView({ sessionId, onExit, onAttach, onSize }: TerminalVi
       ) : null}
       {vmStopped ? (
         <div className="px-3 pt-3">
-          <Banner tone="neutral">{vmState === "STOPPED" ? "The VM is stopped." : "This terminal ended when the VM stopped."}</Banner>
+          <Banner tone="neutral">{vmState === "STOPPED" ? "The VM is stopped." : "This session has ended."}</Banner>
         </div>
       ) : null}
       {vmPaused ? (
