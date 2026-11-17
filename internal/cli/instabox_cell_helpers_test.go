@@ -84,7 +84,10 @@ func checkGoroutines(t *testing.T) {
 	})
 }
 
-func newCellRig(t *testing.T) *cellRig {
+func newCellRig(t *testing.T) *cellRig { return newCellRigWith(t, nil) }
+
+// newCellRigWith is newCellRig with changes to the options of the fake.
+func newCellRigWith(t *testing.T, fakeOpts func(*instaboxtest.Options)) *cellRig {
 	t.Helper()
 	root, err := os.MkdirTemp("", "lbxe")
 	if err != nil {
@@ -92,13 +95,17 @@ func newCellRig(t *testing.T) *cellRig {
 	}
 	t.Cleanup(func() { os.RemoveAll(root) })
 	r := &cellRig{t: t, root: root, runner: fakeguest.New(filepath.Join(root, "m"), nil), upstream: &recorder{}}
-	r.fake = instaboxtest.New(instaboxtest.Options{OpDelay: 10 * time.Millisecond, Guest: r.runner,
+	opts := instaboxtest.Options{OpDelay: 10 * time.Millisecond, Guest: r.runner,
 		Exec: func(id string, req instaboxtest.ExecRequest) instaboxtest.ExecResult {
 			if strings.Contains(req.Cmd, "restart lydiabox-guest") {
 				r.runner.Restart(id)
 			}
 			return instaboxtest.DefaultExec(id, req)
-		}})
+		}}
+	if fakeOpts != nil {
+		fakeOpts(&opts)
+	}
+	r.fake = instaboxtest.New(opts)
 	t.Cleanup(func() {
 		r.fake.Close()
 		r.runner.Close()
