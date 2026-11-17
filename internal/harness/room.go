@@ -135,6 +135,12 @@ func (r *Room) pump(p PTY) {
 		// guest. The clients attach again after the VM runs.
 		last = Frame{Control: CtlError{Type: "error", Code: CodeVMPaused, Message: "the VM was hibernated"}, Close: true}
 		detached = true
+		// Release the lease and the live entry before the clients learn of
+		// the end, so that what they read next (VM status, session list, a
+		// new attach) no longer shows this room.
+		if r.onEnd.detached != nil {
+			r.onEnd.detached()
+		}
 	}
 	r.mu.Lock()
 	r.done = true
@@ -144,10 +150,7 @@ func (r *Room) pump(p PTY) {
 	}
 	r.subs = map[*Subscriber]struct{}{}
 	r.mu.Unlock()
-	switch {
-	case detached && r.onEnd.detached != nil:
-		r.onEnd.detached()
-	case !detached && r.onEnd.exited != nil:
+	if !detached && r.onEnd.exited != nil {
 		r.onEnd.exited(code)
 	}
 }
