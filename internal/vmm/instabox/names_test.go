@@ -81,4 +81,33 @@ func TestClassifyAndGate(t *testing.T) {
 	if err := classify(&ib.APIError{Status: 404, ErrorDetail: ib.ErrorDetail{Code: ib.CodeNotFound}}, now, time.Minute); !errors.Is(err, ErrMachineGone) {
 		t.Fatalf("not found: %v", err)
 	}
+	// The cooldown after a pause at the maximum run time blocks wakes until
+	// it ends, with a reason that says so.
+	cool := classify(&ib.APIError{Status: 409, ErrorDetail: ib.ErrorDetail{Code: ib.CodeMachineCooldown, Message: "cooling down"},
+		RetryAfter: 16 * time.Minute}, now, time.Minute)
+	if !errors.As(cool, &acc) || !acc.After.Equal(now.Add(16*time.Minute)) || !errors.Is(cool, vmm.ErrUnavailable) ||
+		!strings.Contains(acc.Reason, "maximum run time") || !strings.Contains(acc.Reason, now.Add(16*time.Minute).UTC().Format("15:04 UTC")) {
+		t.Fatalf("cooldown: %v", cool)
+	}
+}
+
+func TestPauseReason(t *testing.T) {
+	now := time.Date(2026, 11, 17, 13, 50, 30, 0, time.UTC)
+	later, earlier := now.Add(16*time.Minute), now.Add(-time.Hour)
+	maxRun := 120
+	cases := []struct {
+		name string
+		m    ib.Machine
+		want string
+	}{
+		{"max run", ib.Machine{State: ib.StateSuspended, AutoSuspendedAt: &now, CooldownUntil: &later, MaxRunMinutes: &maxRun}, "maximum run time"},
+		{"idle", ib.Machine{State: ib.StateSuspended, AutoSuspendedAt: &now, CooldownUntil: &earlier}, "idle pause"},
+		{"call", ib.Machine{State: ib.StateSuspended}, ""},
+		{"stopped", ib.Machine{State: ib.StateStopped, CooldownUntil: &later}, ""},
+	}
+	for _, c := range cases {
+		if got := pauseReason(&c.m, now); got != c.want {
+			t.Errorf("%s: pauseReason = %q, want %q", c.name, got, c.want)
+		}
+	}
 }

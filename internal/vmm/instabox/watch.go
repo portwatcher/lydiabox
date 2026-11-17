@@ -93,6 +93,10 @@ func (d *Driver) poll(ctx context.Context, tid, id string, inLink bool) (vmm.Sta
 	default:
 		st = mapState(m)
 	}
+	reason := ""
+	if m != nil {
+		reason = pauseReason(m, d.opts.Now())
+	}
 	t := d.tenant(tid)
 	d.mu.Lock()
 	changed := st != t.reported && st != vmm.StateBooting
@@ -109,7 +113,17 @@ func (d *Driver) poll(ctx context.Context, tid, id string, inLink bool) (vmm.Sta
 		// InstaBox paused or stopped the machine by itself. Close the link,
 		// because its reconnects would wake the machine again, and end the
 		// lease; the next use resumes the machine through the controller.
-		d.opts.Logger.Info("instabox: the machine changed without this cell", "tenant", tid, "state", st)
+		attrs := []any{"tenant", tid, "state", st}
+		if reason != "" {
+			attrs = append(attrs, "reason", reason)
+		}
+		if reason == reasonMaxRun {
+			if m.MaxRunMinutes != nil {
+				attrs = append(attrs, "maxRunMinutes", *m.MaxRunMinutes)
+			}
+			attrs = append(attrs, "cooldownUntil", m.CooldownUntil.UTC().Format(time.RFC3339))
+		}
+		d.opts.Logger.Info("instabox: the machine changed without this cell", attrs...)
 		if inLink {
 			d.markDown(tid)
 			if l, err := d.links.For(tid); err == nil {
@@ -140,4 +154,26 @@ func (d *Driver) checkLink(tid string) {
 	if st, ok := d.poll(ctx, tid, id, true); ok && fn != nil {
 		fn(tid, st)
 	}
+}
+
+const (
+	reasonMaxRun = "maximum run time"
+	reasonIdle   = "idle pause"
+)
+
+// pauseReason tells why InstaBox paused a machine by itself: at the
+// maximum run time (maxRunMinutes; a cooldown that blocks a wake follows
+// only this pause), or at the idle pause. It is "" for a machine that a
+// call paused, or that is not paused.
+func pauseReason(m *ib.Machine, now time.Time) string {
+	if m.State != ib.StateSuspended && m.State != ib.StateSuspending {
+		return ""
+	}
+	if m.CooldownUntil != nil && m.CooldownUntil.After(now) {
+		return reasonMaxRun
+	}
+	if m.AutoSuspendedAt != nil {
+		return reasonIdle
+	}
+	return ""
 }

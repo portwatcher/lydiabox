@@ -18,7 +18,8 @@ var ErrMachineGone = errors.New("the InstaBox machine of this tenant was deleted
 	"Run 'lydiabox instabox status', then 'lydiabox instabox destroy -forget' to make a new machine")
 
 // AccountError is an InstaBox refusal that a retry does not fix soon: a
-// bad API key, a missing scope, a billing limit, a quota, or no capacity.
+// bad API key, a missing scope, a billing limit, a quota, no capacity, or
+// the cooldown after a pause at the maximum run time.
 // The driver does not call the API again for the same tenant until After.
 type AccountError struct {
 	// Reason is a short, clear text for the API and the web status bar.
@@ -68,6 +69,12 @@ func classify(err error, now time.Time, block time.Duration) error {
 		reason = "InstaBox has no capacity for the machine now; it retries later"
 	case errors.Is(err, ib.ErrQuota):
 		reason = "an InstaBox plan limit or rate limit was reached"
+	case code == ib.CodeMachineCooldown:
+		// After a pause at the maximum run time (maxRunMinutes; 120
+		// minutes a run on the free plan), InstaBox refuses a wake until
+		// the cooldown ends.
+		reason = "InstaBox paused the machine at the maximum run time of its plan; it can resume at " +
+			now.Add(wait).UTC().Format("15:04 UTC")
 	case errors.Is(err, ib.ErrNotFound):
 		return fmt.Errorf("%w: %w", vmm.ErrUnavailable, ErrMachineGone)
 	default:
