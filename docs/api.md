@@ -56,7 +56,7 @@ Status legend:
 | 413 | `too_large` | Body or file over the limit |
 | 415 | `unsupported_media_type` | File is not UTF-8 text |
 | 429 | `rate_limited` | Too many failed authentication attempts (see `Retry-After`) |
-| 499 | `canceled` | The client closed the request before the answer (`GET /api/v1/sessions` while the guest discovery waits); the client does not see it |
+| 499 | `canceled` | The client closed the request before the answer (`GET /api/v1/sessions` while the guest discovery waits, a File API request while the machine wakes); the client does not see it |
 | 500 | `internal` | Unexpected server error. The server logs one `request failed` line at error level with the route, the status, and the cause (credentials removed) |
 | 501 | `not_implemented` | Route exists but the subsystem is not in this build |
 | 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running. An expected state (the VM is not running, or the user stopped it) is logged at info level (`request refused`); other `503` answers are logged like a `500` |
@@ -519,7 +519,7 @@ provider's `Retry-After`) before it tries again.
 | :--- | :--- | :--- |
 | `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
 | `POST /api/v1/vm/wake` | Explicit start (`Start`): ends a user stop, then boots from `STOPPED` or resumes from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `504` after 120 s |
-| `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause | `200 VMStatus` (`PAUSED`) |
+| `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause. The processes keep their memory; a live terminal detaches (`paused`, see section 8) and attaches again after the wake. A wake asked for during the pause waits for it and then resumes the VM | `200 VMStatus` (`PAUSED`) |
 | `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot`. The stop runs to its end when the client goes away (limit 3 minutes) | `200 VMStatus` (`STOPPED`) |
 
 `409 conflict` when the transition is not possible (for example hibernate
@@ -651,8 +651,13 @@ socket (`1008`, or `1013` for `unavailable`). When the user stopped the VM,
 the server sends `error` with `code` `stopped` and closes with `1000`; the
 socket does not start the VM, and the client does not reconnect. A live
 terminal that ends because the user stopped the VM also ends with this
-`stopped` error instead of an `exit` message. A terminal that survived a host
-restart is attached again from the guest. Invalid control messages give an
+`stopped` error instead of an `exit` message. When a pause of the VM
+(`hibernate`, or an idle pause) cuts the stream of a live terminal, the
+process stays in the paused guest: the server sends `error` with `code`
+`paused` and closes with `1000`, and the session stays running. The client
+does not reconnect at once (a new socket wakes the VM); it reconnects when
+the VM is `RUNNING` again and gets the same terminal. A terminal that
+survived a host restart is attached again from the guest. Invalid control messages give an
 `error` message with `code` `bad_request`; the socket stays open. A client
 that falls more than 512 frames behind is disconnected.
 

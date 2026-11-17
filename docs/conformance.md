@@ -490,8 +490,27 @@ client, and the browser pane.
    `RUNNING` with the container gone until a forced stop. The stop now runs
    to its end (limit 3 minutes, `TestVMStopOutlivesTheClient`).
 
-Not fixed: a file list that the browser cancels is logged as a `500` at
-error level (`client_gone=true`).
+A file list that the browser cancels was logged as a `500` at error level
+(`client_gone=true`); the next run fixes it.
+
+### Hibernate and log run (2026-11-17)
+
+Setup as in the user-stop run. The checks used `curl`, a small WebSocket
+client, and the browser pane.
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| 1 | Studio: a live shell (`echo PID=$$` gives `45`), then `POST /vm/hibernate`: the VM is `PAUSED`; at the keepalive timeout (50 s with `docker pause`) the socket gets `error` `paused` and close `1000`; the log has one INFO "harness terminal detached by a VM pause" | pass |
+| 2 | While paused: the session list shows the session as `idle` (not `exited`); the VM stays `PAUSED` | pass |
+| 3 | A new socket for the same session wakes the VM and attaches to the same shell (`PID=45` again); `exit` then gives `exit` `0` | pass |
+| 4 | Browser: Hibernate from the top bar with the shell open: the terminal shows "The VM is hibernating." (neutral), no exit code, no reconnect; Resume: the terminal attaches again and the unfinished input line of the shell is still there | pass |
+| 5 | 30 session lists during `POST /vm/hibernate`: no WARN "guest session discovery failed" | pass |
+| 6 | File lists that the client cancels after 20 ms and 60 ms while the VM wakes: no `request failed` line (the answer is `499`, logged at debug level) | pass |
+| 7 | Dashboard-style stop: `POST /vm/stop` with the admin token, then SIGTERM: no WARN or ERROR | pass |
+
+The docker driver does not close the guest port listeners at the host
+shutdown, so step 7 cannot show the InstaBox ERROR "guest LLM gateway tunnel
+stopped"; `TestGuestTunnelEndAtHostShutdownIsInfo` covers it.
 
 ## Integration run (chv on KVM)
 
