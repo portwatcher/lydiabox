@@ -650,6 +650,18 @@ provider cooldown came from a `/vm/status` answer changed in the tab.
 | `cell_stopped`, `cell_starting`, no status | Banner with the VM state, page inert, no figures; only the status poll runs (was each page load, the folder tree, and the desktop probe) | pass after fix |
 | Start screen during an outage | Same title, tries again by itself | pass after fix |
 
+### Files page without a wake, gateway texts, Studio list (2026-11-18)
+
+Setup as above, with the release build (no dev server).
+
+| # | Check | Result |
+| :--- | :--- | :--- |
+| 1 | Fresh load of Files with the VM stopped (no user stop) | "The VM is stopped", Start; no file request in 12 s; the VM stays `STOPPED` | pass |
+| 2 | Fresh load of Files with the VM paused | "The VM is hibernating", Resume; no file request in 15 s; the VM stays `PAUSED` (before the fix one `list?auto` went out, refused by the host without a wake) | pass after fix |
+| 3 | Resume on the Files page | The VM resumes and the folder lists | pass |
+| 4 | Studio during a hibernate and a resume through the API | The "Cached" label follows the pill within 0.2 s both times | pass |
+| 5 | Models page without the gateway | "The model gateway is not available: the gateway did not start."; no "magpie" in the page | pass |
+
 No WARN or ERROR in the cell log except the expected `magpie` and S3 setup
 lines.
 
