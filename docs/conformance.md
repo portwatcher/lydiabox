@@ -600,6 +600,20 @@ The `/data/workspace` path form (InstaBox links) and the InstaBox maximum-run
 pause are covered by unit tests (`internal/harness/discovery_roots_test.go`,
 `internal/vmm/instabox/names_test.go`), not by this run.
 
+### Missing harness, model gateway down, narrow widths (2026-11-18)
+
+Setup as above (docker driver in dind, no magpie, slim guest image without
+`claude`), with the Vite dev server against the cell. For the width checks
+the slow-provider line, a long account email, and the takeover hint were
+forced on by a local change that was not committed.
+
+| # | Check | Result |
+| :--- | :--- | :--- |
+| 1 | New Claude Code session, `claude` not installed | `409 not_installed`; the dialog says "Session not started. Claude Code is not installed in the VM (the command "claude" was not found)."; one INFO log line, no ERROR | pass |
+| 2 | Studio while `GET /api/v1/models` answers 503 | "The models list is not available. An agent cannot answer until the model gateway runs." with "Open Models"; no "No model is set up" | pass |
+| 3 | Top bar at 320, 360, 640, 800, 1024, 1280 px, all extra items shown | Every tab in view, no horizontal scroll; the VM group wraps to a second row when the row is full | pass |
+| 4 | Studio, Desktop, Files, Models, Connectors at 360 px | No horizontal scroll; Studio list, dialog, and live shell; Desktop panel closed by default; long file names cut with the full name in the tooltip; file view | pass |
+
 No WARN or ERROR in the cell log except the expected `magpie` and S3 setup
 lines.
 
