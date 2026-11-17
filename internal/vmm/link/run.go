@@ -116,8 +116,11 @@ func (l *Link) serve(ctx context.Context, sess *yamux.Session) {
 	l.sess = sess
 	l.status.Connects++
 	l.setStateLocked(StateUp, "")
+	attempt := l.attempt
 	l.unlock()
-	l.opts.Logger.Info("guest link up")
+	// connect is how long the successful attempt took (dial through the
+	// provider proxy, which can wait for a resume, and the handshake).
+	l.opts.Logger.Info("guest link up", "connect", time.Since(attempt).Round(time.Millisecond))
 	stop := context.AfterFunc(ctx, func() { sess.Close() })
 	l.ports.Serve(sess)
 	stop()

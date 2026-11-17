@@ -174,8 +174,12 @@ func (d *Driver) Resume(ctx context.Context, tid string) error {
 }
 
 // bringUp moves the machine to running: start a stopped one, resume a
-// paused one, and wait for a transition. Callers hold t.op.
+// paused one, and wait for a transition. Callers hold t.op. It logs what
+// it asked InstaBox for and how long the machine took to run, so that a
+// slow start or resume shows in the log.
 func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, error) {
+	start := time.Now()
+	action, waited := "", false
 	for {
 		m, err := d.opts.Client.GetMachine(ctx, id)
 		if err != nil {
@@ -185,21 +189,31 @@ func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, erro
 		switch m.State {
 		case ib.StateRunning:
 			d.gate.record(tid, nil)
+			if action != "" {
+				d.logUp(tid, m, action, time.Since(start))
+			}
 			return m, nil
 		case ib.StateDeleted, ib.StateDeleting:
 			return nil, fmt.Errorf("%w: %w", vmm.ErrUnavailable, ErrMachineGone)
 		case ib.StateSuspended:
 			if m.IdlePaused() {
+				action = "wake"
 				if _, err := d.opts.Client.WakeMachine(ctx, id); err != nil && !errors.Is(err, ib.ErrConflict) {
 					return nil, d.fail(tid, err)
 				}
 				continue
 			}
+			action = "resume"
 			op, err = d.opts.Client.ResumeMachine(ctx, id)
 		case ib.StateStopped, ib.StateError:
+			action = "start"
 			op, err = d.opts.Client.StartMachine(ctx, id, ib.StartOptions{})
 		default:
 			// A transition runs: wait for it.
+			if !waited {
+				waited = true
+				d.opts.Logger.Info("instabox: waiting for a machine transition", "tenant", tid, "state", m.State)
+			}
 			if err := d.waitSettled(ctx, m); err != nil {
 				return nil, err
 			}
@@ -207,6 +221,10 @@ func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, erro
 		}
 		if errors.Is(err, ib.ErrConflict) {
 			// Another operation runs (409 operation_conflict): wait.
+			if !waited {
+				waited = true
+				d.opts.Logger.Info("instabox: another operation runs on the machine; waiting", "tenant", tid, "action", action, "err", err)
+			}
 			if err := sleep(ctx, 500*time.Millisecond); err != nil {
 				return nil, err
 			}
@@ -219,6 +237,18 @@ func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, erro
 			return nil, d.fail(tid, err)
 		}
 	}
+}
+
+// logUp reports a machine that runs after action. A resume that could not
+// bring the processes back booted the machine fresh: terminals and
+// desktop apps of before the pause are gone.
+func (d *Driver) logUp(tid string, m *ib.Machine, action string, took time.Duration) {
+	attrs := []any{"tenant", tid, "action", action, "took", took.Round(time.Millisecond)}
+	if action == "resume" && m.Runtime.ProcessesPreserved != nil && !*m.Runtime.ProcessesPreserved {
+		d.opts.Logger.Warn("instabox: the resume did not keep the processes; the machine booted fresh", attrs...)
+		return
+	}
+	d.opts.Logger.Info("instabox: machine running", attrs...)
 }
 
 // waitSettled waits for the running operation of m.
