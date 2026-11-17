@@ -32,7 +32,10 @@ type deps struct {
 	// Files is the guest filesystem (agentfs.Local in the juicefs storage
 	// mode; remotefs, set by wireVM, in the provider mode).
 	Files agentfs.FS
-	Auth  *api.Authenticator
+	// FilesServing is set with a remotefs Files: whether the VM that holds
+	// the files serves now (an automatic list does not wake it).
+	FilesServing func(tenantID string) bool
+	Auth         *api.Authenticator
 	// VMStatus feeds GET /api/v1/status. Phase 2 replaces it in wireVM.
 	VMStatus api.VMStatusSource
 	// VM and Guest are set by wireVM (Phase 2): the VM controller, driver,
@@ -162,7 +165,7 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 
 	regs := []api.RouteRegistrar{
 		api.CoreRoutes{Auth: d.Auth, VM: d.VMStatus, Storage: stor.Provider, S3Gateway: stor.Gateway},
-		api.FilesRoutes{Handler: files.NewHandler(files.NewService(d.Files, files.Options{}))},
+		api.FilesRoutes{Handler: filesHandler(d)},
 	}
 	regs = append(regs, stor.Routes...)
 	for _, c := range comps {
@@ -242,4 +245,12 @@ func (s *shutdownStack) run() {
 		s.log.Info("shutdown complete")
 	}
 	_ = errors.Join(errs...)
+}
+
+// filesHandler is the File Manager API. In the provider storage mode a list
+// that the page sends by itself (?auto=1) does not wake the VM.
+func filesHandler(d *deps) *files.Handler {
+	h := files.NewHandler(files.NewService(d.Files, files.Options{}))
+	h.Serving = d.FilesServing
+	return h
 }

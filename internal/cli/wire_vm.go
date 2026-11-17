@@ -138,6 +138,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 			return nil, err
 		}
 		d.Files = rfs
+		d.FilesServing = ctl.Serving
 	}
 
 	tunnels := newGuestTunnels(log)

@@ -18,8 +18,12 @@ const sharedList = sharedRequests<ListResponse>();
 // Section 4: File Manager.
 export const files = {
   roots: () => http.get<RootsResponse>("/api/v1/fs/roots"),
-  list: (root: RootName, path: string, signal?: AbortSignal) =>
-    sharedList(`${root}\n${path}`, (s) => http.get<ListResponse>(`${base(root)}/list`, { path }, s), signal),
+  /**
+   * Lists a folder. The Files page marks its own lists (`auto`): the server
+   * then does not start or resume the VM for them (provider storage mode).
+   */
+  list: (root: RootName, path: string, signal?: AbortSignal, auto = true) =>
+    sharedList(`${root}\n${path}\n${auto}`, (s) => http.get<ListResponse>(`${base(root)}/list`, { path, auto: auto || undefined }, s), signal),
   stat: (root: RootName, path: string) => http.get<Entry>(`${base(root)}/stat`, { path }),
   readText: (root: RootName, path: string, signal?: AbortSignal) =>
     http.get<TextFile>(`${base(root)}/text`, { path }, signal),

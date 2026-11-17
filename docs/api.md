@@ -306,9 +306,13 @@ In the `provider` mode `guestPath` is the directory that a running guest
 reports (for example `/data/lydiabox/home` on InstaBox); this route does not wake
 the machine, so it shows the last answer or the defaults.
 
-### `GET /api/v1/fs/{root}/list?path=<dir>`
+### `GET /api/v1/fs/{root}/list?path=<dir>[&auto=1]`
 
 Response `200`: directories first, then case-insensitive name order.
+`auto=1` marks a list that the page sends by itself: in the `provider`
+storage mode it answers `503 unavailable` while the VM does not serve,
+instead of starting or resuming it (a list without the mark is a user
+action and wakes the VM).
 
 ```json
 { "root": "workspace", "dir": { "name": "", "path": "", "type": "dir", "size": 4096, "mode": "0755", "modTime": "..." },

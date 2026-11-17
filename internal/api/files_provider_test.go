@@ -87,3 +87,34 @@ func TestFileListClientGoneIsNotServerError(t *testing.T) {
 		t.Fatalf("a closed request was logged as an error:\n%s", buf)
 	}
 }
+
+// TestAutomaticListDoesNotWakeTheVM: the list that the Files page sends by
+// itself (?auto=1) answers 503 while the VM does not serve, without a wake;
+// a list without the mark (a click of the user) wakes it.
+func TestAutomaticListDoesNotWakeTheVM(t *testing.T) {
+	d := dirs{home: t.TempDir(), workspace: t.TempDir()}
+	g := agentfstest.Start(t, d.home, d.workspace)
+	h := files.NewHandler(files.NewService(g.FS, files.Options{}))
+	serving := false
+	h.Serving = func(string) bool { return serving }
+	srv, buf := newLoggedServer(t, api.FilesRoutes{Handler: h})
+	list := func(query string) int {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, authed(http.MethodGet, "/api/v1/fs/workspace/list"+query))
+		return rec.Code
+	}
+	if code := list("?path=&auto=1"); code != http.StatusServiceUnavailable || g.Waker.Wakes() != 0 {
+		t.Fatalf("automatic list of a VM that does not serve: %d, wakes %d", code, g.Waker.Wakes())
+	}
+	if strings.Contains(buf.String(), "level=ERROR") {
+		t.Fatalf("an expected state was logged as an error:\n%s", buf)
+	}
+	if code := list("?path="); code != http.StatusOK || g.Waker.Wakes() == 0 {
+		t.Fatalf("list of the user: %d, wakes %d", code, g.Waker.Wakes())
+	}
+	serving = true
+	wakes := g.Waker.Wakes()
+	if code := list("?path=&auto=1"); code != http.StatusOK || g.Waker.Wakes() < wakes {
+		t.Fatalf("automatic list of a serving VM: %d", code)
+	}
+}

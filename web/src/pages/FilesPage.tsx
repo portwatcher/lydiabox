@@ -65,8 +65,12 @@ export default function FilesPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
+  // In the provider storage mode the files are on the VM. The page lists
+  // nothing by itself while the VM is not running: only an action of the
+  // user (Start, Resume, open, upload, ...) starts or resumes it.
+  const vmAway = !mountable && vmState !== "RUNNING";
   const loader = useCallback((signal: AbortSignal) => files.list(root, dir, signal), [root, dir]);
-  const listing = useResource(loader, { enabled: file === null });
+  const listing = useResource(loader, { enabled: file === null && !vmAway });
   const reloadListing = listing.reload;
 
   // After a change: reload the listing and every open folder in the tree.
@@ -137,16 +141,23 @@ export default function FilesPage() {
   const blocked = !mountable && vmState === "STOPPED" ? "Start the VM to change files." : null;
 
   let content;
-  if (file !== null) {
+  if (file === null && vmAway) {
+    content =
+      vmState === "BOOTING" ? (
+        <LoadingView label="Starting the VM…" />
+      ) : (
+        <StateView
+          icon={PowerOff}
+          title={vmState === "PAUSED" ? "The VM is hibernating" : "The VM is stopped"}
+          action={<VmWakeButton variant="primary" />}
+        >
+          {vmState === "PAUSED" ? "Resume the VM to see your files." : "Start the VM to see and change files."}
+        </StateView>
+      );
+  } else if (file !== null) {
     content = <FileView key={`${root}:${file}`} root={root} path={file} onDirtyChange={setDirty} onSaved={bump} blocked={blocked} />;
   } else if (listing.loading && !listing.data) {
     content = <LoadingView label="Loading files…" />;
-  } else if (listing.error && !listing.data && blocked) {
-    content = (
-      <StateView icon={PowerOff} title="The VM is stopped" action={<VmWakeButton variant="primary">Start</VmWakeButton>}>
-        Start the VM to see and change files.
-      </StateView>
-    );
   } else if (listing.error && !listing.data) {
     content = <ErrorView error={listing.error} subsystem="Files" failed="Folder not loaded" onRetry={listing.reload} />;
   } else {
@@ -173,7 +184,14 @@ export default function FilesPage() {
           <RootSwitch root={root} onChange={(r) => navigate({ root: r, file: null })} className="w-full" />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <FileTree root={root} rootLabel={rootLabels[root]} current={file ? parentPath(file) : dir} onOpen={(d) => navigate({ dir: d, file: null })} version={version} />
+          <FileTree
+            root={root}
+            rootLabel={rootLabels[root]}
+            current={file ? parentPath(file) : dir}
+            onOpen={(d) => navigate({ dir: d, file: null })}
+            version={version}
+            paused={vmAway}
+          />
         </div>
       </aside>
       <section className="flex min-w-0 flex-1 flex-col">

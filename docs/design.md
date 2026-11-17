@@ -207,7 +207,8 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      | Terminal socket of a live terminal | no | The room exists; no wake is needed |
      | Desktop socket (`GET /api/v1/desktop/ws`) | no | `paused` (or `stopped` when the VM does not run); the page opens it only while the VM runs |
      | Desktop app launch (Chrome, Blender, Terminal) | no | Sent over the desktop socket, which exists only while the VM runs |
-     | File API in `provider` mode (list, stat, read, download, upload, mkdir, rename, delete) | yes | A file operation of the user. Opening the Files page lists the open folder, which is such an operation: it resumes a paused VM and starts a stopped one, except after a user stop (then `503`, and the page offers Start) |
+     | File API in `provider` mode (list, stat, read, download, upload, mkdir, rename, delete) | yes | A file operation that the user clicks (open, upload, save, rename, delete, download, new folder) |
+     | `GET /api/v1/fs/{root}/list?auto=1` (lists that the Files page sends by itself) | no | `503` while the VM does not serve; the page sends none while the VM is not running and shows Resume or Start |
      | `GET /api/v1/fs/roots` | no | Last answer of the guest, or the defaults |
      | `DELETE /api/v1/sessions/{id}?purge=true` in `provider` mode | yes | Deletes the transcript in the guest |
      | `DELETE /api/v1/sessions/{id}` without purge | no | Ends the guest terminal without a wake; the next reconcile ends it when the guest is not reachable |
@@ -226,9 +227,9 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
      | `RUNNING` | `RUNNING`; Hibernate, Stop | All actions | Stream | All actions | All actions | Status 5 s, sessions 10 s, connectors 30 s, gateway 10 s |
      | Pausing (`transition: pausing`) | `PAUSING`; no controls (the tab that asked shows its busy button) | Actions start the VM after the pause | "Hibernating the VM…", stream closed | Actions resume the VM after the pause | All actions | Status 1.5 s |
-     | `PAUSED` | `PAUSED`; Resume, Stop | New and resume start the VM; live terminals show "The VM is hibernating." | "The VM is hibernating", Resume | Opening or an action resumes the VM | All actions | As `RUNNING`; none wakes the VM |
+     | `PAUSED` | `PAUSED`; Resume, Stop | New and resume start the VM; live terminals show "The VM is hibernating." | "The VM is hibernating", Resume | "The VM is hibernating", Resume; no list request; an action resumes the VM | All actions | As `RUNNING`; none wakes the VM |
      | Stopping (`transition: stopping`) | `STOPPING`; no controls | As pausing | "Stopping the VM…" | As pausing | All actions | Status 1.5 s |
-     | `STOPPED` (user stop, held) | `STOPPED`; Start | Cached list; New and resume start the VM | "The VM is stopped", Start | "The VM is stopped", Start; change actions disabled | All actions | Status 5 s, sessions 10 s (cached) |
+     | `STOPPED` (user stop, held) | `STOPPED`; Start | Cached list; New and resume start the VM | "The VM is stopped", Start | "The VM is stopped", Start; no list request; change actions disabled | All actions | Status 5 s, sessions 10 s (cached) |
      | `BOOTING` | `BOOTING`; no controls; after 15 s "The VM provider is slow." | Actions wait for the start | "Starting the VM…" | Actions wait for the start | All actions | Status 1.5 s |
      | Provider cooldown (`startBlockedUntil`) | State; Start or Resume disabled, the reason in the bar and tooltip | New and resume disabled with the reason | Start or Resume disabled | Start disabled | All actions | As the state |
      | Cell stopped (`cell_stopped`) | `STOPPED`, no controls, no figures | Banner "The VM is stopped", the server's text, Open the dashboard; page dimmed and inert | Same banner; stream closed | Same banner | Same banner | Status 5 s only |

@@ -22,7 +22,15 @@ type Handler struct {
 	svc *Service
 	// MaxUploadBytes bounds one upload request (default 10 GiB).
 	MaxUploadBytes int64
+	// Serving, when set, reports whether the VM that holds the files
+	// serves now (the provider storage mode). A list that the page sends by
+	// itself (?auto=1) answers 503 while it does not, instead of waking
+	// the VM: only an action of the user wakes it.
+	Serving func(tenantID string) bool
 }
+
+// ErrNotServing answers an automatic list while the VM does not serve.
+var ErrNotServing = errors.New("the VM is not running; an automatic list does not start or resume it")
 
 // NewHandler wraps a Service.
 func NewHandler(svc *Service) *Handler {
@@ -74,6 +82,11 @@ func (h *Handler) Roots(w http.ResponseWriter, r *http.Request) {
 
 // List handles GET /api/v1/fs/{root}/list?path=.
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
+	if h.Serving != nil && boolParam(r, "auto") && !h.Serving(tenant.FromContext(r.Context())) {
+		httpx.NoteExpected(w)
+		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, ErrNotServing.Error())
+		return
+	}
 	self, entries, err := h.svc.List(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
 		writeErr(w, r, err)
