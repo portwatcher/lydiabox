@@ -302,6 +302,10 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 		if errors.Is(err, ErrUnavailable) || errors.Is(err, ErrBadRequest) {
 			return err
 		}
+		if commandNotFound(err) {
+			m.log.Info("harness not installed in the VM", "harness", ls.harness, "command", cmd[0])
+			return &NotInstalledError{Harness: ls.harness, Command: cmd[0]}
+		}
 		return fmt.Errorf("%w: start terminal: %v", ErrUnavailable, err)
 	}
 	ls.pty = pty

@@ -132,7 +132,8 @@ func closeStatusFor(err error) websocket.StatusCode {
 	switch {
 	case errors.Is(err, harness.ErrUnavailable):
 		return websocket.StatusTryAgainLater
-	case errors.Is(err, harness.ErrNotFound), errors.Is(err, harness.ErrConflict), errors.Is(err, harness.ErrBadRequest):
+	case errors.Is(err, harness.ErrNotFound), errors.Is(err, harness.ErrConflict), errors.Is(err, harness.ErrBadRequest),
+		errors.Is(err, harness.ErrNotInstalled):
 		return websocket.StatusPolicyViolation
 	}
 	return websocket.StatusInternalError

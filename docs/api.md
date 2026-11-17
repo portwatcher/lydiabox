@@ -610,8 +610,11 @@ user stopped: a new or resumed session is an explicit request.
 
 `model`, `resumeNativeId` (resume an existing native session), and `title`
 are optional. Response `201`: `Session`. Errors: `400` unknown harness or a
-`workspaceDir` outside `/workspace` and `/home/agent`, `503` when the VM or
-the guest terminal service is not available.
+`workspaceDir` outside `/workspace` and `/home/agent`, `409 not_installed`
+when the program of the harness is not installed in the VM (the message
+names it, for example `Claude Code is not installed in the VM (the command
+"claude" was not found)`; logged at info level), `503` when the VM or the
+guest terminal service is not available.
 
 Details:
 

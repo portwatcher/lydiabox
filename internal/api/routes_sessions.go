@@ -23,6 +23,10 @@ func (s SessionsRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("GET /api/v1/sessions/{id}/ws", s.ws)
 }
 
+// CodeNotInstalled answers a session start whose harness program is not
+// installed in the VM (409).
+const CodeNotInstalled = "not_installed"
+
 // writeHarnessError maps harness error classes to the error envelope.
 func writeHarnessError(w http.ResponseWriter, err error) {
 	status, code := harnessStatus(err)
@@ -32,6 +36,8 @@ func writeHarnessError(w http.ResponseWriter, err error) {
 
 func harnessStatus(err error) (int, string) {
 	switch {
+	case errors.Is(err, harness.ErrNotInstalled):
+		return http.StatusConflict, CodeNotInstalled
 	case errors.Is(err, harness.ErrNotFound):
 		return http.StatusNotFound, httpx.CodeNotFound
 	case errors.Is(err, harness.ErrBadRequest):

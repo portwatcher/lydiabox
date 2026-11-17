@@ -62,6 +62,13 @@ describe("HttpClient", () => {
     expect(describeError(err, "Not signed in")).toContain("wait 42 seconds");
   });
 
+  it("shows the text of a harness that is not installed", () => {
+    const err = new ApiError(409, "not_installed", 'Claude Code is not installed in the VM (the command "claude" was not found)');
+    expect(describeError(err, "Session not started")).toBe(
+      'Session not started. Claude Code is not installed in the VM (the command "claude" was not found).',
+    );
+  });
+
   it("notifies unauthorized listeners on 401", async () => {
     const client = new HttpClient(async () => jsonResponse(401, { error: { code: "unauthorized", message: "no" } }));
     const listener = vi.fn();
