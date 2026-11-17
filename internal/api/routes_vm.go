@@ -133,20 +133,28 @@ func (v VMRoutes) stop(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, "resetRoot is not supported")
 		return
 	}
-	err = v.Controller.Stop(r.Context(), tid, req.Force)
+	// The stop finishes when the client goes away (for example the page
+	// closes): a shutdown cut in the middle leaves the VM half stopped.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), StopTimeout)
+	defer cancel()
+	err = v.Controller.Stop(ctx, tid, req.Force)
 	// With resetRoot, an already stopped VM is not an error.
 	if err != nil && !(req.ResetRoot && errors.Is(err, ErrVMConflict) && v.Controller.Status(tid).State == VMStopped) {
 		writeVMError(w, err)
 		return
 	}
 	if req.ResetRoot {
-		if err := rr.ResetRoot(r.Context(), tid); err != nil {
+		if err := rr.ResetRoot(ctx, tid); err != nil {
 			writeVMError(w, err)
 			return
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, v.Controller.Status(tid))
 }
+
+// StopTimeout bounds POST /api/v1/vm/stop: the filesystem sync (30 s), the
+// shutdown, and resetRoot.
+const StopTimeout = 3 * time.Minute
 
 // CodeTimeout is the error code of 504 responses.
 const CodeTimeout = "timeout"

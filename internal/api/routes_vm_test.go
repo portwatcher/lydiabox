@@ -14,6 +14,8 @@ type fakeVM struct {
 	state    string
 	wakeErr  error
 	stopArgs []bool
+	// stopCtxErr is the context error that Stop saw.
+	stopCtxErr error
 }
 
 func (f *fakeVM) VMStatus(context.Context, string) (VMStatus, error) {
@@ -40,8 +42,9 @@ func (f *fakeVM) Hibernate(context.Context, string) error {
 	return nil
 }
 
-func (f *fakeVM) Stop(_ context.Context, _ string, force bool) error {
+func (f *fakeVM) Stop(ctx context.Context, _ string, force bool) error {
 	f.stopArgs = append(f.stopArgs, force)
+	f.stopCtxErr = ctx.Err()
 	if f.state == VMStopped {
 		return fmt.Errorf("%w: stop while STOPPED", ErrVMConflict)
 	}
@@ -143,5 +146,20 @@ func TestVMStopResetRoot(t *testing.T) {
 	}
 	if code, _ := vmDo(t, ts, "POST", "/api/v1/vm/stop", ""); code != 409 || vm.resets != 2 {
 		t.Fatalf("plain stop while stopped %d", code)
+	}
+}
+
+// A client that goes away during a stop does not cut the shutdown.
+func TestVMStopOutlivesTheClient(t *testing.T) {
+	vm := &fakeVM{state: VMRunning}
+	ts := vmServer(t, vm)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/vm/stop", nil)
+	req.Header.Set("Authorization", "Bearer 0123456789abcdef0123")
+	rec := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(rec, req)
+	if len(vm.stopArgs) != 1 || vm.stopCtxErr != nil || vm.state != VMStopped {
+		t.Fatalf("stop calls %v, ctx err %v, state %s", vm.stopArgs, vm.stopCtxErr, vm.state)
 	}
 }
