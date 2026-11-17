@@ -1,4 +1,5 @@
 import { ApiError, NetworkError, buildUrl, errorFromResponse, http, seg } from "./http";
+import { sharedRequests } from "./shared";
 import type {
   Entry,
   ListResponse,
@@ -11,11 +12,14 @@ import type {
 
 const base = (root: RootName) => `/api/v1/fs/${seg(root)}`;
 
+// The listing and the folder tree list the open folder at the same time.
+const sharedList = sharedRequests<ListResponse>();
+
 // Section 4: File Manager.
 export const files = {
   roots: () => http.get<RootsResponse>("/api/v1/fs/roots"),
   list: (root: RootName, path: string, signal?: AbortSignal) =>
-    http.get<ListResponse>(`${base(root)}/list`, { path }, signal),
+    sharedList(`${root}\n${path}`, (s) => http.get<ListResponse>(`${base(root)}/list`, { path }, s), signal),
   stat: (root: RootName, path: string) => http.get<Entry>(`${base(root)}/stat`, { path }),
   readText: (root: RootName, path: string, signal?: AbortSignal) =>
     http.get<TextFile>(`${base(root)}/text`, { path }, signal),
