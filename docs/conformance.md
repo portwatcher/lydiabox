@@ -631,6 +631,25 @@ stopped to cut the server off.
 | 6 | Delete a discovered Claude Code session without its transcript | The dialog says the transcript files stay; the session stays out of the list after two polls; the file stays in the guest | pass |
 | 7 | Desktop panel open at 1280 px, window to 800 px, then 360 px, then 1280 px | Closes when narrow; at 360 px it opens over the stage with a close button; shows again at 1280 px | pass |
 
+### State matrix (2026-11-18)
+
+Setup as above (stand-in control-plane proxy, Vite dev server). Each state on
+Studio, Desktop, Files, Models, Connectors, and the top bar: label, enabled
+buttons, texts, and the API requests in a window of 5 to 12 s. Pausing and
+stopping from another source were held open by a frozen guest container; the
+provider cooldown came from a `/vm/status` answer changed in the tab.
+
+| State | Result |
+| :--- | :--- |
+| `RUNNING` | All actions; Hibernate and Stop | pass |
+| Pausing, stopping (API, other source) | `PAUSING` / `STOPPING`, no controls; Desktop closes its stream | pass |
+| `PAUSED` | Resume and Stop; Desktop "The VM is hibernating"; opening Files resumes the VM (a user action) | pass |
+| `STOPPED` after a user stop | Start; Files "The VM is stopped" with Start and change actions disabled (was "Files is not running" with actions enabled) | pass after fix |
+| `BOOTING` (start held 30 s) | No controls; Desktop "Starting the VM…"; actions wait | pass |
+| Provider cooldown | Start, Resume, New, New session disabled with the provider's reason | pass after fix |
+| `cell_stopped`, `cell_starting`, no status | Banner with the VM state, page inert, no figures; only the status poll runs (was each page load, the folder tree, and the desktop probe) | pass after fix |
+| Start screen during an outage | Same title, tries again by itself | pass after fix |
+
 No WARN or ERROR in the cell log except the expected `magpie` and S3 setup
 lines.
 
