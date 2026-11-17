@@ -629,7 +629,9 @@ Details:
 
 Terminates the PTY (`SIGINT`, 3 s, `SIGTERM`, 2 s, then `SIGHUP` for a
 program that ignores both, such as an interactive shell, 2 s) and removes
-host metadata. With `purge=true`, the native transcript files are also deleted
+host metadata. A terminal that is not attached (after a host restart or a
+pause) is ended in the guest (`pty.kill`) without a wake; when the guest
+cannot be reached, the next reconcile ends it. With `purge=true`, the native transcript files are also deleted
 (`provider` mode: in the guest, which wakes the machine; `503` when it does
 not start). Response `204`.
 
@@ -660,8 +662,19 @@ the frozen guest stays open, as with `docker` and `chv`), closes with
 does not reconnect at once (a new socket wakes the VM); it reconnects when
 the VM is `RUNNING` again and gets the same terminal. If the terminal did
 not survive (the provider resumed the machine without its memory), the
-reconnect gets `error` `conflict` and the session is `exited`. A terminal
-that survived a host restart is attached again from the guest. Invalid control messages give an
+reconnect gets `error` `conflict` and the session is `exited`.
+
+A stream that ends without an exit status while the VM is not stopped or
+paused (the host shuts down, or the guest link drops) does not end the
+session: the socket closes without an `exit` message, the client
+reconnects, and the session stays running. Each time the VM becomes
+`RUNNING` (also at host start), the host compares the stored sessions with
+the guest's terminals: a running terminal is attached again (the session
+is live on the same process), an ended or missing one makes the session
+`exited` with the end time, and a running `lbx-` terminal that no session
+refers to is ended. When the VM stops, every session without a live
+terminal is `exited`. The time of an `exited` session is its end time.
+Invalid control messages give an
 `error` message with `code` `bad_request`; the socket stays open. A client
 that falls more than 512 frames behind is disconnected.
 

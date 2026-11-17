@@ -551,6 +551,23 @@ Setup as in the user-stop run; the browser pane at 1024 x 768.
 7. The stage is live only when the WebRTC peer is connected, and a failed
    peer shows its own state.
 
+### Host restart with live terminals (2026-11-17)
+
+Setup as in the user-stop run. A shell (`bash` PID 43) and a second shell
+running `while true; do echo tick-$(date +%s); sleep 1; done` (PID 52, the
+stand-in for a long agent process).
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| 1 | `SIGKILL` of the host process (the docker VM keeps running), host start: both sessions `running` and `live` before any client attached; log "harness terminal attached again" twice | pass |
+| 2 | Attach: the shell answers `PID=43`; the loop still prints ticks; after Ctrl-C its shell answers `PID=52` | pass |
+| 3 | Delete the loop session: its `bash` and `sleep` end in the guest | pass |
+| 4 | `SIGTERM` (docker stops the VM): after the host start the session is `exited` with the time of the restart; no WARN or ERROR | pass (after the stopped pass at start) |
+| 5 | 375 px: the top bar, Studio, Files, and Desktop through Wake, Hibernate, Resume, and Stop; ended shells show their end time | pass (after hiding the keyboard hint at phone widths) |
+
+`TestInstaboxHostRestartKeepsLiveTerminals` covers the production case: a
+graceful restart of an InstaBox cell, where the machine keeps running.
+
 ## Integration run (chv on KVM)
 
 Date: 2026-11-10. Host: Apple M3 Pro (macOS 26), Lima 2.3.0 VM with
