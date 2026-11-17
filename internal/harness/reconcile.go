@@ -84,6 +84,9 @@ func (m *Manager) markExited(ctx context.Context, tenantID string, sm store.Sess
 func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
 	m.reconcileMu.Lock()
 	defer m.reconcileMu.Unlock()
+	if m.closed {
+		return nil
+	}
 	// The PTYs first: a PTY in this list was registered in m.starting
 	// before it started, and it stays in m.starting until m.live and the
 	// store have it.
@@ -155,6 +158,9 @@ func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
 func (m *Manager) Stopped(ctx context.Context, tenantID string) {
 	m.reconcileMu.Lock()
 	defer m.reconcileMu.Unlock()
+	if m.closed {
+		return
+	}
 	metas, err := m.opts.Store.ListSessionMeta(ctx, tenantID, "")
 	if err != nil {
 		m.log.Warn("list sessions after a VM stop", "err", err)
@@ -168,6 +174,14 @@ func (m *Manager) Stopped(ctx context.Context, tenantID string) {
 		_ = json.Unmarshal(sm.Extra, &x)
 		m.markExited(ctx, tenantID, sm, x, time.Now())
 	}
+}
+
+// Close ends Reconcile and Stopped: the host shuts down, and the next host
+// start reconciles. Live terminals are not touched.
+func (m *Manager) Close() {
+	m.reconcileMu.Lock()
+	m.closed = true
+	m.reconcileMu.Unlock()
 }
 
 // killStored ends the guest PTY of a stored session that is not live (its

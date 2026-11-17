@@ -125,6 +125,7 @@ type Manager struct {
 	starting map[string]bool
 
 	reconcileMu sync.Mutex
+	closed      bool // guarded by reconcileMu; set by Close
 }
 
 // NewManager validates opts.

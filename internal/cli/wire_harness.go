@@ -97,6 +97,11 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 			if err := sup.Start(ctx); err != nil {
 				return err
 			}
+			// A VM that is stopped at host start has no processes; the
+			// state hook does not run because the state did not change.
+			if d.VM != nil && d.VM.Controller != nil && d.VM.Controller.State(tid) == vmm.StateStopped {
+				mgr.Stopped(ctx, tid)
+			}
 			// Point every harness at the gateway once the home tree is
 			// mounted; a config that cannot be parsed is left untouched.
 			// In the provider storage mode this would wake the machine, so
@@ -109,7 +114,12 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 			}
 			return nil
 		},
-		Stop: sup.Stop,
+		Stop: func(ctx context.Context) error {
+			// The VM may stop after this (docker, chv): the next host start
+			// handles the sessions, not a hook racing the state database.
+			mgr.Close()
+			return sup.Stop(ctx)
+		},
 	}, nil
 }
 
