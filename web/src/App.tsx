@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
-import { http } from "./api/http";
+import { ApiError, NetworkError, http } from "./api/http";
 import { accessLogoutPath, auth } from "./api/system";
 import type { AuthState } from "./api/types";
 import { StatusBar } from "./components/StatusBar";
@@ -14,6 +14,12 @@ const DesktopPage = lazy(() => import("./pages/DesktopPage"));
 const FilesPage = lazy(() => import("./pages/FilesPage"));
 const ModelsPage = lazy(() => import("./pages/ModelsPage"));
 const ConnectorsPage = lazy(() => import("./pages/ConnectorsPage"));
+
+const AUTO_RETRY_MS = 5000;
+
+function retriesByItself(error: unknown): boolean {
+  return error instanceof NetworkError || (error instanceof ApiError && error.status >= 500);
+}
 
 type AuthStatus =
   | { kind: "checking" }
@@ -36,6 +42,22 @@ export function App() {
     check();
     return http.onUnauthorized(() => setState({ kind: "signedOut" }));
   }, [check]);
+
+  // The server does not answer (for example a cell that LydiaBox Cloud
+  // stopped): try again by itself, without the loading screen, so the page
+  // recovers when the server is back.
+  useEffect(() => {
+    if (state.kind !== "error" || !retriesByItself(state.error)) {
+      return;
+    }
+    const id = setTimeout(() => {
+      auth
+        .session()
+        .then((session) => setState(session.authenticated ? { kind: "signedIn", session } : { kind: "signedOut", session }))
+        .catch((error: unknown) => setState({ kind: "error", error }));
+    }, AUTO_RETRY_MS);
+    return () => clearTimeout(id);
+  }, [state]);
 
   const accessSignedIn = state.kind === "signedIn" && state.session.method === "access";
   const logout = useCallback(() => {

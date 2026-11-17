@@ -280,6 +280,8 @@ export default function DesktopPage() {
 /** The status poll fails: the server's text and its dashboard link, no start control (none would work). */
 function OutageView({ outage }: { outage: Outage | null }) {
   const { text, href } = splitLink(outage?.message ?? "");
+  // The title says that the status is not available; the body says what happens.
+  const body = outage?.kind === "unknown" ? "LydiaBox tries again by itself." : text;
   return (
     <StateView
       icon={Monitor}
@@ -292,7 +294,7 @@ function OutageView({ outage }: { outage: Outage | null }) {
         ) : undefined
       }
     >
-      {text}
+      {body}
     </StateView>
   );
 }
