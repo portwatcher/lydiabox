@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -86,6 +87,12 @@ type rigOptions struct {
 	desktop    bool
 	// upgradeDelay delays each WebSocket upgrade in the proxy (a slow wake).
 	upgradeDelay time.Duration
+	// badGateway is the number of first requests that the proxy answers
+	// with HTTP 502, as the provider does while the guest daemon starts.
+	badGateway int32
+	// bootTimeout and logger go to the link options.
+	bootTimeout time.Duration
+	logger      *slog.Logger
 }
 
 // rig is the real guest daemon behind a link endpoint, an HTTPS-like
@@ -182,7 +189,12 @@ func newRig(t *testing.T, o rigOptions) *rig {
 	t.Cleanup(backend.Close)
 	target, _ := url.Parse(backend.URL)
 	rp := httputil.NewSingleHostReverseProxy(target)
+	var requests atomic.Int32
 	front := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) <= o.badGateway {
+			http.Error(w, "no service on the port", http.StatusBadGateway)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer "+testToken {
 			http.Error(w, "missing or invalid port token", http.StatusUnauthorized)
 			return
@@ -203,8 +215,11 @@ func newRig(t *testing.T, o rigOptions) *rig {
 	transport := &http.Transport{}
 	t.Cleanup(transport.CloseIdleConnections)
 	r := &rig{guest: g, proxy: tr, url: "ws" + strings.TrimPrefix(front.URL, "http") + "/link", http: &http.Client{Transport: transport}}
+	if o.logger == nil {
+		o.logger = slog.New(slog.DiscardHandler)
+	}
 	l, err := New(Options{Secret: o.hostSecret, MinBackoff: 50 * time.Millisecond, MaxBackoff: 200 * time.Millisecond,
-		KeepAlive: time.Second, WakeTimeout: 10 * time.Second, HTTPClient: r.http, Logger: slog.New(slog.DiscardHandler)})
+		KeepAlive: time.Second, WakeTimeout: 10 * time.Second, BootTimeout: o.bootTimeout, HTTPClient: r.http, Logger: o.logger})
 	if err != nil {
 		t.Fatal(err)
 	}

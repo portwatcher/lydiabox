@@ -15,6 +15,9 @@ import (
 func (l *Link) run(ctx context.Context, t Target, done chan struct{}) {
 	defer close(done)
 	backoff := l.opts.MinBackoff
+	// down is when the current series of failed attempts began; warned
+	// tells whether that series was already reported at warning level.
+	down, warned := time.Now(), false
 	for ctx.Err() == nil {
 		l.mu.Lock()
 		l.attempt = time.Now()
@@ -33,8 +36,9 @@ func (l *Link) run(ctx context.Context, t Target, done chan struct{}) {
 				return
 			}
 			l.opts.Logger.Warn("guest link lost; reconnecting", "url", t.URL)
+			down, warned = time.Now(), false
 		} else {
-			l.opts.Logger.Warn("guest link attempt failed", "url", t.URL, "err", err)
+			warned = l.logAttempt(t, err, time.Since(down), warned)
 			l.mu.Lock()
 			l.setStateLocked(StateDown, errString(err))
 			l.unlock()
@@ -44,6 +48,21 @@ func (l *Link) run(ctx context.Context, t Target, done chan struct{}) {
 		}
 		backoff = min(backoff*2, l.opts.MaxBackoff)
 	}
+}
+
+// logAttempt logs a failed attempt. While the machine boots (BootTimeout
+// after the link started or lost its session) failures are expected: the
+// provider proxy answers HTTP 502 until the guest daemon listens. After
+// BootTimeout the link logs one warning with the last cause. It returns
+// whether the series of failures was reported at warning level.
+func (l *Link) logAttempt(t Target, err error, downFor time.Duration, warned bool) bool {
+	if downFor < l.opts.BootTimeout || warned {
+		l.opts.Logger.Info("guest link attempt failed; retrying", "url", t.URL, "down", downFor.Round(time.Millisecond), "err", err)
+		return warned
+	}
+	l.opts.Logger.Warn("guest link did not come up within the boot time limit; retrying",
+		"url", t.URL, "down", downFor.Round(time.Second), "bootTimeout", l.opts.BootTimeout, "err", err)
+	return true
 }
 
 // sleep waits for d, a kick, or the end of ctx.

@@ -65,6 +65,12 @@ type Options struct {
 	// MinBackoff and MaxBackoff bound the wait between reconnects.
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
+	// BootTimeout is how long failed attempts are expected after the link
+	// starts or loses its session, while the machine boots and the guest
+	// daemon starts (default vmm.DefaultBootTimeout). They are logged at
+	// info level; a link that is still down after BootTimeout is logged
+	// once at warning level with the last cause.
+	BootTimeout time.Duration
 	// KeepAlive is the yamux ping interval (default 10 s). A link without
 	// an answer within three intervals is down.
 	KeepAlive time.Duration
@@ -112,6 +118,9 @@ func New(opts Options) (*Link, error) {
 	}
 	if opts.WakeTimeout <= 0 {
 		opts.WakeTimeout = DefaultWakeTimeout
+	}
+	if opts.BootTimeout <= 0 {
+		opts.BootTimeout = vmm.DefaultBootTimeout
 	}
 	if opts.MinBackoff <= 0 {
 		opts.MinBackoff = DefaultMinBackoff
