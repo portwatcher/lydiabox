@@ -40,7 +40,7 @@ interface ErrorViewProps {
   /** In-context failure sentence: "Sessions not loaded". */
   failed: string;
   onRetry?: () => void;
-  /** Extra action for the unavailable case, such as "Wake VM". */
+  /** Extra action for the unavailable case, such as "Start". */
   unavailableAction?: ReactNode;
   className?: string;
 }

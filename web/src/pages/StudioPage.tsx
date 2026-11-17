@@ -234,7 +234,7 @@ export default function StudioPage() {
                 </Button>
               }
             >
-              {selected.harness === "shell" ? null : "Resuming starts the harness in the VM and wakes the VM if needed."}
+              {selected.harness === "shell" ? null : "Resuming starts the harness in the VM, and starts or resumes the VM if needed."}
             </StateView>
           ) : selectedId && listed ? (
             <StateView title="Session not found" action={<Button onClick={() => select(null)}>Back to sessions</Button>}>

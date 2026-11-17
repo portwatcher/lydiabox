@@ -200,7 +200,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 
      | Request | Wakes a paused VM | Note |
      | :--- | :--- | :--- |
-     | `POST /api/v1/vm/wake` (Wake, Resume, Start desktop) | yes | Explicit start; also ends a user stop |
+     | `POST /api/v1/vm/wake` (Start, Resume) | yes | Explicit start; also ends a user stop |
      | `POST /api/v1/sessions` (new or resumed session) | yes | Explicit start |
      | Terminal socket, first open (`GET /api/v1/sessions/{id}/ws`) of a session whose terminal is not attached | yes | Opening a terminal is a user action |
      | Terminal socket, automatic reconnect (`?reconnect=1`) | no | `paused`; the page attaches again when the VM runs |
@@ -289,8 +289,8 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 Build a responsive, dark-themed workstation UI (TailwindCSS + Lucide icons + `xterm.js`) embedded into `cmd/lydiabox`:
 
 1. **Top Global Status Bar**:
-   - VM Status pill (`STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`) with 1-click Wake / Hibernate / Stop buttons, CPU/RAM & S3 sync indicator (`Synced Xs ago`). The sync indicator shows only when the server syncs to S3 (always in the `juicefs` storage mode; in the `provider` mode only with S3 settings for the state database backup).
-   - On 2026-11-17 the owner asked for the VM power controls (state pill, Wake / Hibernate / Stop) to show only in this global status bar. No page repeats them; the Desktop page wakes a stopped or paused VM from its own "Start desktop" action, which is the same explicit start as Wake. A stop by the user holds until such an explicit start: the desktop stream, a terminal reconnect, and file requests do not start the VM again, also after a restart of the host process (the hold is in the state database; `docs/api.md` section 7). Hibernate has no confirm step because it ends no process: the guest keeps its memory, and a live terminal attaches again to the same process after the wake.
+   - VM Status pill (`STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`) with 1-click Start (Resume when paused) / Hibernate / Stop buttons, CPU/RAM & S3 sync indicator (`Synced Xs ago`). The sync indicator shows only when the server syncs to S3 (always in the `juicefs` storage mode; in the `provider` mode only with S3 settings for the state database backup).
+   - On 2026-11-17 the owner asked for the VM power controls (state pill, Start or Resume / Hibernate / Stop) to show only in this global status bar. No page repeats them; the Desktop page starts a stopped VM or resumes a paused one from its own "Start" or "Resume" action, which is the same explicit start as the status bar. The verbs are the same on every workstation page (2026-11-18): "Start" for a stopped VM, "Resume" for a paused VM; "Start desktop" shows only when the VM runs and only the desktop stream is off. A stop by the user holds until such an explicit start: the desktop stream, a terminal reconnect, and file requests do not start the VM again, also after a restart of the host process (the hold is in the state database; `docs/api.md` section 7). Hibernate has no confirm step because it ends no process: the guest keeps its memory, and a live terminal attaches again to the same process after the wake.
 2. **Studio Tab (`/studio`)**:
    - Left pane: Unified Sessions list filterable by Harness (`claude-code`, `codex`, `dsh`, `antigravity`, `opencode`) and Workspace directory; works even when VM is `STOPPED`.
    - Center pane: Live `xterm.js` WebSocket PTY terminal attached to the active Harness session.

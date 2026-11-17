@@ -1,4 +1,4 @@
-import { Monitor, RotateCw } from "lucide-react";
+import { Monitor, Play, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { desktop } from "../api/domains";
 import { availabilityOf, describeError } from "../api/errors";
@@ -149,15 +149,26 @@ export default function DesktopPage() {
 
   let stageContent = null;
   switch (stage) {
-    case "stopped":
     case "hibernating":
-      stageContent = (
-        <StateView
-          icon={Monitor}
-          title={stage === "hibernating" ? "The VM is hibernating" : "The VM is stopped"}
-          action={<VmWakeButton variant="primary">Start desktop</VmWakeButton>}
-        />
-      );
+      stageContent = <StateView icon={Monitor} title="The VM is hibernating" action={<VmWakeButton variant="primary">Resume</VmWakeButton>} />;
+      break;
+    case "stopped":
+      // "Start desktop" only when the VM runs and only the stream is off;
+      // the stream never starts the VM.
+      stageContent =
+        vmState === "RUNNING" ? (
+          <StateView
+            icon={Monitor}
+            title="The desktop is off"
+            action={
+              <Button variant="primary" icon={Play} onClick={connect}>
+                Start desktop
+              </Button>
+            }
+          />
+        ) : (
+          <StateView icon={Monitor} title="The VM is stopped" action={<VmWakeButton variant="primary">Start</VmWakeButton>} />
+        );
       break;
     case "starting":
       stageContent = <LoadingView label="Starting the VM…" />;

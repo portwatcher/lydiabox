@@ -45,13 +45,13 @@ export function VmPill({ state }: { state: VMState }) {
 interface VmWakeButtonProps {
   size?: "sm" | "md";
   variant?: "primary" | "secondary";
-  /** Replaces the Wake / Resume label. */
+  /** Replaces the Start / Resume label. */
   children?: ReactNode;
 }
 
 /**
- * Starts a stopped VM or resumes a paused one (POST /api/v1/vm/wake): the
- * explicit start, the only one that undoes a stop.
+ * Starts a stopped VM ("Start") or resumes a paused one ("Resume") with
+ * POST /api/v1/vm/wake: the explicit start, the only one that undoes a stop.
  */
 export function VmWakeButton({ size = "md", variant = "secondary", children }: VmWakeButtonProps) {
   const { vmState, vmControl, pending, runVM } = useSystem();
@@ -65,14 +65,14 @@ export function VmWakeButton({ size = "md", variant = "secondary", children }: V
       title={vmControl ? undefined : unavailableTitle}
       onClick={() => void runVM("wake")}
     >
-      {children ?? (vmState === "PAUSED" ? "Resume" : "Wake")}
+      {children ?? (vmState === "PAUSED" ? "Resume" : "Start")}
     </Button>
   );
 }
 
 const unavailableTitle = "VM power control is not available in this build";
 
-/** Wake / Hibernate / Stop controls for the current VM state. */
+/** Start or Resume / Hibernate / Stop controls for the current VM state. */
 export function VmPower({ compact = false }: { compact?: boolean }) {
   const { vmState, vmControl, pending, runVM } = useSystem();
   const [confirmStop, setConfirmStop] = useState(false);
