@@ -43,6 +43,11 @@ var ErrVMUnavailable = errors.New("vm: unavailable")
 // not reconnect after it.
 const CodeVMStopped = harness.CodeVMStopped
 
+// CodeVMPaused is the WebSocket error code (desktop and terminal sockets)
+// of a socket ended or refused because the VM pauses or is paused. Clients
+// do not reconnect until the VM runs again.
+const CodeVMPaused = harness.CodeVMPaused
+
 // ErrVMStopped marks a request that needs the VM while the user has
 // stopped it: only an explicit start (POST /api/v1/vm/wake) starts it
 // again. It wraps ErrVMUnavailable (503 unavailable).

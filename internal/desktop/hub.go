@@ -36,6 +36,23 @@ func (rl *Relay) join(tid string, c *client) {
 	rl.broadcast(tid, viewersMsg{Type: "viewers", Count: n})
 }
 
+// EndPaused ends every desktop socket of tenantID with CodePaused, after
+// its VM paused. Without it a stream to a frozen guest (docker, chv) would
+// hang until a connection timeout.
+func (rl *Relay) EndPaused(tid string) {
+	rl.mu.Lock()
+	var clients []*client
+	if h := rl.hubs[tid]; h != nil {
+		for c := range h.clients {
+			clients = append(clients, c)
+		}
+	}
+	rl.mu.Unlock()
+	for _, c := range clients {
+		c.end(CodePaused, "the VM is hibernating")
+	}
+}
+
 func (rl *Relay) leave(tid string, c *client) {
 	rl.mu.Lock()
 	h := rl.hubs[tid]

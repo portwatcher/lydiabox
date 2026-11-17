@@ -165,7 +165,7 @@ func setup(t *testing.T) (*httptest.Server, *fakeGuest, *fakePower, *Relay) {
 func setupWith(t *testing.T, edit func(*Options)) (*httptest.Server, *fakeGuest, *fakePower, *Relay) {
 	t.Helper()
 	g := &fakeGuest{events: make(chan json.RawMessage, 16), mode: rpc.ModeObserver}
-	p := &fakePower{}
+	p := &fakePower{running: true}
 	opts := Options{Guest: g, Power: p, Logger: slog.New(slog.DiscardHandler),
 		Running:  func(string) bool { p.mu.Lock(); defer p.mu.Unlock(); return p.running },
 		PublicIP: func(r *http.Request) string { return RequestIP(r, true) }}
@@ -337,6 +337,9 @@ func TestSignalingRelayAndBroadcast(t *testing.T) {
 
 func TestRelayRejectsAndReportsFailures(t *testing.T) {
 	srv, _, p, _ := setup(t)
+	p.mu.Lock()
+	p.running = false
+	p.mu.Unlock()
 	resp, err := http.Get(srv.URL + "/api/v1/desktop/mode")
 	if err != nil {
 		t.Fatal(err)
@@ -358,11 +361,20 @@ func TestRelayRejectsAndReportsFailures(t *testing.T) {
 		t.Fatalf("close status %v", err)
 	}
 
+	// A socket for a VM that does not run does not start it.
+	if m := readMsg(t, dial(t, srv), "error"); m["code"] != CodeStopped {
+		t.Fatalf("socket while stopped %v", m)
+	}
 	p.mu.Lock()
-	p.wakeErr = errors.New("no kvm")
+	wakes := p.wakes
+	p.running = true
+	p.wakeErr = errors.New("guest not ready")
 	p.mu.Unlock()
+	if wakes != 0 {
+		t.Fatalf("%d wakes for sockets to a stopped VM", wakes)
+	}
 	w := dial(t, srv)
-	if m := readMsg(t, w, "error"); m["code"] != "unavailable" || !strings.Contains(m["message"].(string), "no kvm") {
+	if m := readMsg(t, w, "error"); m["code"] != "unavailable" || !strings.Contains(m["message"].(string), "guest not ready") {
 		t.Fatalf("wake error %v", m)
 	}
 }

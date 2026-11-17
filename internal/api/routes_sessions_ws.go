@@ -54,7 +54,18 @@ func (s SessionsRoutes) ws(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	room, err := s.Manager.Room(ctx, tenant.FromContext(ctx), r.PathValue("id"))
+	var room *harness.Room
+	if r.URL.Query().Get("reconnect") == "1" {
+		// An automatic reconnect of the client: not a demand for a paused VM.
+		room, err = s.Manager.Reconnect(ctx, tenant.FromContext(ctx), r.PathValue("id"))
+	} else {
+		room, err = s.Manager.Room(ctx, tenant.FromContext(ctx), r.PathValue("id"))
+	}
+	if errors.Is(err, harness.ErrVMPaused) {
+		writeControl(ctx, conn, harness.CtlError{Type: "error", Code: CodeVMPaused, Message: "the VM is hibernating"})
+		conn.Close(websocket.StatusNormalClosure, "")
+		return
+	}
 	if errors.Is(err, ErrVMStopped) {
 		// The user stopped the VM: the client does not retry.
 		writeControl(ctx, conn, harness.CtlError{Type: "error", Code: CodeVMStopped, Message: "the VM was stopped"})

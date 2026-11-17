@@ -117,6 +117,9 @@ func (v *viewer) pump(ctx context.Context, sig SignalConn, gen int) {
 			case v.rl.opts.Stopped(v.tid):
 				// The user stopped the VM: not a fault, and not retried.
 				v.c.end(CodeStopped, "the VM was stopped")
+			case v.rl.opts.Paused(v.tid):
+				// The pause cut the stream: not retried until the VM runs.
+				v.c.end(CodePaused, "the VM is hibernating")
 			default:
 				v.c.fail("unavailable", "desktop stream ended")
 			}

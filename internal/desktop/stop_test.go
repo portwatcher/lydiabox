@@ -85,6 +85,11 @@ func setupController(t *testing.T, d *powerDriver) (*httptest.Server, *vmm.Contr
 }
 
 func setupControllerGuest(t *testing.T, d *powerDriver) (*httptest.Server, *vmm.Controller, *fakeGuest) {
+	srv, ctl, g, _ := setupControllerRelay(t, d)
+	return srv, ctl, g
+}
+
+func setupControllerRelay(t *testing.T, d *powerDriver) (*httptest.Server, *vmm.Controller, *fakeGuest, *Relay) {
 	t.Helper()
 	ctl, err := vmm.NewController(vmm.Options{Driver: d, Logger: slog.New(slog.DiscardHandler),
 		Spec:  func(context.Context, string) (vmm.Spec, error) { return vmm.Spec{}, nil },
@@ -94,7 +99,7 @@ func setupControllerGuest(t *testing.T, d *powerDriver) (*httptest.Server, *vmm.
 	}
 	g := &fakeGuest{events: make(chan json.RawMessage, 16), mode: rpc.ModeObserver}
 	rl, err := New(Options{Guest: g, Power: ctl, Logger: slog.New(slog.DiscardHandler),
-		Running: func(tid string) bool { return ctl.State(tid) == vmm.StateRunning }, Stopped: ctl.Held})
+		Running: func(tid string) bool { return ctl.State(tid) == vmm.StateRunning }, Stopped: ctl.Held, Paused: ctl.Paused})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +110,7 @@ func setupControllerGuest(t *testing.T, d *powerDriver) (*httptest.Server, *vmm.
 		mux.ServeHTTP(w, r.WithContext(tenant.WithID(r.Context(), "default")))
 	}))
 	t.Cleanup(srv.Close)
-	return srv, ctl, g
+	return srv, ctl, g, rl
 }
 
 func TestDesktopSocketDoesNotStartAVMThatTheUserStopped(t *testing.T) {
@@ -178,8 +183,10 @@ func TestDesktopSocketDuringStopDoesNotStartTheVM(t *testing.T) {
 	}
 }
 
-// An idle pause is not a user stop: the socket wakes the VM.
-func TestDesktopSocketWakesAnIdlePausedVM(t *testing.T) {
+// A desktop socket never wakes a paused VM (the reconnect of a stream that
+// the pause ended is not a demand): it gets "paused". An explicit start
+// resumes the VM, and the socket then streams.
+func TestDesktopSocketDoesNotWakeAPausedVM(t *testing.T) {
 	d := &powerDriver{}
 	srv, ctl := setupController(t, d)
 	ctx := context.Background()
@@ -189,9 +196,38 @@ func TestDesktopSocketWakesAnIdlePausedVM(t *testing.T) {
 	if err := ctl.Hibernate(ctx, "default"); err != nil {
 		t.Fatal(err)
 	}
+	if m := readMsg(t, dial(t, srv), "error"); m["code"] != CodePaused {
+		t.Fatalf("error %v, want code %s", m, CodePaused)
+	}
+	if _, resumes := d.counts(); resumes != 0 || ctl.State("default") != vmm.StatePaused {
+		t.Fatalf("resumes = %d, state %s; want 0 and PAUSED", resumes, ctl.State("default"))
+	}
+	if err := ctl.Start(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
 	readMsg(t, dial(t, srv), "hello")
-	if _, resumes := d.counts(); resumes != 1 {
-		t.Fatalf("resumes = %d, want 1", resumes)
+}
+
+// A pause from any source ends an open desktop stream at once with
+// "paused" (EndPaused, from the PAUSED state hook).
+func TestPauseEndsAnOpenDesktopStream(t *testing.T) {
+	d := &powerDriver{}
+	srv, ctl, _, rl := setupControllerRelay(t, d)
+	ctx := context.Background()
+	if err := ctl.Start(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	c := dial(t, srv)
+	readMsg(t, c, "hello")
+	if err := ctl.Hibernate(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	rl.EndPaused("default")
+	if m := readMsg(t, c, "error"); m["code"] != CodePaused {
+		t.Fatalf("error %v, want code %s", m, CodePaused)
+	}
+	if _, resumes := d.counts(); resumes != 0 {
+		t.Fatalf("resumes = %d, want 0", resumes)
 	}
 }
 

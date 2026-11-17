@@ -33,6 +33,12 @@ const LeaseDesktop = "desktop"
 // for an explicit start (POST /api/v1/vm/wake).
 const CodeStopped = api.CodeVMStopped
 
+// CodePaused is the error code of a socket refused or ended because the VM
+// pauses or is paused. The browser does not reconnect after it; it shows
+// the hibernating state and connects again when the VM runs. A desktop
+// socket never wakes a paused VM: the page offers the start control.
+const CodePaused = api.CodeVMPaused
+
 // SignalConn is one viewer's signaling stream to the guest.
 type SignalConn interface {
 	Send(msg json.RawMessage) error
@@ -75,6 +81,10 @@ type Options struct {
 	// Stopped reports whether the user stopped the VM (default: never).
 	// A stream that ends while it is true ends with CodeStopped.
 	Stopped func(tenantID string) bool
+	// Paused reports whether the VM pauses or is paused (default: never).
+	// A socket is then refused, and a stream that ends then ends, with
+	// CodePaused; neither wakes the VM.
+	Paused func(tenantID string) bool
 	// PublicIP returns the address at which the browser that sent r reaches
 	// the forwarded WebRTC UDP port ("" lets the guest advertise its own).
 	PublicIP func(r *http.Request) string
@@ -88,7 +98,8 @@ type Options struct {
 	ICE ice.Provider
 	// RelayOnly sets the ICE transport policy "relay" on both peers.
 	RelayOnly bool
-	// WakeTimeout bounds waking the VM for a new socket (default 120 s).
+	// WakeTimeout bounds the wait for a running VM's guest for a new socket
+	// (default 120 s).
 	WakeTimeout time.Duration
 	Logger      *slog.Logger
 }
@@ -111,6 +122,9 @@ func New(opts Options) (*Relay, error) {
 	}
 	if opts.Stopped == nil {
 		opts.Stopped = func(string) bool { return false }
+	}
+	if opts.Paused == nil {
+		opts.Paused = func(string) bool { return false }
 	}
 	if opts.PublicIP == nil {
 		opts.PublicIP = func(*http.Request) string { return "" }
@@ -191,6 +205,18 @@ func (rl *Relay) ServeWS(w http.ResponseWriter, r *http.Request) {
 	go c.writeLoop(ctx)
 	defer c.close(websocket.StatusNormalClosure, "")
 
+	// A desktop socket never starts or resumes the VM: the page opens it
+	// only while the VM runs and offers the start control otherwise. A
+	// socket for a VM that does not run is most often the reconnect of a
+	// stream that a pause or stop ended, which is not a demand for the VM.
+	switch {
+	case rl.opts.Paused(tid):
+		c.end(CodePaused, "the VM is hibernating")
+		return
+	case !rl.opts.Running(tid):
+		c.end(CodeStopped, "the VM is not running")
+		return
+	}
 	release := rl.opts.Power.AcquireLease(tid, LeaseDesktop)
 	defer release()
 	wctx, wcancel := context.WithTimeout(ctx, rl.opts.WakeTimeout)
