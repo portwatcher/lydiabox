@@ -581,6 +581,25 @@ device, or the idle pause. The VM state was read every 2 s.
 | 3 | Files | The listing stays; no file request; the VM stays `PAUSED` for 30 s | pass |
 | 4 | Desktop: Start desktop | The VM resumes and the stream connects again | pass |
 
+### Production findings of release fda1c54 (2026-11-17)
+
+Setup as in the user-stop run (docker driver in dind, provider storage mode,
+browser pane at 1024 and 800 px). The models list was made empty in the tab
+(no magpie locally), and a guest pause of 25 s made a start slow.
+
+| # | Check | Result |
+| :--- | :--- | :--- |
+| 1 | Status bar and Desktop with a stopped VM | `Start`; Desktop "The VM is stopped" with `Start` | pass |
+| 2 | Status bar and Desktop with a paused VM | `Resume`; Desktop "The VM is hibernating" with `Resume` | pass |
+| 3 | Start that takes 28 s | "The VM provider is slow." shows after 15 s, not at 5 s; it goes at `RUNNING` | pass |
+| 4 | Files: page open, then Hibernate and Resume | One list request at open, one at the resume (two before) | pass |
+| 5 | New session dialog, no model | Claude Code: notice with "Set up a model" (opens `/models`); Shell: no notice, the shell starts | pass |
+| 6 | Claude Code session in the list, no model | The session view shows the notice | pass |
+
+The `/data/workspace` path form (InstaBox links) and the InstaBox maximum-run
+pause are covered by unit tests (`internal/harness/discovery_roots_test.go`,
+`internal/vmm/instabox/names_test.go`), not by this run.
+
 No WARN or ERROR in the cell log except the expected `magpie` and S3 setup
 lines.
 
