@@ -523,8 +523,10 @@ provider's `Retry-After`) before it tries again.
 | `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot`. The stop runs to its end when the client goes away (limit 3 minutes) | `200 VMStatus` (`STOPPED`) |
 
 `409 conflict` when the transition is not possible (for example hibernate
-or stop while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM
-themselves; the UI does not need to call `wake` first.
+or stop while `STOPPED`). A user action that needs the guest (a new session,
+opening a terminal, a file operation) wakes the VM itself; the UI does not
+need to call `wake` first. Automatic requests (polls, reconnects) never wake
+a paused VM: `docs/design.md` section 4.3 has the full table.
 
 A user stop holds: from the start of `POST /api/v1/vm/stop` until the next
 explicit start, no request wakes the VM on demand. The desktop socket, the
@@ -658,9 +660,11 @@ terminal that ends because the user stopped the VM also ends with this
 in the paused guest: the server sends `error` with `code` `paused` to each
 live terminal as soon as the VM is `PAUSED` (also where the connection to
 the frozen guest stays open, as with `docker` and `chv`), closes with
-`1000`, and the session stays running. The client
-does not reconnect at once (a new socket wakes the VM); it reconnects when
-the VM is `RUNNING` again and gets the same terminal. If the terminal did
+`1000`, and the session stays running. The client does not reconnect at
+once; it reconnects when the VM is `RUNNING` again and gets the same
+terminal. A client marks its automatic reconnects with `?reconnect=1`: such
+a socket does not wake a paused VM (`error` `paused`, close `1000`), while
+the first open of a terminal does. If the terminal did
 not survive (the provider resumed the machine without its memory), the
 reconnect gets `error` `conflict` and the session is `exited`.
 
@@ -717,12 +721,15 @@ Screen coordinates are always in the guest frame, 1920 × 1080.
 ### `GET /api/v1/desktop/ws` — WebSocket signaling
 
 Subprotocol `lydiabox.desktop.v1`. Text frames only, one JSON object each.
-Opening the socket wakes the VM and takes a desktop lease; closing it
-releases the lease (the guest stops `ffmpeg` when no viewer remains). The
-socket does not start a VM that the user stopped (section 7): the server
-sends `{ "type": "error", "code": "stopped" }` and closes with `1000`, also
-when a user stop ends an open stream. The browser does not reconnect after
-`stopped`; it opens a new socket when the VM is `RUNNING` again.
+The socket needs a running VM and takes a desktop lease; closing it
+releases the lease (the guest stops `ffmpeg` when no viewer remains). It
+never starts or resumes the VM: for a VM that pauses or is paused the server
+sends `{ "type": "error", "code": "paused" }`, for another VM that does not
+run (or that the user stopped, section 7) `{ "type": "error", "code":
+"stopped" }`, and closes with `1000`. The same codes end an open stream
+when the VM pauses (from any source) or the user stops it. The browser
+does not reconnect after either code; it opens a new socket when the VM is
+`RUNNING` again (the page's start control is `POST /api/v1/vm/wake`).
 
 The browser creates the `RTCPeerConnection` with one `recvonly` H.264 video
 transceiver and a data channel labelled `input`, then sends the offer.

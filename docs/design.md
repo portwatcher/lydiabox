@@ -196,6 +196,29 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 3. **Auto-Wake & Scale-to-Zero Controller**:
    - Expose `EnsureRunning(ctx, tenantID)`: thread-safe singleflight boot/resume whenever a user opens the Terminal, starts a Harness session, requests a Desktop stream, or invokes a Guest MCP tool.
    - Track active leases (open WebRTC streams + running PTY processes); when leases == 0 for `LYDIABOX_IDLE_TIMEOUT`, flush filesystems (`sync`) and gracefully pause/stop the VM.
+   - **Wake rule (2026-11-17):** a paused VM is woken only by a user action (the start control, opening a terminal, a new or resumed session, a file operation) or by a real demand of an agent or connector. Nothing automatic wakes it: no poll, no reconnect of a stream that the pause ended, and no reconcile. A pause from any source (the Hibernate control, another tab or device, the API, the idle pause, or the provider) ends the open terminal and desktop streams with `paused`; the pages show the hibernating state and connect again only when the VM runs. A user stop holds until an explicit start (section 7 of `docs/api.md`).
+
+     | Request | Wakes a paused VM | Note |
+     | :--- | :--- | :--- |
+     | `POST /api/v1/vm/wake` (Wake, Resume, Start desktop) | yes | Explicit start; also ends a user stop |
+     | `POST /api/v1/sessions` (new or resumed session) | yes | Explicit start |
+     | Terminal socket, first open (`GET /api/v1/sessions/{id}/ws`) of a session whose terminal is not attached | yes | Opening a terminal is a user action |
+     | Terminal socket, automatic reconnect (`?reconnect=1`) | no | `paused`; the page attaches again when the VM runs |
+     | Terminal socket of a live terminal | no | The room exists; no wake is needed |
+     | Desktop socket (`GET /api/v1/desktop/ws`) | no | `paused` (or `stopped` when the VM does not run); the page opens it only while the VM runs |
+     | Desktop app launch (Chrome, Blender, Terminal) | no | Sent over the desktop socket, which exists only while the VM runs |
+     | File API in `provider` mode (list, stat, read, download, upload, mkdir, rename, delete) | yes | A file operation of the user; the Files page sends none by itself (it reloads only when the VM runs again) |
+     | `GET /api/v1/fs/roots` | no | Last answer of the guest, or the defaults |
+     | `DELETE /api/v1/sessions/{id}?purge=true` in `provider` mode | yes | Deletes the transcript in the guest |
+     | `DELETE /api/v1/sessions/{id}` without purge | no | Ends the guest terminal without a wake; the next reconcile ends it when the guest is not reachable |
+     | `GET /api/v1/sessions` (Studio list, 10 s poll) | no | Guest discovery only while the VM serves; otherwise the cached result |
+     | `GET /api/v1/status`, `GET /api/v1/vm/status` (5 s poll) | no | Host only |
+     | `GET` and `PUT /api/v1/desktop/mode` | no | `503` while the VM does not run |
+     | Models, connectors, subscriptions pages and their polls | no | Host only |
+     | WebDAV and S3 (`juicefs` mode) | no | Host files |
+     | Guest traffic: LLM gateway (9002), connector broker (9001) | n/a | Comes from the running guest |
+     | Reconcile of terminals (VM changes to `RUNNING`, host start) | no | No-wake list and attach |
+     | `instabox` driver: link reconnect after a pause | no | The link is closed at the pause and opens again only at the next boot or resume |
 
 ---
 
