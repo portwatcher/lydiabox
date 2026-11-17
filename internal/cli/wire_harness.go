@@ -52,7 +52,7 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	runner, waker := guestRuntime(d)
 	mgr, err := harness.NewManager(harness.ManagerOptions{
 		Adapters: adapters.All(), Files: d.Files, Discovery: sessionDiscovery(d, log), Store: d.Store,
-		Runner: runner, Waker: waker, Wiring: bindings, Logger: log,
+		Runner: runner, Waker: waker, Wiring: bindings, Logger: d.Logger, // the manager adds component=harness
 	})
 	if err != nil {
 		return nil, err
