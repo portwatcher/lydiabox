@@ -35,7 +35,8 @@ const DefaultDiscoverTimeout = 30 * time.Second
 type GuestDiscovery struct {
 	Guest GuestCaller
 	Cache DiscoveryCache
-	// Running reports whether the machine of a tenant runs.
+	// Running reports whether the machine of a tenant runs and no pause or
+	// stop of it is in progress (vmm.Controller.Serving).
 	Running func(tenantID string) bool
 	// Begin takes a files lease and wakes the machine for a purge
 	// (remotefs.FS.Begin).
@@ -61,7 +62,12 @@ func (g *GuestDiscovery) Discover(ctx context.Context, tenantID string, harnesse
 		if ctx.Err() != nil {
 			return Discovered{}, ctx.Err()
 		}
-		g.log().Warn("guest session discovery failed; using the cached result", "err", err)
+		if g.Running != nil && !g.Running(tenantID) {
+			// The machine paused or stopped during the call: expected.
+			g.log().Info("guest session discovery ended by a pause or stop; using the cached result", "err", err)
+		} else {
+			g.log().Warn("guest session discovery failed; using the cached result", "err", err)
+		}
 	}
 	return g.cached(ctx, tenantID, harnesses)
 }

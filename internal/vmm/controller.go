@@ -413,6 +413,16 @@ func (c *Controller) hibernate(ctx context.Context, tid string, onlyIfIdle bool)
 	if onlyIfIdle && leases > 0 {
 		return fmt.Errorf("%w: leases appeared", ErrConflict)
 	}
+	// While the pause runs, the VM is not used: a wake waits for the pause
+	// and then resumes the VM, and Paused reports true.
+	c.mu.Lock()
+	t.pausing = true
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		t.pausing = false
+		c.mu.Unlock()
+	}()
 	c.flush(ctx, tid)
 	if err := c.opts.Driver.Pause(ctx, tid); err != nil {
 		c.recordError(t, err)

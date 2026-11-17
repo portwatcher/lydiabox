@@ -53,6 +53,24 @@ func (c *Controller) Held(tid string) bool {
 	return c.tenant(tid).held
 }
 
+// Paused reports whether a pause of the VM runs or the VM is paused.
+func (c *Controller) Paused(tid string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := c.tenant(tid)
+	return t.pausing || t.state == StatePaused
+}
+
+// Serving reports whether the VM runs and no pause or user stop of it is
+// in progress: a guest call that fails now is a fault, not a result of a
+// pause or stop.
+func (c *Controller) Serving(tid string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := c.tenant(tid)
+	return t.state == StateRunning && !t.pausing && !t.held
+}
+
 // LoadHold reads the hold of a user stop from Options.Holds. Call it after
 // Refresh and before the host serves requests. A stored hold of a VM that
 // runs is dropped: the stop did not finish (for example the host process

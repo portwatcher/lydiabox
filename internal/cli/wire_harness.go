@@ -99,7 +99,7 @@ func sessionDiscovery(d *deps, log *slog.Logger) harness.Discovery {
 	}
 	if d.VM != nil && d.VM.Controller != nil {
 		ctl := d.VM.Controller
-		g.Running = func(tid string) bool { return ctl.State(tid) == vmm.StateRunning }
+		g.Running = ctl.Serving
 	}
 	if rfs, ok := d.Files.(*remotefs.FS); ok {
 		g.Begin = rfs.Begin
