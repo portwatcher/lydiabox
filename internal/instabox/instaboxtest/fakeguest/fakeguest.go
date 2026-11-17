@@ -72,6 +72,24 @@ func New(root string, log *slog.Logger) *Runner {
 	return &Runner{root: root, log: log, machines: map[string]*machine{}, boots: map[string]int{}}
 }
 
+// PTYs lists the terminals of the guest daemon of machine id (nil when it
+// does not run).
+func (r *Runner) PTYs(id string) []rpc.PTYInfo {
+	r.mu.Lock()
+	m := r.machines[id]
+	r.mu.Unlock()
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	g := m.g
+	m.mu.Unlock()
+	if g == nil || g.ptys == nil {
+		return nil
+	}
+	return g.ptys.List()
+}
+
 // DataDir returns the local directory that is /data of machine id.
 func (r *Runner) DataDir(id string) string {
 	return filepath.Join(r.root, strings.TrimPrefix(id, "m_")[:8])
