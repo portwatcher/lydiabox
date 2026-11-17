@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/guest/rpc"
@@ -43,6 +44,9 @@ type GuestDiscovery struct {
 	Begin   func(ctx context.Context, tenantID string) (release func(), err error)
 	Timeout time.Duration
 	Logger  *slog.Logger
+
+	rootsMu sync.Mutex
+	roots   map[string][]guestRootPrefix
 }
 
 func (g *GuestDiscovery) log() *slog.Logger {
@@ -87,11 +91,17 @@ func (g *GuestDiscovery) fresh(ctx context.Context, tenantID string, harnesses [
 	for name, msg := range res.Errors {
 		out.Errors[name] = errors.New(msg)
 	}
+	roots := g.guestRoots(cctx, tenantID)
 	for name, raw := range res.Sessions {
 		var metas []SessionMeta
 		if err := json.Unmarshal(raw, &metas); err != nil {
 			out.Errors[name] = fmt.Errorf("decode guest sessions: %w", err)
 			continue
+		}
+		if canonicalDirs(metas, roots) {
+			if b, err := json.Marshal(metas); err == nil {
+				raw = b
+			}
 		}
 		out.Sessions[name] = metas
 		if g.Cache != nil {
@@ -112,6 +122,9 @@ func (g *GuestDiscovery) cached(ctx context.Context, tenantID string, harnesses 
 	if err != nil {
 		return Discovered{}, err
 	}
+	// A cache of an older host version can hold guest directories; the
+	// roots are known when the guest answered once since this host started.
+	roots, _ := g.knownRoots(tenantID)
 	for _, e := range entries {
 		if !wanted(harnesses, e.Harness) {
 			continue
@@ -121,6 +134,7 @@ func (g *GuestDiscovery) cached(ctx context.Context, tenantID string, harnesses 
 			out.Errors[e.Harness] = fmt.Errorf("decode cached sessions: %w", err)
 			continue
 		}
+		canonicalDirs(metas, roots)
 		out.Sessions[e.Harness] = metas
 		if out.CachedAt.IsZero() || e.UpdatedAt.Before(out.CachedAt) {
 			out.CachedAt = e.UpdatedAt

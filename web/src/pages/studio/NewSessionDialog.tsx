@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { describeError } from "../../api/errors";
 import { sessions } from "../../api/domains";
@@ -26,7 +26,10 @@ function validWorkspace(dir: string): boolean {
   return (inside("/workspace") || inside("/home/agent")) && !clean.split("/").includes("..");
 }
 
-export function NewSessionDialog({ open, onClose, onCreated, workspaces, models, size, defaultHarness }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed, models, size, defaultHarness }: NewSessionDialogProps) {
+  // Only folders that the dialog accepts are offered (a list cached by an
+  // older host can hold a guest link target such as /data/workspace).
+  const workspaces = useMemo(() => listed.filter(validWorkspace), [listed]);
   const [harness, setHarness] = useState<HarnessID>("claude-code");
   const [workspace, setWorkspace] = useState("/workspace");
   const [model, setModel] = useState("");
