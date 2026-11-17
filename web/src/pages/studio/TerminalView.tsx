@@ -5,10 +5,11 @@ import type { ITheme } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { RotateCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { PtyClient } from "../../api/pty";
+import { PAUSED_CODE, PtyClient } from "../../api/pty";
 import { STOPPED_CODE } from "../../api/socket";
 import type { SocketState } from "../../api/socket";
 import { Banner, Button, cx } from "../../components/ui";
+import { useSystem } from "../../hooks/useSystem";
 
 /** Reads the color tokens so the terminal matches the app palette. */
 function terminalTheme(): ITheme {
@@ -67,6 +68,27 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
   const [exited, setExited] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [vmStopped, setVmStopped] = useState(false);
+  const [vmPaused, setVmPaused] = useState(false);
+  const { vmState } = useSystem();
+  const leftRunning = useRef(false);
+
+  // A Hibernate detached the terminal; its process lives on in the paused
+  // VM. Attach again once the VM has left RUNNING and runs again.
+  useEffect(() => {
+    if (!vmPaused) {
+      leftRunning.current = false;
+      return;
+    }
+    if (vmState !== "RUNNING") {
+      leftRunning.current = true;
+      return;
+    }
+    if (leftRunning.current) {
+      leftRunning.current = false;
+      setVmPaused(false);
+      clientRef.current?.retry();
+    }
+  }, [vmPaused, vmState]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -94,6 +116,7 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
         term.reset();
         setServerError(null);
         setExited(null);
+        setVmPaused(false);
       },
       onExit: (msg) => {
         const detail = msg.signal ? `signal ${msg.signal}` : `code ${msg.code}`;
@@ -104,6 +127,10 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
       onError: (msg) => {
         if (msg.code === STOPPED_CODE) {
           setVmStopped(true);
+          return;
+        }
+        if (msg.code === PAUSED_CODE) {
+          setVmPaused(true);
           return;
         }
         setServerError(msg.message || msg.code);
@@ -148,7 +175,7 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
     // The view attaches once per mount; the parent remounts it for a new room.
   }, []);
 
-  const showState = conn !== "open" && !exited && !vmStopped;
+  const showState = conn !== "open" && !exited && !vmStopped && !vmPaused;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -160,6 +187,11 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
       {vmStopped ? (
         <div className="px-3 pt-3">
           <Banner tone="neutral">The VM is stopped.</Banner>
+        </div>
+      ) : null}
+      {vmPaused ? (
+        <div className="px-3 pt-3">
+          <Banner tone="neutral">The VM is hibernating.</Banner>
         </div>
       ) : null}
       {showState ? (

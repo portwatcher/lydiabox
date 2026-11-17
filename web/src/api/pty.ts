@@ -6,6 +6,13 @@ import type { PtyClientMessage, PtyServerMessage, PtySignal } from "./types";
 
 export const PTY_PROTOCOL = "lydiabox.pty.v1";
 
+/**
+ * Error code with which a terminal socket ends when the VM was hibernated.
+ * The process lives on in the paused VM; a reconnect would wake the VM, so
+ * the client waits until the VM runs again and then calls `retry`.
+ */
+export const PAUSED_CODE = "paused";
+
 /** Decodes one `lydiabox.pty.v1` text frame; unknown or malformed frames give null. */
 export function parsePtyMessage(message: unknown): PtyServerMessage | null {
   if (!isRecord(message)) {
@@ -50,8 +57,9 @@ export interface PtyClientOptions {
 /**
  * Terminal room client. Binary frames carry PTY bytes in both directions;
  * text frames carry JSON control messages. The client adopts the session ID
- * from `hello` so a reconnect attaches to it. After `exit`, or the `stopped`
- * error of a VM that the user stopped, the client does not reconnect.
+ * from `hello` so a reconnect attaches to it. After `exit`, the `stopped`
+ * error of a VM that the user stopped, or the `paused` error of a hibernated
+ * VM, the client does not reconnect by itself.
  */
 export class PtyClient {
   private id: string;
@@ -141,8 +149,8 @@ export class PtyClient {
         this.handlers.onExit?.(msg);
         return;
       case "error":
-        if (msg.code === STOPPED_CODE) {
-          // The user stopped the VM: a reconnect would ask for it again.
+        if (msg.code === STOPPED_CODE || msg.code === PAUSED_CODE) {
+          // A reconnect would ask for the stopped or paused VM again.
           this.socket.finish();
         }
         this.handlers.onError?.(msg);

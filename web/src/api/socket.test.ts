@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFactory } from "../test/fakeSocket";
-import { PtyClient, PTY_PROTOCOL, parsePtyMessage } from "./pty";
+import { PAUSED_CODE, PtyClient, PTY_PROTOCOL, parsePtyMessage } from "./pty";
 import { ReconnectingSocket, STOPPED_CODE, backoffDelay, wsUrl } from "./socket";
 import type { SocketState } from "./socket";
 
@@ -185,5 +185,23 @@ describe("PtyClient", () => {
     expect(errors).toHaveBeenCalledOnce();
     expect(sockets).toHaveLength(1);
     expect(client.state).toBe("closed");
+  });
+
+  it("waits after a hibernate and attaches again on retry", () => {
+    const { factory, sockets } = fakeFactory();
+    const errors = vi.fn();
+    const client = new PtyClient("dsh:a91f", { onOutput: () => undefined, onError: errors }, { factory, url: (p) => p });
+    client.connect();
+    sockets[0]?.open();
+    sockets[0]?.receiveJson({ type: "hello", sessionId: "dsh:a91f", replayBytes: 0, cols: 80, rows: 24 });
+    sockets[0]?.receiveJson({ type: "error", code: PAUSED_CODE, message: "the VM was hibernated" });
+    sockets[0]?.serverClose(1000);
+    vi.advanceTimersByTime(60_000);
+    expect(errors).toHaveBeenCalledOnce();
+    expect(sockets).toHaveLength(1);
+    expect(client.state).toBe("closed");
+    client.retry();
+    expect(sockets).toHaveLength(2);
+    expect(sockets[1]?.url).toBe(sockets[0]?.url);
   });
 });
