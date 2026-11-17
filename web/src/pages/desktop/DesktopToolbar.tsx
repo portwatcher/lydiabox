@@ -62,7 +62,8 @@ export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hi
   return (
     <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-subtle px-3 py-2">
       <ModeSwitch mode={mode} busy={modeBusy} disabled={!connected} onChange={onModeChange} />
-      {hint ? <span className="text-xs text-fg-muted">{hint}</span> : null}
+      {/* A keyboard hint; hidden at phone widths, where the toolbar wraps and touch has no Shift+Esc. */}
+      {hint ? <span className="hidden text-xs text-fg-muted sm:inline">{hint}</span> : null}
       <div className="flex flex-wrap items-center gap-1">
         {apps.map(({ app, label, icon }) => (
           <Button key={app} size="sm" variant="ghost" icon={icon} disabled={!connected} onClick={() => onLaunch(app, label)}>
