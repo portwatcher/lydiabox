@@ -10,9 +10,11 @@ import { useToast } from "../components/Toast";
 import { Badge, Button, cx } from "../components/ui";
 import { useModelOptions } from "../hooks/useModelOptions";
 import { useResource } from "../hooks/useResource";
+import { useSystem } from "../hooks/useSystem";
 import { harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { SessionList } from "./studio/SessionList";
+import { becameRunning, deletesWithoutConfirm } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
 import { TerminalView } from "./studio/TerminalView";
 
@@ -42,6 +44,18 @@ export default function StudioPage() {
   const list = useResource(loader, { pollMs: 10_000 });
   const listed = list.data?.sessions;
   const cachedAt = list.data?.cached ? (list.data.cachedAt ?? "") : null;
+  const reloadList = list.reload;
+
+  // When the VM runs again (start, wake, resume), the guest can be scanned
+  // again and terminals attach: load a fresh list at once.
+  const { vmState } = useSystem();
+  const prevState = useRef(vmState);
+  useEffect(() => {
+    if (becameRunning(prevState.current, vmState)) {
+      reloadList();
+    }
+    prevState.current = vmState;
+  }, [vmState, reloadList]);
 
   useEffect(() => {
     if (!listed) {
@@ -126,19 +140,32 @@ export default function StudioPage() {
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleting) {
-      return;
-    }
-    await sessions.remove(deleting.id, purge);
-    if (deleting.id === selectedId) {
+  const remove = async (session: Session, withPurge: boolean) => {
+    await sessions.remove(session.id, withPurge);
+    if (session.id === selectedId) {
       select(null);
     }
-    if (deleting.id === attachedId) {
+    if (session.id === attachedId) {
       setRoom(null);
     }
-    toast.success(`${sessionName(deleting)} deleted`);
+    toast.success(`${sessionName(session)} deleted`);
     list.reload();
+  };
+
+  const confirmDelete = async () => {
+    if (deleting) {
+      await remove(deleting, purge);
+    }
+  };
+
+  // Other sessions ask first (running terminal, transcript to keep or purge).
+  const requestDelete = (session: Session) => {
+    if (deletesWithoutConfirm(session)) {
+      remove(session, false).catch((err: unknown) => toast.error(describeError(err, "Session not deleted")));
+      return;
+    }
+    setPurge(false);
+    setDeleting(session);
   };
 
   return (
@@ -162,10 +189,7 @@ export default function StudioPage() {
           workspaces={workspaces}
           selectedId={selectedId}
           onSelect={(s) => select(s.id)}
-          onDelete={(s) => {
-            setPurge(false);
-            setDeleting(s);
-          }}
+          onDelete={requestDelete}
           onNew={() => setNewOpen(true)}
         />
       </aside>
@@ -188,6 +212,7 @@ export default function StudioPage() {
               key={room.key}
               sessionId={room.id}
               onExit={() => list.reload()}
+              onAttach={() => list.reload()}
               onSize={(cols, rows) => {
                 termSize.current = { cols, rows };
               }}

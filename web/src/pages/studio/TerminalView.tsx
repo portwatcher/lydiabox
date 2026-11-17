@@ -52,17 +52,19 @@ export interface TerminalViewProps {
   /** Session to attach to when the view mounts. */
   sessionId: string;
   onExit: () => void;
+  /** Called when the terminal attaches (first connect and after a resume). */
+  onAttach?: () => void;
   /** Reports the terminal size, used for new sessions. */
   onSize?: (cols: number, rows: number) => void;
 }
 
-export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
+export function TerminalView({ sessionId, onExit, onAttach, onSize }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<PtyClient | null>(null);
   const initialId = useRef(sessionId);
-  const callbacks = useRef({ onExit, onSize });
+  const callbacks = useRef({ onExit, onAttach, onSize });
   useEffect(() => {
-    callbacks.current = { onExit, onSize };
+    callbacks.current = { onExit, onAttach, onSize };
   });
   const [conn, setConn] = useState<SocketState>("connecting");
   const [exited, setExited] = useState<string | null>(null);
@@ -117,6 +119,7 @@ export function TerminalView({ sessionId, onExit, onSize }: TerminalViewProps) {
         setServerError(null);
         setExited(null);
         setVmPaused(false);
+        callbacks.current.onAttach?.();
       },
       onExit: (msg) => {
         const detail = msg.signal ? `signal ${msg.signal}` : `code ${msg.code}`;
