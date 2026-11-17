@@ -20,6 +20,15 @@ describe("desktop stage", () => {
     expect(shouldConnect({ ...base, outage: null })).toBe(true);
   });
 
+  it("closes the stream while a pause or stop runs that another client started", () => {
+    const live = { ...base, socket: "open" as const, live: true };
+    for (const transition of ["pausing", "stopping"] as const) {
+      expect(shouldDisconnect({ ...live, transition })).toBe(true);
+      expect(shouldConnect({ ...base, transition })).toBe(false);
+      expect(desktopStage({ ...live, transition })).toBe("stopping");
+    }
+  });
+
   it("streams a running VM", () => {
     expect(shouldConnect(base)).toBe(true);
     expect(desktopStage(base)).toBe("connecting");

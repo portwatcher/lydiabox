@@ -50,7 +50,7 @@ export default function StudioPage() {
 
   // A stop or pause ends live terminals; a start or resume lets the guest be
   // scanned again: load a fresh list at once.
-  const { vmState } = useSystem();
+  const { vmState, startBlocked } = useSystem();
   const prevState = useRef(vmState);
   useEffect(() => {
     if (listOutOfDate(prevState.current, vmState)) {
@@ -195,6 +195,7 @@ export default function StudioPage() {
           onSelect={(s) => select(s.id)}
           onDelete={requestDelete}
           onNew={() => setNewOpen(true)}
+          newBlocked={startBlocked}
         />
       </aside>
       <section ref={centerRef} className={cx("min-w-0 flex-1 flex-col", selectedId ? "flex" : "hidden md:flex")}>
@@ -231,7 +232,7 @@ export default function StudioPage() {
               icon={SquareTerminal}
               title={selected.status === "exited" ? "This session has ended" : "This session is not running"}
               action={
-                <Button variant="primary" icon={Play} onClick={() => void resume(selected)}>
+                <Button variant="primary" icon={Play} onClick={() => void resume(selected)} disabled={startBlocked !== null} title={startBlocked ?? undefined}>
                   {selected.harness === "shell" ? "Start a new shell" : "Resume session"}
                 </Button>
               }
@@ -243,7 +244,15 @@ export default function StudioPage() {
               It may have been deleted.
             </StateView>
           ) : (
-            <StateView icon={SquareTerminal} title="Select a session" action={<Button variant="primary" icon={Play} onClick={() => setNewOpen(true)}>New session</Button>} />
+            <StateView
+              icon={SquareTerminal}
+              title="Select a session"
+              action={
+                <Button variant="primary" icon={Play} onClick={() => setNewOpen(true)} disabled={startBlocked !== null} title={startBlocked ?? undefined}>
+                  New session
+                </Button>
+              }
+            />
           )}
         </div>
       </section>

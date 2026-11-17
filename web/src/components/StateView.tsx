@@ -2,6 +2,8 @@ import { CircleAlert, CloudOff, PackageX, PowerOff, RotateCw } from "lucide-reac
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { availabilityOf, describeError } from "../api/errors";
+import { statusOutage } from "../lib/outage";
+import { OutageView } from "./Outage";
 import { Button, Spinner, cx } from "./ui";
 
 interface StateViewProps {
@@ -55,6 +57,12 @@ export function ErrorView({ error, subsystem, failed, onRetry, unavailableAction
       Retry
     </Button>
   ) : null;
+  // The cell is stopped or starts (LydiaBox Cloud): the VM state is the
+  // title, not "<subsystem> is not running".
+  const cell = statusOutage(error, false);
+  if (cell) {
+    return <OutageView outage={cell} />;
+  }
   switch (availabilityOf(error)) {
     case "missing":
     case "not_implemented":
@@ -67,7 +75,7 @@ export function ErrorView({ error, subsystem, failed, onRetry, unavailableAction
       return (
         <StateView
           icon={PowerOff}
-          title={`${subsystem} is not running`}
+          title={`${subsystem} is not available`}
           className={className}
           action={
             <>

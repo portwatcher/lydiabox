@@ -23,13 +23,31 @@ const toneClass: Record<Tone, string> = {
 };
 
 /** The VM state as a labeled pill; the dot repeats the state, the label carries it. `unknown` shows that no status came. */
-export function VmPill({ state, unknown = false }: { state: VMState; unknown?: boolean }) {
+export function VmPill({
+  state,
+  unknown = false,
+  transition = null,
+}: {
+  state: VMState;
+  unknown?: boolean;
+  /** A pause or stop that runs: shown instead of the state. */
+  transition?: "pausing" | "stopping" | null;
+}) {
   if (unknown) {
     return (
       <span className={cx("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold tracking-wide", toneClass.warning)}>
         <span aria-hidden className="size-1.5 rounded-full bg-current" />
         <span className="sr-only">VM </span>
         NO STATUS
+      </span>
+    );
+  }
+  if (transition) {
+    return (
+      <span className={cx("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold tracking-wide", toneClass.warning)}>
+        <LoaderCircle aria-hidden className="size-3 motion-safe:animate-spin" />
+        <span className="sr-only">VM </span>
+        {transition === "pausing" ? "PAUSING" : "STOPPING"}
       </span>
     );
   }
@@ -63,15 +81,15 @@ interface VmWakeButtonProps {
  * POST /api/v1/vm/wake: the explicit start, the only one that undoes a stop.
  */
 export function VmWakeButton({ size = "md", variant = "secondary", children }: VmWakeButtonProps) {
-  const { vmState, vmControl, pending, runVM } = useSystem();
+  const { vmState, vmControl, pending, runVM, startBlocked } = useSystem();
   return (
     <Button
       size={size}
       variant={variant}
       icon={Play}
       busy={pending === "wake"}
-      disabled={!vmControl || pending !== null}
-      title={vmControl ? undefined : unavailableTitle}
+      disabled={!vmControl || pending !== null || startBlocked !== null}
+      title={vmControl ? (startBlocked ?? undefined) : unavailableTitle}
       onClick={() => void runVM("wake")}
     >
       {children ?? (vmState === "PAUSED" ? "Resume" : "Start")}
@@ -83,19 +101,21 @@ const unavailableTitle = "VM power control is not available in this build";
 
 /** Start or Resume / Hibernate / Stop controls for the current VM state. */
 export function VmPower({ compact = false }: { compact?: boolean }) {
-  const { vmState, vmControl, pending, runVM, outage } = useSystem();
+  const { vmState, vmControl, pending, runVM, outage, transition } = useSystem();
   const [confirmStop, setConfirmStop] = useState(false);
   const size = compact ? "sm" : "md";
   const unavailable = vmControl ? undefined : unavailableTitle;
-  // During an outage the server in front of the VM refuses every call: no
-  // power control works, so none shows.
-  const canWake = !outage && (vmState === "STOPPED" || vmState === "PAUSED");
-  const canHibernate = !outage && vmState === "RUNNING";
-  const canStop = !outage && (vmState === "RUNNING" || vmState === "PAUSED");
+  // During an outage the server in front of the VM refuses every call, and
+  // during a pause or stop the next state is not known yet: no power
+  // control shows. (A pending action of this tab shows its busy button.)
+  const settled = !outage && (transition === null || pending !== null);
+  const canWake = settled && (vmState === "STOPPED" || vmState === "PAUSED");
+  const canHibernate = settled && vmState === "RUNNING";
+  const canStop = settled && (vmState === "RUNNING" || vmState === "PAUSED");
 
   return (
     <div className="flex items-center gap-2">
-      <VmPill state={vmState} unknown={outage?.kind === "unknown"} />
+      <VmPill state={vmState} unknown={outage?.kind === "unknown"} transition={pending === null ? transition : null} />
       {canWake ? <VmWakeButton size={size} variant="secondary" /> : null}
       {canHibernate ? (
         <Button

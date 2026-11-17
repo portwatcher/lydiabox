@@ -18,6 +18,8 @@ interface FileTableProps {
   onNewFolder: () => void;
   onUpload: () => void;
   dropEnabled: boolean;
+  /** Why no file can change now (the VM that holds the files is stopped), or null. */
+  blocked?: string | null;
 }
 
 function EntryIcon({ entry }: { entry: Entry }) {
@@ -26,11 +28,12 @@ function EntryIcon({ entry }: { entry: Entry }) {
 }
 
 /** Directory listing and drop target for files and folders. */
-export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, onNewFolder, onUpload, dropEnabled }: FileTableProps) {
+export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, onNewFolder, onUpload, dropEnabled, blocked = null }: FileTableProps) {
   const now = useNow(30_000);
   const [dragging, setDragging] = useState(0);
+  const off = blocked !== null;
 
-  const dragProps = dropEnabled
+  const dragProps = dropEnabled && !off
     ? {
         onDragEnter: (e: DragEvent) => {
           if (e.dataTransfer.types.includes("Files")) {
@@ -61,10 +64,10 @@ export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, o
           title="This folder is empty"
           action={
             <>
-              <Button icon={Upload} variant="primary" onClick={onUpload}>
+              <Button icon={Upload} variant="primary" onClick={onUpload} disabled={off} title={blocked ?? undefined}>
                 Upload files
               </Button>
-              <Button icon={FolderPlus} onClick={onNewFolder}>
+              <Button icon={FolderPlus} onClick={onNewFolder} disabled={off} title={blocked ?? undefined}>
                 New folder
               </Button>
             </>
@@ -112,7 +115,7 @@ export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, o
                 </td>
                 <td className="px-2 py-1">
                   <div className="flex justify-end gap-0.5 opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
-                    {entry.type !== "dir" ? (
+                    {entry.type !== "dir" && !off ? (
                       <a
                         href={files.downloadUrl(root, entry.path)}
                         download={entry.name}
@@ -123,8 +126,8 @@ export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, o
                         <Download aria-hidden className="size-4" />
                       </a>
                     ) : null}
-                    <IconButton icon={Pencil} label={`Rename ${entry.name}`} onClick={() => onRename(entry)} />
-                    <IconButton icon={Trash2} tone="danger" label={`Delete ${entry.name}`} onClick={() => onDelete(entry)} />
+                    <IconButton icon={Pencil} label={`Rename ${entry.name}`} onClick={() => onRename(entry)} disabled={off} />
+                    <IconButton icon={Trash2} tone="danger" label={`Delete ${entry.name}`} onClick={() => onDelete(entry)} disabled={off} />
                   </div>
                 </td>
               </tr>

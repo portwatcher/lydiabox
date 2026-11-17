@@ -1,10 +1,11 @@
-import { ChevronRight, FolderPlus, FolderUp, HardDriveDownload, Upload } from "lucide-react";
+import { ChevronRight, FolderPlus, FolderUp, HardDriveDownload, PowerOff, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { files } from "../api/files";
 import type { Entry, RootName } from "../api/types";
 import { ConfirmDialog } from "../components/Dialog";
-import { ErrorView, LoadingView } from "../components/StateView";
+import { ErrorView, LoadingView, StateView } from "../components/StateView";
+import { VmWakeButton } from "../components/VmPower";
 import { useToast } from "../components/Toast";
 import { Button, cx } from "../components/ui";
 import { useResource } from "../hooks/useResource";
@@ -130,11 +131,22 @@ export default function FilesPage() {
 
   const trail = crumbs(file ?? dir);
 
+  // In the provider storage mode the files are on the VM. A stopped VM
+  // (a user stop holds it) answers no file request, so no change action
+  // looks available; a paused VM is resumed by a file action.
+  const blocked = !mountable && vmState === "STOPPED" ? "Start the VM to change files." : null;
+
   let content;
   if (file !== null) {
-    content = <FileView key={`${root}:${file}`} root={root} path={file} onDirtyChange={setDirty} onSaved={bump} />;
+    content = <FileView key={`${root}:${file}`} root={root} path={file} onDirtyChange={setDirty} onSaved={bump} blocked={blocked} />;
   } else if (listing.loading && !listing.data) {
     content = <LoadingView label="Loading files…" />;
+  } else if (listing.error && !listing.data && blocked) {
+    content = (
+      <StateView icon={PowerOff} title="The VM is stopped" action={<VmWakeButton variant="primary">Start</VmWakeButton>}>
+        Start the VM to see and change files.
+      </StateView>
+    );
   } else if (listing.error && !listing.data) {
     content = <ErrorView error={listing.error} subsystem="Files" failed="Folder not loaded" onRetry={listing.reload} />;
   } else {
@@ -149,6 +161,7 @@ export default function FilesPage() {
         onNewFolder={() => setMkdirOpen(true)}
         onUpload={() => fileInput.current?.click()}
         dropEnabled={uploader.state.kind !== "running"}
+        blocked={blocked}
       />
     );
   }
@@ -198,13 +211,27 @@ export default function FilesPage() {
           </nav>
           {file === null ? (
             <div className="flex flex-wrap items-center gap-1">
-              <Button size="sm" variant="ghost" icon={FolderPlus} onClick={() => setMkdirOpen(true)}>
+              <Button size="sm" variant="ghost" icon={FolderPlus} disabled={blocked !== null} title={blocked ?? undefined} onClick={() => setMkdirOpen(true)}>
                 New folder
               </Button>
-              <Button size="sm" variant="ghost" icon={Upload} disabled={uploader.state.kind === "running"} onClick={() => fileInput.current?.click()}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={Upload}
+                disabled={uploader.state.kind === "running" || blocked !== null}
+                title={blocked ?? undefined}
+                onClick={() => fileInput.current?.click()}
+              >
                 Upload files
               </Button>
-              <Button size="sm" variant="ghost" icon={FolderUp} disabled={uploader.state.kind === "running"} onClick={() => folderInput.current?.click()}>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={FolderUp}
+                disabled={uploader.state.kind === "running" || blocked !== null}
+                title={blocked ?? undefined}
+                onClick={() => folderInput.current?.click()}
+              >
                 Upload folder
               </Button>
             </div>

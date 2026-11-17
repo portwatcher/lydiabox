@@ -1,12 +1,15 @@
+import { CloudOff } from "lucide-react";
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router";
 import { ApiError, NetworkError, http } from "./api/http";
 import { accessLogoutPath, auth } from "./api/system";
 import type { AuthState } from "./api/types";
+import { PageArea } from "./components/Outage";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorView, LoadingView, StateView } from "./components/StateView";
 import { ToastProvider } from "./components/Toast";
 import { SystemProvider } from "./hooks/useSystem";
+import { statusOutage } from "./lib/outage";
 import { LoginPage } from "./pages/LoginPage";
 
 const StudioPage = lazy(() => import("./pages/StudioPage"));
@@ -78,6 +81,14 @@ export function App() {
     case "checking":
       return <LoadingView label="Loading LydiaBox…" className="h-full" />;
     case "error":
+      if (retriesByItself(state.error) && !statusOutage(state.error, false)) {
+        // The server does not answer; the screen tries again by itself.
+        return (
+          <StateView icon={CloudOff} title="LydiaBox is not available" className="h-full">
+            The server does not answer. LydiaBox tries again by itself.
+          </StateView>
+        );
+      }
       return <ErrorView error={state.error} subsystem="LydiaBox" failed="LydiaBox not loaded" onRetry={check} className="h-full" />;
     case "signedOut":
       return <LoginPage session={state.session} onSignedIn={check} />;
@@ -87,7 +98,7 @@ export function App() {
           <SystemProvider>
             <div className="flex h-dvh flex-col">
               <StatusBar email={state.session.email} onLogout={logout} />
-              <main className="min-h-0 flex-1">
+              <PageArea>
                 <Suspense fallback={<LoadingView label="Loading…" />}>
                   <Routes>
                     <Route path="/" element={<Navigate to="/studio" replace />} />
@@ -99,7 +110,7 @@ export function App() {
                     <Route path="*" element={<StateView title="Page not found">Choose a tab above.</StateView>} />
                   </Routes>
                 </Suspense>
-              </main>
+              </PageArea>
             </div>
           </SystemProvider>
         </ToastProvider>

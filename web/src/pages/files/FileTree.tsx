@@ -1,6 +1,7 @@
 import { ChevronRight, Folder, FolderOpen, House, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { files } from "../../api/files";
+import { useServerDown } from "../../hooks/useSystem";
 import type { RootName } from "../../api/types";
 import { cx } from "../../components/ui";
 import { failedNode, loadedNode, loadingNode, showsLoadError } from "./folderNode";
@@ -80,13 +81,19 @@ export function FileTree({ root, rootLabel, current, onOpen, version }: FileTree
     });
   };
 
+  // While the server cannot answer, nothing loads; at its end the open
+  // folders that did not load do.
+  const down = useServerDown();
   useEffect(() => {
+    if (down) {
+      return;
+    }
     expanded.forEach((dir) => {
       if (!nodes[dir]) {
         load(dir);
       }
     });
-  }, [expanded, nodes, load]);
+  }, [expanded, nodes, load, down]);
 
   const renderNode = (dir: string, depth: number) => {
     const node = nodes[dir];

@@ -27,6 +27,10 @@ export interface SystemState {
    * at the next status answer.
    */
   outage: Outage | null;
+  /** A pause or stop that runs, started here (pending) or elsewhere (the VM status). */
+  transition: "pausing" | "stopping" | null;
+  /** Why a start or resume cannot work now (the provider refuses it until a time), or null. */
+  startBlocked: string | null;
   pending: VMAction | null;
   /** The VM has been starting or resuming for more than SLOW_START_MS. */
   slowStart: boolean;
@@ -38,6 +42,15 @@ export interface SystemState {
 export const SLOW_START_MS = 15_000;
 
 const SystemContext = createContext<SystemState | null>(null);
+
+// True while the server cannot answer (an outage): data hooks pause their
+// polls and load again when it ends. False outside a SystemProvider.
+const ServerDownContext = createContext(false);
+
+/** Whether the server cannot answer now (useSystem().outage is set); safe outside a SystemProvider. */
+export function useServerDown(): boolean {
+  return useContext(ServerDownContext);
+}
 
 export function useSystem(): SystemState {
   const value = useContext(SystemContext);
@@ -83,7 +96,15 @@ export function SystemProvider({ children }: { children: ReactNode }) {
 
   const reported: VMState = pending === "wake" ? "BOOTING" : (vmStatus?.state ?? status?.vm.state ?? "STOPPED");
   const vmState: VMState = outage?.kind === "stopped" ? "STOPPED" : outage?.kind === "starting" ? "BOOTING" : reported;
-  const fast = vmState === "BOOTING" || pending !== null;
+  const transition = outage
+    ? null
+    : pending === "hibernate"
+      ? "pausing"
+      : pending === "stop"
+        ? "stopping"
+        : (vmStatus?.transition ?? null);
+  const startBlocked = !outage && vmStatus?.startBlockedUntil ? vmStatus.lastError || "The VM provider does not start the VM now." : null;
+  const fast = vmState === "BOOTING" || pending !== null || transition !== null;
 
   // A start or resume can take minutes at a cloud provider: say so after
   // SLOW_START_MS, so that LydiaBox does not look stuck.
@@ -104,6 +125,7 @@ export function SystemProvider({ children }: { children: ReactNode }) {
     let disposed = false;
 
     const poll = async () => {
+      let statusOK = false;
       try {
         const next = await getStatus(controller.signal);
         if (disposed) {
@@ -113,13 +135,15 @@ export function SystemProvider({ children }: { children: ReactNode }) {
         setFetchedAt(Date.now());
         setError(null);
         setFailing(false);
+        statusOK = true;
       } catch (err) {
         if (!disposed && !(err instanceof DOMException && err.name === "AbortError")) {
           setError(err);
           setFailing(true);
         }
       }
-      if (vmControlRef.current && !disposed) {
+      // After a failed status call the VM status call fails too: skip it.
+      if (vmControlRef.current && !disposed && statusOK) {
         try {
           const detail = await vm.status(controller.signal);
           if (!disposed) {
@@ -175,9 +199,13 @@ export function SystemProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<SystemState>(
-    () => ({ status, vmStatus, vmState, vmControl, fetchedAt, error, outage, pending, slowStart, runVM, refresh }),
-    [status, vmStatus, vmState, vmControl, fetchedAt, error, outage, pending, slowStart, runVM, refresh],
+    () => ({ status, vmStatus, vmState, vmControl, fetchedAt, error, outage, transition, startBlocked, pending, slowStart, runVM, refresh }),
+    [status, vmStatus, vmState, vmControl, fetchedAt, error, outage, transition, startBlocked, pending, slowStart, runVM, refresh],
   );
 
-  return <SystemContext.Provider value={value}>{children}</SystemContext.Provider>;
+  return (
+    <SystemContext.Provider value={value}>
+      <ServerDownContext.Provider value={outage !== null}>{children}</ServerDownContext.Provider>
+    </SystemContext.Provider>
+  );
 }

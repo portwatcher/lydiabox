@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useServerDown } from "./useSystem";
 
 export interface Resource<T> {
   data: T | undefined;
@@ -30,6 +31,18 @@ export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>, opti
   const [generation, setGeneration] = useState(0);
   const loaderRef = useRef(loader);
 
+  // While the server cannot answer, polls wait; when it answers again, the
+  // data loads once at once.
+  const down = useServerDown();
+  const downRef = useRef(down);
+  useEffect(() => {
+    const was = downRef.current;
+    downRef.current = down;
+    if (was && !down) {
+      setGeneration((g) => g + 1);
+    }
+  }, [down]);
+
   useEffect(() => {
     if (loaderRef.current !== loader) {
       loaderRef.current = loader;
@@ -49,6 +62,11 @@ export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>, opti
     setLoading(true);
 
     const run = async () => {
+      if (downRef.current) {
+        // The server cannot answer: no request now; the end of the
+        // outage loads again (see above).
+        return;
+      }
       try {
         const value = await loader(controller.signal);
         if (!disposed) {
@@ -73,7 +91,7 @@ export function useResource<T>(loader: (signal: AbortSignal) => Promise<T>, opti
         return;
       }
       timer = setTimeout(() => {
-        if (typeof document !== "undefined" && document.hidden) {
+        if ((typeof document !== "undefined" && document.hidden) || downRef.current) {
           schedule();
           return;
         }

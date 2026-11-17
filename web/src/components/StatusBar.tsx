@@ -16,7 +16,6 @@ import { NavLink } from "react-router";
 import { useSystem } from "../hooks/useSystem";
 import { useNow } from "../hooks/useResource";
 import { formatAgo, formatDateTime, formatMemory, parseTime, vmProblem } from "../lib/format";
-import { splitLink } from "../lib/outage";
 import { syncState } from "../lib/sync";
 import { VmPower } from "./VmPower";
 import { IconButton, cx } from "./ui";
@@ -30,9 +29,10 @@ const tabs = [
 ];
 
 function SyncIndicator() {
-  const { status, fetchedAt, error } = useSystem();
+  const { status, fetchedAt, error, outage } = useSystem();
   const now = useNow(1000);
-  if (!status) {
+  if (!status || outage) {
+    // The last sync time is not current while the status poll fails.
     return null;
   }
   const storage = status.storage;
@@ -75,7 +75,11 @@ function SyncIndicator() {
 }
 
 function VmResources() {
-  const { vmStatus, status } = useSystem();
+  const { vmStatus, status, outage } = useSystem();
+  if (outage) {
+    // Not current while the status poll fails.
+    return null;
+  }
   const driver = vmStatus?.driver ?? status?.vm.driver;
   return (
     <span className="hidden items-center gap-1.5 text-xs text-fg-muted tabular-nums xl:inline-flex">
@@ -93,8 +97,8 @@ function VmResources() {
 
 /** Why the VM cannot run (for example a refused provider key); hidden while it runs. */
 function VmProblem() {
-  const { vmStatus, vmState } = useSystem();
-  const message = vmProblem(vmStatus, vmState);
+  const { vmStatus, vmState, outage } = useSystem();
+  const message = outage ? null : vmProblem(vmStatus, vmState);
   if (!message) {
     return null;
   }
@@ -102,26 +106,6 @@ function VmProblem() {
     <span role="status" className="inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-danger-fg" title={message}>
       <TriangleAlert aria-hidden className="size-4 shrink-0" />
       <span className="truncate">{message}</span>
-    </span>
-  );
-}
-
-/** The status poll fails: the server's text (with its dashboard link), not the last state. */
-function VmOutage() {
-  const { outage } = useSystem();
-  if (!outage) {
-    return null;
-  }
-  const { text, href } = splitLink(outage.message);
-  return (
-    <span role="status" className="inline-flex max-w-sm min-w-0 items-center gap-1.5 text-xs text-warning-fg" title={text}>
-      <CloudOff aria-hidden className="size-4 shrink-0" />
-      <span className="truncate">{text}</span>
-      {href ? (
-        <a href={href} className="shrink-0 font-medium underline underline-offset-2">
-          Open the dashboard
-        </a>
-      ) : null}
     </span>
   );
 }
@@ -185,7 +169,6 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
           </span>
         ) : null}
         <SyncIndicator />
-        <VmOutage />
         <VmProblem />
         <VmSlow />
         <VmResources />

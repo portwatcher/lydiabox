@@ -146,6 +146,10 @@ export interface VMStatus {
   idleTimeoutSeconds: number;
   idleSince: string;
   lastError?: string;
+  /** Set while a pause or stop runs (the state stays RUNNING until it ends). */
+  transition?: "pausing" | "stopping";
+  /** Set while the provider refuses a start (for example a cooldown); lastError says why. */
+  startBlockedUntil?: string;
 }
 
 // Section 8: sessions and PTY.

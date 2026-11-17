@@ -37,6 +37,8 @@ interface SessionListProps {
   onSelect: (session: Session) => void;
   onDelete: (session: Session) => void;
   onNew: () => void;
+  /** Why a new session cannot start now (the provider refuses a start), or null. */
+  newBlocked?: string | null;
 }
 
 function UsageLine({ session }: { session: Session }) {
@@ -105,7 +107,7 @@ function SessionRow({ session, selected, onSelect, onDelete, now }: { session: S
 }
 
 export function SessionList(props: SessionListProps) {
-  const { sessions, cachedAt = null, error, loading, onRetry, filter, workspaceInput, onHarness, onWorkspaceInput, workspaces, selectedId, onSelect, onDelete, onNew } = props;
+  const { sessions, cachedAt = null, error, loading, onRetry, filter, workspaceInput, onHarness, onWorkspaceInput, workspaces, selectedId, onSelect, onDelete, onNew, newBlocked = null } = props;
   const now = useNow(15_000);
   const listId = useId();
   const filtered = filter.harness !== "" || filter.workspace !== "";
@@ -135,7 +137,7 @@ export function SessionList(props: SessionListProps) {
       <StateView
         title="No sessions yet"
         action={
-          <Button size="sm" variant="primary" icon={Plus} onClick={onNew}>
+          <Button size="sm" variant="primary" icon={Plus} onClick={onNew} disabled={newBlocked !== null} title={newBlocked ?? undefined}>
             New session
           </Button>
         }
@@ -175,7 +177,7 @@ export function SessionList(props: SessionListProps) {
               {cachedAt ? `Cached ${timeAgo(cachedAt, now) ?? ""}` : "Cached"}
             </span>
           ) : null}
-          <Button size="sm" variant="primary" icon={Plus} onClick={onNew}>
+          <Button size="sm" variant="primary" icon={Plus} onClick={onNew} disabled={newBlocked !== null} title={newBlocked ?? undefined}>
             New
           </Button>
         </div>

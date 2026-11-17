@@ -34,6 +34,8 @@ export interface StageInput {
   peer?: RTCPeerConnectionState;
   /** Set while the status poll fails (useSystem().outage). */
   outage?: OutageKind | null;
+  /** A pause or stop that runs, also one started elsewhere (useSystem().transition). */
+  transition?: "pausing" | "stopping" | null;
 }
 
 /**
@@ -43,12 +45,12 @@ export interface StageInput {
  * hibernate.
  */
 export function shouldConnect(s: StageInput): boolean {
-  return s.vmState === "RUNNING" && s.pending === null && s.socket === null && !s.stopped && !s.paused && !s.outage;
+  return s.vmState === "RUNNING" && s.pending === null && s.socket === null && !s.stopped && !s.paused && !s.outage && !s.transition;
 }
 
 /** Whether the page closes the stream: a power action runs, the VM does not run, or its state is not known. */
-export function shouldDisconnect(s: Pick<StageInput, "vmState" | "pending" | "outage">): boolean {
-  return s.vmState !== "RUNNING" || s.pending === "stop" || s.pending === "hibernate" || Boolean(s.outage);
+export function shouldDisconnect(s: Pick<StageInput, "vmState" | "pending" | "outage" | "transition">): boolean {
+  return s.vmState !== "RUNNING" || s.pending === "stop" || s.pending === "hibernate" || Boolean(s.outage) || Boolean(s.transition);
 }
 
 export function desktopStage(s: StageInput): DesktopStage {
@@ -58,7 +60,7 @@ export function desktopStage(s: StageInput): DesktopStage {
   if (s.outage) {
     return "unavailable";
   }
-  if (s.pending === "stop" || s.pending === "hibernate") {
+  if (s.pending === "stop" || s.pending === "hibernate" || s.transition) {
     return "stopping";
   }
   if (s.socket === null) {
