@@ -155,3 +155,25 @@ func TestExitedSessionShowsItsEndTime(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// When the VM stops, a session whose terminal was detached (by a pause or
+// a host restart) is exited too.
+func TestStoppedVMEndsDetachedSessions(t *testing.T) {
+	runner := &harnesstest.Runner{}
+	e := newEnv(t, runner)
+	ctx := context.Background()
+	w := &harnesstest.Waker{}
+	s, err := newManager(t, e, runner, w).Create(ctx, tenant, harness.CreateRequest{Harness: harness.Shell, WorkspaceDir: "/home/agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.Last().Lose()
+	after := newManager(t, e, runner, w)
+	if got := sessionByID(t, after, s.ID); got.Status == harness.StatusExited {
+		t.Fatalf("exited before the stop: %+v", got)
+	}
+	after.Stopped(ctx, tenant)
+	if got := sessionByID(t, after, s.ID); got.Status != harness.StatusExited {
+		t.Fatalf("after the stop: %+v", got)
+	}
+}

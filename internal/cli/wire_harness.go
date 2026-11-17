@@ -65,6 +65,9 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 			switch st {
 			case vmm.StatePaused:
 				mgr.Paused(tid)
+			case vmm.StateStopped:
+				// A stopped VM has no processes: detached sessions ended.
+				go mgr.Stopped(context.Background(), tid)
 			case vmm.StateRunning:
 				// Terminals that a host restart, a lost link, or a pause
 				// detached become live again; ended ones become exited.

@@ -149,6 +149,27 @@ func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
 	return nil
 }
 
+// Stopped records that the VM of tenantID stopped: every stored running
+// session without a live terminal ended with it (the live ones end through
+// their rooms).
+func (m *Manager) Stopped(ctx context.Context, tenantID string) {
+	m.reconcileMu.Lock()
+	defer m.reconcileMu.Unlock()
+	metas, err := m.opts.Store.ListSessionMeta(ctx, tenantID, "")
+	if err != nil {
+		m.log.Warn("list sessions after a VM stop", "err", err)
+		return
+	}
+	for _, sm := range metas {
+		if sm.Status != StatusRunning || m.lookupLive(tenantID, SessionID(sm.Harness, sm.SessionID)) != nil {
+			continue
+		}
+		var x extra
+		_ = json.Unmarshal(sm.Extra, &x)
+		m.markExited(ctx, tenantID, sm, x, time.Now())
+	}
+}
+
 // killStored ends the guest PTY of a stored session that is not live (its
 // terminal was detached, or the host restarted). It does not wake the VM;
 // when the guest cannot be reached, Reconcile ends the PTY later, because
