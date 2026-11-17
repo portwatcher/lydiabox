@@ -164,6 +164,7 @@ export default function DesktopPage() {
         connected={connected}
         viewers={stream.viewers}
         sidebar={sidebar}
+        hint={takeover && live ? (keyboardHeld ? "Shift+Esc releases the keyboard" : "Click the desktop to take control") : null}
         onModeChange={(m) => void changeMode(m)}
         onLaunch={launch}
         onToggleSidebar={() => setSidebar((s) => !s)}
@@ -190,11 +191,6 @@ export default function DesktopPage() {
           <video ref={videoRef} autoPlay playsInline muted className={cx("absolute inset-0 h-full w-full object-contain", !live && "invisible")} />
           {live ? <DesktopOverlay state={overlay} screen={stream.screen} /> : null}
           {stageContent ? <div className="absolute inset-0 bg-bg">{stageContent}</div> : null}
-          {takeover && live ? (
-            <span className="pointer-events-none absolute top-3 left-3 rounded-md bg-surface px-2 py-1 text-xs text-fg shadow">
-              {keyboardHeld ? "Shift+Esc releases the keyboard" : "Click the desktop to take control"}
-            </span>
-          ) : null}
         </div>
         {sidebar ? (
           <aside

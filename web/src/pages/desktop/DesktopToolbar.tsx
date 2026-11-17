@@ -50,16 +50,19 @@ interface DesktopToolbarProps {
   connected: boolean;
   viewers: number;
   sidebar: boolean;
+  /** Keyboard hint of the takeover mode, shown beside the mode switch (outside the remote screen). */
+  hint?: string | null;
   onModeChange: (mode: DesktopMode) => void;
   onLaunch: (app: LaunchApp, label: string) => void;
   onToggleSidebar: () => void;
 }
 
 /** Desktop controls. The VM state and power actions are in the status bar only. */
-export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, onModeChange, onLaunch, onToggleSidebar }: DesktopToolbarProps) {
+export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hint = null, onModeChange, onLaunch, onToggleSidebar }: DesktopToolbarProps) {
   return (
     <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-subtle px-3 py-2">
       <ModeSwitch mode={mode} busy={modeBusy} disabled={!connected} onChange={onModeChange} />
+      {hint ? <span className="text-xs text-fg-muted">{hint}</span> : null}
       <div className="flex flex-wrap items-center gap-1">
         {apps.map(({ app, label, icon }) => (
           <Button key={app} size="sm" variant="ghost" icon={icon} disabled={!connected} onClick={() => onLaunch(app, label)}>
