@@ -15,7 +15,7 @@ import { harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { NoModelNotice, modelProblem } from "./studio/NoModelNotice";
 import { SessionList } from "./studio/SessionList";
-import { deleteText, deletesWithoutConfirm, listOutOfDate } from "./studio/sessionActions";
+import { deleteText, deletesWithoutConfirm, listDisagrees, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
 import { TerminalView } from "./studio/TerminalView";
 
@@ -50,14 +50,32 @@ export default function StudioPage() {
 
   // A stop or pause ends live terminals; a start or resume lets the guest be
   // scanned again: load a fresh list at once.
-  const { vmState, startBlocked } = useSystem();
+  const { vmState, startBlocked, status } = useSystem();
   const prevState = useRef(vmState);
+  const retries = useRef(0);
   useEffect(() => {
     if (listOutOfDate(prevState.current, vmState)) {
+      retries.current = 0;
       reloadList();
     }
     prevState.current = vmState;
   }, [vmState, reloadList]);
+
+  // The first list after a change can still show the old state (the guest
+  // is not scanned yet): load it again after 2 s, at most 5 times, instead
+  // of waiting for the 10 s poll.
+  const disagrees = list.data !== undefined && listDisagrees(vmState, list.data.cached ?? false, status?.storage.mode === "provider");
+  const listData = list.data;
+  useEffect(() => {
+    if (!disagrees || retries.current >= 5) {
+      return;
+    }
+    const id = setTimeout(() => {
+      retries.current += 1;
+      reloadList();
+    }, 2000);
+    return () => clearTimeout(id);
+  }, [disagrees, listData, reloadList]);
 
   useEffect(() => {
     if (!listed) {

@@ -9,6 +9,20 @@ export function listOutOfDate(previous: VMState, next: VMState): boolean {
   return previous !== next;
 }
 
+/**
+ * Whether the session list disagrees with the VM state: a cached list while
+ * the VM runs (the guest was not scanned yet after a start or resume), or,
+ * in the provider storage mode, a fresh list while it does not (it was
+ * scanned just before the pause or stop). The page then loads it again
+ * soon, so the "Cached" label follows the VM state.
+ */
+export function listDisagrees(vmState: VMState, cached: boolean, providerMode: boolean): boolean {
+  if (vmState === "RUNNING") {
+    return cached;
+  }
+  return providerMode && !cached && (vmState === "PAUSED" || vmState === "STOPPED");
+}
+
 /** An ended shell has no transcript, so deleting it loses nothing and needs no confirmation. */
 export function deletesWithoutConfirm(session: Pick<Session, "harness" | "live">): boolean {
   return session.harness === "shell" && !session.live;
