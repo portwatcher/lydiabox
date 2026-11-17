@@ -68,21 +68,22 @@ export default function FilesPage() {
   const listing = useResource(loader, { enabled: file === null });
   const reloadListing = listing.reload;
 
-  // In the provider storage mode the files are on the VM: a start loads them.
-  const prevVm = useRef(vmState);
-  useEffect(() => {
-    const was = prevVm.current;
-    prevVm.current = vmState;
-    if (was !== "RUNNING" && vmState === "RUNNING") {
-      reloadListing();
-    }
-  }, [vmState, reloadListing]);
-
   // After a change: reload the listing and every open folder in the tree.
   const bump = useCallback(() => {
     setVersion((v) => v + 1);
     reloadListing();
   }, [reloadListing]);
+
+  // In the provider storage mode the files are on the VM: a start loads
+  // the listing and the folder tree.
+  const prevVm = useRef(vmState);
+  useEffect(() => {
+    const was = prevVm.current;
+    prevVm.current = vmState;
+    if (was !== "RUNNING" && vmState === "RUNNING") {
+      bump();
+    }
+  }, [vmState, bump]);
   const uploader = useUploader(bump);
 
   useEffect(() => {

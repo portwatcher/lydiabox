@@ -3,12 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { files } from "../../api/files";
 import type { RootName } from "../../api/types";
 import { cx } from "../../components/ui";
-
-interface NodeState {
-  children: string[] | null;
-  loading: boolean;
-  failed: boolean;
-}
+import { failedNode, loadedNode, loadingNode, showsLoadError } from "./folderNode";
+import type { NodeState } from "./folderNode";
 
 interface FileTreeProps {
   root: RootName;
@@ -32,14 +28,14 @@ export function FileTree({ root, rootLabel, current, onOpen, version }: FileTree
 
   const load = useCallback(
     (dir: string) => {
-      setNodes((all) => ({ ...all, [dir]: { children: all[dir]?.children ?? null, loading: true, failed: false } }));
+      setNodes((all) => ({ ...all, [dir]: loadingNode(all[dir]) }));
       files
         .list(root, dir)
         .then((res) => {
           const children = res.entries.filter((e) => e.type === "dir").map((e) => e.path);
-          setNodes((all) => ({ ...all, [dir]: { children, loading: false, failed: false } }));
+          setNodes((all) => ({ ...all, [dir]: loadedNode(children) }));
         })
-        .catch(() => setNodes((all) => ({ ...all, [dir]: { children: all[dir]?.children ?? [], loading: false, failed: true } })));
+        .catch((err: unknown) => setNodes((all) => ({ ...all, [dir]: failedNode(all[dir], err) })));
     },
     [root],
   );
@@ -132,7 +128,7 @@ export function FileTree({ root, rootLabel, current, onOpen, version }: FileTree
         {open && node?.children && node.children.length > 0 ? (
           <ul>{node.children.map((child) => renderNode(child, depth + 1))}</ul>
         ) : null}
-        {open && node?.failed ? (
+        {open && showsLoadError(node) ? (
           <p className="py-1 text-xs text-danger-fg" style={{ paddingLeft: `${(depth + 1) * 12 + 28}px` }}>
             Folder not loaded
           </p>
