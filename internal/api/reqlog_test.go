@@ -165,3 +165,22 @@ func TestExpectedUnavailableIsNotAnError(t *testing.T) {
 		t.Errorf("fault 503: %s", lines[1])
 	}
 }
+
+// TestAFailureAfterTheClientLeftIsNotAnError: any route whose request the
+// client ended first (a page change) and that then answers 5xx is not
+// logged as a server error.
+func TestAFailureAfterTheClientLeftIsNotAnError(t *testing.T) {
+	h, buf := newLoggedServer(t, api.RegistrarFunc(func(r api.Router) {
+		r.HandleFunc("GET /api/v1/test/slow", func(w http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done()
+			httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "store: query: context canceled")
+		})
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, authed(http.MethodGet, "/api/v1/test/slow").WithContext(ctx))
+	if strings.Contains(buf.String(), "level=ERROR") {
+		t.Fatalf("a request that the client ended was logged as a server error:\n%s", buf)
+	}
+}

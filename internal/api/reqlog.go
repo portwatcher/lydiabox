@@ -89,6 +89,7 @@ func withRoute(pattern string, h http.Handler) http.Handler {
 // logRequests writes one line per request: at debug level, or for a 5xx
 // response at error level with the route and the cause (the cause that the
 // handler noted, else the message of the error envelope), without secrets.
+// A 5xx of a request whose client left first is logged at debug level.
 // A 5xx that the handler marked as an expected state (httpx.NoteExpected,
 // for example a VM that is not running) is logged at info level.
 func (s *Server) logRequests(next http.Handler) http.Handler {
@@ -104,7 +105,11 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 		}
 		attrs = append(attrs, "cause", redactCause(rec.causeText()))
 		if r.Context().Err() != nil {
+			// The client left first (a page change or reload): the failure
+			// is the end of its own request, not a server fault.
 			attrs = append(attrs, "client_gone", true)
+			s.log.Debug("request ended by the client", attrs...)
+			return
 		}
 		if rec.expected {
 			s.log.Info("request refused", attrs...)

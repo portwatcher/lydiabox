@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -66,6 +67,10 @@ func (c ConnectorRoutes) writeErr(w http.ResponseWriter, err error) {
 		httpx.WriteError(w, http.StatusConflict, httpx.CodeConflict, err.Error())
 	case errors.As(err, &ae):
 		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, err.Error())
+	case errors.Is(err, context.Canceled):
+		// The client left (for example a page change during the load): not a
+		// server error.
+		httpx.WriteError(w, httpx.StatusClientClosedRequest, httpx.CodeCanceled, "the request was canceled")
 	default:
 		httpx.NoteCause(w, err)
 		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "internal server error")
