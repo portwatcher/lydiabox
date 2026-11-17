@@ -100,7 +100,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 		d.Files = rfs
 	}
 
-	gwCtx, gwCancel := context.WithCancel(context.Background())
+	tunnels := newGuestTunnels(log)
 	tid := cfg.TenantID
 	return &component{
 		Name:   "vm",
@@ -116,11 +116,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 			if err != nil {
 				return fmt.Errorf("listen for the guest LLM gateway tunnel: %w", err)
 			}
-			go func() {
-				if err := gw.Serve(gwCtx, ln); err != nil {
-					log.Error("guest LLM gateway tunnel stopped", "err", err)
-				}
-			}()
+			tunnels.serve("guest LLM gateway tunnel", ln, gw.Serve)
 			// The connector broker (built by wireConnector) is reached by the
 			// guest's git-cred helper and connector MCP bridge on port 9001.
 			if brk := connectorBroker(d); brk != nil {
@@ -128,16 +124,13 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 				if err != nil {
 					return fmt.Errorf("listen for the guest connector broker: %w", err)
 				}
-				go func() {
-					if err := brk.Serve(gwCtx, bln); err != nil {
-						log.Error("guest connector broker stopped", "err", err)
-					}
-				}()
+				tunnels.serve("guest connector broker", bln, brk.Serve)
 			}
 			return nil
 		},
 		Stop: func(ctx context.Context) error {
-			gwCancel()
+			// The servers end before the driver closes their listeners.
+			tunnels.stop(ctx)
 			err := ctl.Close(ctx)
 			if c, ok := drv.(io.Closer); ok {
 				err = errors.Join(err, c.Close())
