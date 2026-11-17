@@ -55,6 +55,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 		return nil, err
 	}
 	guest := guestclient.New(guestclient.Options{Dialer: drv, Logger: log})
+	remote := vmm.CapabilitiesOf(drv).Remote
 	var holds vmm.HoldStore
 	if d.Store != nil {
 		// The hold of a user stop is in the state database, so a new host
@@ -68,11 +69,20 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 		IdleTimeout: cfg.VM.IdleTimeout,
 		Ready: func(ctx context.Context, tid string) error {
 			_, err := guest.Ping(ctx, tid)
+			if err != nil && ctx.Err() != nil {
+				// The probe hung: its connection may be dead without being
+				// closed yet. The next probe dials again.
+				guest.Reset(tid)
+			}
 			return err
 		},
 		Flush: guest.Sync,
 		OnStateChange: func(tid string, st vmm.State) {
-			if st == vmm.StateStopped {
+			// A stopped VM has no guest connection. A remote VM that boots
+			// or resumes gets a new guest link (the old one ended at the
+			// pause or stop), so a connection of before cannot work: drop
+			// it before the readiness probe, which must not wait on it.
+			if st == vmm.StateStopped || (remote && st == vmm.StateBooting) {
 				guest.Reset(tid)
 			}
 		},
