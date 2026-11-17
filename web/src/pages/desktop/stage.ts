@@ -13,7 +13,9 @@ export type DesktopStage =
   /** The socket is opening or reconnecting, or about to open. */
   | "connecting"
   /** The socket gave up after its retries. */
-  | "lost";
+  | "lost"
+  /** The signaling works, but the browser could not open the video connection. */
+  | "videoFailed";
 
 export interface StageInput {
   vmState: VMState;
@@ -21,7 +23,10 @@ export interface StageInput {
   socket: SocketState | null;
   /** The server ended the stream because the user stopped the VM. */
   stopped: boolean;
+  /** The video track is there and the peer connection is connected. */
   live: boolean;
+  /** State of the WebRTC peer connection ("new" before the first offer). */
+  peer?: RTCPeerConnectionState;
 }
 
 /**
@@ -56,6 +61,9 @@ export function desktopStage(s: StageInput): DesktopStage {
   }
   if (s.socket === "failed") {
     return "lost";
+  }
+  if (s.socket === "open" && s.peer === "failed") {
+    return "videoFailed";
   }
   return s.live && s.socket === "open" ? "live" : "connecting";
 }

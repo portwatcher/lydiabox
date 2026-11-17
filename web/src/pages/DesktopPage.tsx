@@ -121,8 +121,10 @@ export default function DesktopPage() {
   }
 
   const connected = stream.socket === "open";
-  const live = connected && stream.stream !== null;
-  const stage = desktopStage({ ...stageInput, live });
+  // Live only once the video connection is up: before that the stage would
+  // show a black screen.
+  const live = connected && stream.stream !== null && stream.peer === "connected";
+  const stage = desktopStage({ ...stageInput, live, peer: stream.peer === "new" ? undefined : stream.peer });
 
   let stageContent = null;
   switch (stage) {
@@ -149,6 +151,13 @@ export default function DesktopPage() {
         </StateView>
       );
       break;
+    case "videoFailed":
+      stageContent = (
+        <StateView title="Desktop video not connected" action={<Button icon={RotateCw} onClick={stream.retry}>Reconnect</Button>}>
+          The browser could not reach the video relay.
+        </StateView>
+      );
+      break;
     case "connecting":
       stageContent = <LoadingView label={stream.socket === "reconnecting" ? "Reconnecting to the desktop…" : "Starting the desktop stream…"} />;
       break;
@@ -169,7 +178,7 @@ export default function DesktopPage() {
         onLaunch={launch}
         onToggleSidebar={() => setSidebar((s) => !s)}
       />
-      {stream.error && stream.socket !== null ? (
+      {stream.error && stream.socket !== null && stage !== "videoFailed" ? (
         <div className="px-3 pt-2">
           <Banner tone="danger">{stream.error}</Banner>
         </div>

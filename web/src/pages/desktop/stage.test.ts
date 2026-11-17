@@ -11,6 +11,13 @@ describe("desktop stage", () => {
     expect(desktopStage({ ...base, socket: "open", live: true })).toBe("live");
   });
 
+  it("waits for the video connection and reports a failed one", () => {
+    const open = { ...base, socket: "open" as const };
+    expect(desktopStage({ ...open, peer: "connecting" })).toBe("connecting");
+    expect(desktopStage({ ...open, peer: "failed" })).toBe("videoFailed");
+    expect(desktopStage({ ...open, peer: "connected", live: true })).toBe("live");
+  });
+
   it("shows a calm stopped state and does not reconnect after a user stop", () => {
     // The server ended the stream before the status poll saw the stop.
     const ended = { ...base, stopped: true };
