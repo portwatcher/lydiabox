@@ -512,6 +512,19 @@ The docker driver does not close the guest port listeners at the host
 shutdown, so step 7 cannot show the InstaBox ERROR "guest LLM gateway tunnel
 stopped"; `TestGuestTunnelEndAtHostShutdownIsInfo` covers it.
 
+### Resume after Hibernate on InstaBox (2026-11-17)
+
+On `the test machine` a resume after a Hibernate with a live terminal took 59.9 s
+(`BOOTING` to `guest link up`); InstaBox reported the machine `running` at
+05:07:20 and the link was up 1.8 s later, so the time was spent before the
+port proxy reached the guest. The host path has no wait of that length:
+with the fake InstaBox (`TestInstaboxResumeAfterHibernateWithATerminal`, two
+rounds with a live terminal) a resume takes about 1 s and the terminal
+attaches again to the same shell. The driver now logs each start, resume,
+and wake with its duration (`took`) and the link's `connect` time, and warns
+when a resume did not keep the processes
+(`TestInstaboxSlowResumeIsLogged`, `TestInstaboxFreshResumeEndsTheTerminal`).
+
 ## Integration run (chv on KVM)
 
 Date: 2026-11-10. Host: Apple M3 Pro (macOS 26), Lima 2.3.0 VM with

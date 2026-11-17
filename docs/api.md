@@ -656,8 +656,10 @@ terminal that ends because the user stopped the VM also ends with this
 process stays in the paused guest: the server sends `error` with `code`
 `paused` and closes with `1000`, and the session stays running. The client
 does not reconnect at once (a new socket wakes the VM); it reconnects when
-the VM is `RUNNING` again and gets the same terminal. A terminal that
-survived a host restart is attached again from the guest. Invalid control messages give an
+the VM is `RUNNING` again and gets the same terminal. If the terminal did
+not survive (the provider resumed the machine without its memory), the
+reconnect gets `error` `conflict` and the session is `exited`. A terminal
+that survived a host restart is attached again from the guest. Invalid control messages give an
 `error` message with `code` `bad_request`; the socket stays open. A client
 that falls more than 512 frames behind is disconnected.
 

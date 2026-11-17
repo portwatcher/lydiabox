@@ -423,6 +423,19 @@ that is not an InstaBox size, a GPU, and a UDP port.
   the cell's idle timeout pauses the machine (`suspend`). A pause that
   InstaBox makes by itself is seen within 30 seconds (at once when the
   link drops) and shown as `PAUSED`; the next use wakes the machine.
+- Each start, resume, or wake logs one line `instabox: machine running`
+  with `action` (`start`, `resume`, `wake`) and `took` (from the request to
+  the `running` state); a wait for another operation logs one line first.
+  The next line `guest link up` has `connect`, the time of the link's
+  successful dial and handshake. A slow resume is therefore visible as a
+  large `took` (InstaBox) or a large `connect` (port proxy).
+- A resume that InstaBox could not do with the memory
+  (`runtime.processesPreserved: false`) logs the warning `instabox: the
+  resume did not keep the processes; the machine booted fresh`. The
+  terminals of before the pause are gone: a reconnect gets `conflict`, and
+  the session is `exited`.
+- When the VM boots or resumes, the host drops its cached guest RPC
+  connection, because the link of before ended at the pause or stop.
 - At `SIGTERM` the machine continues; the lease is released, so the idle
   pause applies.
 - Quota, capacity, payment, scope, and key errors show in `lastError` of
