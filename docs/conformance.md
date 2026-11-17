@@ -614,6 +614,23 @@ forced on by a local change that was not committed.
 | 3 | Top bar at 320, 360, 640, 800, 1024, 1280 px, all extra items shown | Every tab in view, no horizontal scroll; the VM group wraps to a second row when the row is full | pass |
 | 4 | Studio, Desktop, Files, Models, Connectors at 360 px | No horizontal scroll; Studio list, dialog, and live shell; Desktop panel closed by default; long file names cut with the full name in the tooltip; file view | pass |
 
+### Stopped cell, deleted sessions, Desktop panel (2026-11-18)
+
+Setup as above, with a small local proxy between the Vite dev server and the
+cell that answers like the LydiaBox Cloud control plane (503 JSON with
+`cell_stopped`, `cell_starting`, or the older "not running" text), or is
+stopped to cut the server off.
+
+| # | Check | Result |
+| :--- | :--- | :--- |
+| 1 | Desktop open, VM running; proxy answers `cell_stopped` | Within one poll: pill `STOPPED`, no power controls, the server's text with "Open the dashboard"; Desktop "The VM is stopped", stream closed, no start; Studio and Files show the server's text | pass |
+| 2 | The same with the older "the agent computer is not running" text | Same result | pass |
+| 3 | Proxy answers `cell_starting` | Pill `BOOTING`, "Starting the VM…", the server's text | pass |
+| 4 | Proxy stopped while the VM runs | Still `RUNNING` at 6 s; `NO STATUS` and "The VM status is not available" at 16 s; no power controls | pass |
+| 5 | Proxy back | `RUNNING` with Hibernate and Stop again, with no reload; the start screen also recovers by itself | pass |
+| 6 | Delete a discovered Claude Code session without its transcript | The dialog says the transcript files stay; the session stays out of the list after two polls; the file stays in the guest | pass |
+| 7 | Desktop panel open at 1280 px, window to 800 px, then 360 px, then 1280 px | Closes when narrow; at 360 px it opens over the stage with a close button; shows again at 1280 px | pass |
+
 No WARN or ERROR in the cell log except the expected `magpie` and S3 setup
 lines.
 
