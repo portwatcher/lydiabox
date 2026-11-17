@@ -2,6 +2,7 @@ package harness_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -175,5 +176,104 @@ func TestStoppedVMEndsDetachedSessions(t *testing.T) {
 	after.Stopped(ctx, tenant)
 	if got := sessionByID(t, after, s.ID); got.Status != harness.StatusExited {
 		t.Fatalf("after the stop: %+v", got)
+	}
+}
+
+// markExitedInStore records a session as exited while its process runs, as
+// an older host version did at a restart.
+func markExitedInStore(t *testing.T, e *env, id string) {
+	t.Helper()
+	h, native, err := harness.SplitSessionID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metas, err := e.store.ListSessionMeta(context.Background(), tenant, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sm := range metas {
+		if sm.SessionID == native {
+			sm.Status = harness.StatusExited
+			if err := e.store.UpsertSessionMeta(context.Background(), tenant, sm); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+	t.Fatalf("no meta for %s", id)
+}
+
+// A session recorded as exited whose guest process still runs: Reconcile
+// ends the process.
+func TestReconcileEndsTheProcessOfAnExitedSession(t *testing.T) {
+	runner := &harnesstest.Runner{}
+	e := newEnv(t, runner)
+	ctx := context.Background()
+	w := &harnesstest.Waker{}
+	s, err := newManager(t, e, runner, w).Create(ctx, tenant, harness.CreateRequest{Harness: harness.Shell, WorkspaceDir: "/home/agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.Last().Lose()
+	markExitedInStore(t, e, s.ID)
+	after := newManager(t, e, runner, w)
+	if err := after.Reconcile(ctx, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.Last().Exited() {
+		t.Fatal("the process of the exited session still runs")
+	}
+	if got := sessionByID(t, after, s.ID); got.Status != harness.StatusExited || got.Live {
+		t.Fatalf("session after the reconcile: %+v", got)
+	}
+}
+
+// Deleting a session recorded as exited ends its guest process if it runs.
+func TestDeleteEndsTheProcessOfAnExitedSession(t *testing.T) {
+	runner := &harnesstest.Runner{}
+	e := newEnv(t, runner)
+	ctx := context.Background()
+	w := &harnesstest.Waker{}
+	s, err := newManager(t, e, runner, w).Create(ctx, tenant, harness.CreateRequest{Harness: harness.Shell, WorkspaceDir: "/home/agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.Last().Lose()
+	markExitedInStore(t, e, s.ID)
+	if err := newManager(t, e, runner, w).Delete(ctx, tenant, s.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.Last().Exited() {
+		t.Fatal("the process of the deleted exited session still runs")
+	}
+}
+
+// An automatic reconnect does not wake a paused VM; an explicit attach
+// (opening the terminal) does.
+func TestReconnectDoesNotWakeAPausedVM(t *testing.T) {
+	runner := &harnesstest.Runner{}
+	e := newEnv(t, runner)
+	ctx := context.Background()
+	w := &pauseWaker{Waker: &harnesstest.Waker{}}
+	mgr := newManager(t, e, runner, w)
+	s, err := mgr.Create(ctx, tenant, harness.CreateRequest{Harness: harness.Shell, WorkspaceDir: "/home/agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.paused.Store(true)
+	mgr.Paused(tenant)
+	wakes := w.Wakes
+	if _, err := mgr.Reconnect(ctx, tenant, s.ID); !errors.Is(err, harness.ErrVMPaused) {
+		t.Fatalf("reconnect of a paused VM: %v", err)
+	}
+	if w.Wakes != wakes || !w.paused.Load() {
+		t.Fatalf("the reconnect woke the VM: wakes %d -> %d", wakes, w.Wakes)
+	}
+	if _, err := mgr.Room(ctx, tenant, s.ID); err != nil || w.paused.Load() {
+		t.Fatalf("explicit attach: %v, paused %v", err, w.paused.Load())
+	}
+	// A live terminal is returned by a reconnect while the VM runs.
+	if _, err := mgr.Reconnect(ctx, tenant, s.ID); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -23,6 +23,23 @@ type PTYKiller interface {
 	KillPTY(ctx context.Context, tenantID, id string) error
 }
 
+// ErrVMPaused is returned by Reconnect for a VM that pauses or is paused.
+var ErrVMPaused = errors.New("the VM is hibernating")
+
+// Reconnect is Room for an automatic reconnect of a client: it does not
+// wake a VM that pauses or is paused (ErrVMPaused), because the stream
+// that the client lost ended with the pause. A live terminal is returned
+// as by Room.
+func (m *Manager) Reconnect(ctx context.Context, tenantID, id string) (*Room, error) {
+	if ls := m.lookupLive(tenantID, id); ls != nil {
+		return ls.room, nil
+	}
+	if p, ok := m.opts.Waker.(VMPauseReporter); ok && p.Paused(tenantID) {
+		return nil, ErrVMPaused
+	}
+	return m.Room(ctx, tenantID, id)
+}
+
 // ptyPrefix starts the IDs of the guest PTYs that this manager starts.
 const ptyPrefix = "lbx-"
 
@@ -79,8 +96,9 @@ func (m *Manager) markExited(ctx context.Context, tenantID string, sm store.Sess
 //   - a session stored as running whose PTY ended or is gone is exited,
 //     with the guest's end time when the guest still knows it;
 //   - a running guest PTY that this manager started (ID "lbx-") and that
-//     no stored session and no start in progress refers to is ended: its
-//     session was deleted while the host could not reach the guest.
+//     no stored running session and no start in progress refers to is
+//     ended: its session was deleted, or recorded as exited (for example
+//     by an older host version), while the process still ran.
 func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
 	m.reconcileMu.Lock()
 	defer m.reconcileMu.Unlock()
@@ -113,8 +131,11 @@ func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
 		if x.PTYID == "" {
 			continue
 		}
+		if sm.Status != StatusRunning {
+			continue
+		}
 		referenced[x.PTYID] = true
-		if sm.Status != StatusRunning || m.lookupLive(tenantID, SessionID(sm.Harness, sm.SessionID)) != nil {
+		if m.lookupLive(tenantID, SessionID(sm.Harness, sm.SessionID)) != nil {
 			continue
 		}
 		info, ok := byID[x.PTYID]
@@ -147,7 +168,7 @@ func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
 			m.log.Warn("end a guest terminal without a session", "pty", p.ID, "err", err)
 			continue
 		}
-		m.log.Info("ended a guest terminal without a session", "pty", p.ID, "command", p.Command)
+		m.log.Info("ended a guest terminal without a running session", "pty", p.ID, "command", p.Command)
 	}
 	return nil
 }
@@ -185,7 +206,7 @@ func (m *Manager) Close() {
 }
 
 // killStored ends the guest PTY of a stored session that is not live (its
-// terminal was detached, or the host restarted). It does not wake the VM;
+// terminal was detached, the host restarted, or it is recorded as exited). It does not wake the VM;
 // when the guest cannot be reached, Reconcile ends the PTY later, because
 // no session refers to it any more.
 func (m *Manager) killStored(ctx context.Context, tenantID, harness, nativeID string) {
@@ -198,9 +219,11 @@ func (m *Manager) killStored(ctx context.Context, tenantID, harness, nativeID st
 		return
 	}
 	for _, sm := range metas {
-		if sm.SessionID != nativeID || sm.Status != StatusRunning {
+		if sm.SessionID != nativeID {
 			continue
 		}
+		// Any status: a session recorded as exited can still have a
+		// running process (a record of an older host version).
 		var x extra
 		_ = json.Unmarshal(sm.Extra, &x)
 		if x.PTYID == "" {

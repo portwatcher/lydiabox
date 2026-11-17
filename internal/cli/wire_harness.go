@@ -99,8 +99,22 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 			}
 			// A VM that is stopped at host start has no processes; the
 			// state hook does not run because the state did not change.
-			if d.VM != nil && d.VM.Controller != nil && d.VM.Controller.State(tid) == vmm.StateStopped {
-				mgr.Stopped(ctx, tid)
+			if d.VM != nil && d.VM.Controller != nil {
+				switch d.VM.Controller.State(tid) {
+				case vmm.StateStopped:
+					mgr.Stopped(ctx, tid)
+				case vmm.StateRunning:
+					// The VM ran before this host process: compare the
+					// sessions with the guest now (the RUNNING hook may have
+					// run before the guest link was up).
+					go func() {
+						rctx, cancel := context.WithTimeout(context.Background(), reconcileTimeout)
+						defer cancel()
+						if err := mgr.Reconcile(rctx, tid); err != nil {
+							log.Info("reconcile the guest terminals", "err", err)
+						}
+					}()
+				}
 			}
 			// Point every harness at the gateway once the home tree is
 			// mounted; a config that cannot be parsed is left untouched.
