@@ -9,6 +9,7 @@ import { Dialog } from "../../components/Dialog";
 import { ModelInput } from "../../components/ModelInput";
 import { Banner, Button, Field, Select, TextInput } from "../../components/ui";
 import { harnessLabels } from "../../lib/harness";
+import { NoModelNotice } from "./NoModelNotice";
 
 interface NewSessionDialogProps {
   open: boolean;
@@ -16,6 +17,8 @@ interface NewSessionDialogProps {
   onCreated: (session: Session) => void;
   workspaces: string[];
   models: Model[];
+  /** No model is set up (the models list loaded and is empty). */
+  noModel: boolean;
   size: () => { cols: number; rows: number };
   defaultHarness: HarnessID | "";
 }
@@ -26,7 +29,7 @@ function validWorkspace(dir: string): boolean {
   return (inside("/workspace") || inside("/home/agent")) && !clean.split("/").includes("..");
 }
 
-export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed, models, size, defaultHarness }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed, models, noModel, size, defaultHarness }: NewSessionDialogProps) {
   // Only folders that the dialog accepts are offered (a list cached by an
   // older host can hold a guest link target such as /data/workspace).
   const workspaces = useMemo(() => listed.filter(validWorkspace), [listed]);
@@ -93,6 +96,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
     >
       <form id="new-session" onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
         {error ? <Banner tone="danger">{error}</Banner> : null}
+        {noModel && harness !== "shell" ? <NoModelNotice onNavigate={onClose} /> : null}
         <Field id="ns-harness" label="Harness">
           <Select
             id="ns-harness"
