@@ -259,6 +259,9 @@ makes these changes; the `vm.create` row above is `done` with them.
 | Status bar: VM pill, Wake / Hibernate / Stop, CPU/RAM, "Synced Xs ago" (only when the server syncs to S3: `storage.syncEnabled`) | done | `web/src/components`, `web/src/lib/sync.ts` | web tests (`sync.test.ts`); E2E (browser) |
 | VM power controls only in the status bar (owner request, 2026-11-17); the Desktop toolbar does not repeat them, and its "Start desktop" action wakes a stopped or paused VM with the explicit start (`POST /api/v1/vm/wake`) | done | `web/src/pages/desktop/DesktopToolbar.tsx`, `web/src/pages/DesktopPage.tsx` | web tests (`DesktopToolbar.test.ts`, `stage.test.ts`); browser check |
 | A user stop holds until an explicit start: the desktop socket, a terminal reconnect, and file requests do not start the VM; the Desktop page shows a calm stopped state, does not retry, and connects again after the start; an idle pause still wakes on use | done | `internal/vmm/controller.go`, `internal/desktop`, `internal/harness/manager.go`, `web/src/pages/desktop/stage.ts`, `web/src/api/socket.ts` | `TestUserStopHoldsUntilStart`, `TestWakeQueuedBehindAStopDoesNotBoot`, `TestDesktopSocketDoesNotStartAVMThatTheUserStopped`, `TestDesktopSocketDuringStopDoesNotStartTheVM`, `TestDesktopStreamEndedByAUserStopSaysStopped`, `TestStoppedVMIsStartedOnlyByANewSession`, `TestUserStopIsNotUndoneByAWakeOnDemand`, `TestIdlePausedMachineWakesOnDemand`; web tests (`stage.test.ts`, `desktopSignal.test.ts`, `socket.test.ts`) |
+| The user-stop hold survives a host restart (`vm_holds` in the state database); a failed or refused stop restores it; a host shutdown, `hibernate`, and the idle pause do not set it; an unreadable hold does not block a start | done | `internal/vmm/hold.go`, `internal/store/vmhold.go`, `internal/cli/wire_vm.go` | `TestUserStopHoldSurvivesAHostRestart`, `TestFailedStopRestoresTheStoredHold`, `TestShutdownAndHibernateDoNotHold`, `TestStoredHoldOfARunningVMIsDropped`, `TestBrokenHoldStoreDoesNotBlockAStart`, `TestVMHold` |
+| A live terminal ended by a user stop ends with the `stopped` error, not `exit -1`; the Files folder tree shows no error for the expected `503` while the VM is stopped and loads again after a start | done | `internal/harness/room.go`, `web/src/pages/files/folderNode.ts`, `web/src/pages/FilesPage.tsx` | `TestTerminalEndedByAUserStopSaysStopped`; web test `folderNode.test.ts` |
+| Guest link attempts that fail while the machine boots (HTTP 502 from the provider port) log at info level; one warning with the last cause when the link is still down after the boot time limit | done | `internal/vmm/link/run.go` | `TestBootTimeLinkFailuresAreInfo`, `TestLinkDownAfterBootTimeoutWarnsOnce` |
 | Studio: session list with harness and workspace filters, xterm.js | done | `web/src/pages/studio` | web tests; E2E (browser) |
 | Desktop: WebRTC video, overlay, Observer/Takeover, Chrome/Blender launch | done | `web/src/pages/desktop` | web tests; E2E (browser, signaling) |
 | Files: tree, editor, drag-and-drop upload, download, WebDAV dialog | done | `web/src/pages/files` | web tests; E2E (browser) |
@@ -464,6 +467,31 @@ against real providers.
 
 Not fixed: in Takeover mode, text inserted without key events (IME commit,
 paste) does not reach the guest; typed keys do.
+
+### User-stop run (2026-11-17)
+
+Setup as above (`docker:28-dind`, `linux/arm64` host binary,
+`lydiabox/guest:slim`), with `LYDIABOX_STORAGE_MODE=provider` (no S3, no
+`juicefs`) and without `magpie`. The checks used `curl`, a small WebSocket
+client, and the browser pane.
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| 1 | Studio: a live shell (`hello`, output `LIVE-42`), then `POST /vm/stop`: the terminal socket gets `error` `stopped` and close `1000`; the page shows "The VM is stopped." and does not reconnect; the session list shows `Exited`; the VM stays `STOPPED` | pass (after fix 1) |
+| 2 | Host restart while the user stop holds: the log shows "the VM stays stopped until a start"; the desktop socket gets `stopped`; `GET /fs/workspace/list` `503` logged at `INFO`; the VM stays `STOPPED` | pass |
+| 3 | Files page: Stop from the status bar; the folder tree shows no red error, also after a page reload; Wake loads the listing and the tree again without a reload | pass (after fix 2) |
+| 4 | `hibernate` (container paused), then a file list, a desktop socket, and a new session each wake the VM | pass |
+
+1. A live terminal ended by a user stop sent `exit` `-1`, and the terminal
+   showed "[process exited with code -1]". The room now sends `stopped`.
+2. The folder tree showed a red "Folder not loaded" for the expected `503`.
+3. A client that went away during `POST /vm/stop` cancelled the shutdown
+   (the request context reached `docker stop`), and the VM state stayed
+   `RUNNING` with the container gone until a forced stop. The stop now runs
+   to its end (limit 3 minutes, `TestVMStopOutlivesTheClient`).
+
+Not fixed: a file list that the browser cancels is logged as a `500` at
+error level (`client_gone=true`).
 
 ## Integration run (chv on KVM)
 

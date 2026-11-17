@@ -520,7 +520,7 @@ provider's `Retry-After`) before it tries again.
 | `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
 | `POST /api/v1/vm/wake` | Explicit start (`Start`): ends a user stop, then boots from `STOPPED` or resumes from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `504` after 120 s |
 | `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause | `200 VMStatus` (`PAUSED`) |
-| `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot` | `200 VMStatus` (`STOPPED`) |
+| `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot`. The stop runs to its end when the client goes away (limit 3 minutes) | `200 VMStatus` (`STOPPED`) |
 
 `409 conflict` when the transition is not possible (for example hibernate
 or stop while `STOPPED`). Routes that need the guest (sessions, desktop) wake the VM
@@ -534,8 +534,18 @@ mode answer at once (desktop and terminal: `error` message with `code`
 retry. Only `POST /api/v1/vm/wake` and `POST /api/v1/sessions` (a new or
 resumed session, which the user asked for) start the VM again. An idle
 pause (`PAUSED` by the idle timer or by InstaBox) is not a user stop: the
-next request wakes the machine. The hold is kept in memory: a restart of
-the host process forgets it.
+next request wakes the machine. A host shutdown and `hibernate` are not
+user stops either.
+
+The hold is a row in the `vm_holds` table of the host state database
+(`$DATA_DIR/state/lydiabox.db`: `tenant_id`, `held_at`), so a restart of
+the host process (a release, or the idle exit of a cell) keeps it; in a
+cell the state database backup carries it too. `stop` writes the row before
+the shutdown, and a failed or refused stop puts back the previous value;
+an explicit start deletes it. The host reads it after it reads the VM
+state and before it serves requests. When the row cannot be read, or the
+VM runs although the row is present (the stop did not finish), the VM is
+not held, so a start always works.
 
 ## 8. Sessions and PTY — implemented (Phase 3)
 
@@ -639,7 +649,9 @@ server sends an `error` message (`not_found`, `conflict` for a session that
 is idle or exited, `unavailable` when the VM cannot be woken) and closes the
 socket (`1008`, or `1013` for `unavailable`). When the user stopped the VM,
 the server sends `error` with `code` `stopped` and closes with `1000`; the
-socket does not start the VM, and the client does not reconnect. A terminal that survived a host
+socket does not start the VM, and the client does not reconnect. A live
+terminal that ends because the user stopped the VM also ends with this
+`stopped` error instead of an `exit` message. A terminal that survived a host
 restart is attached again from the guest. Invalid control messages give an
 `error` message with `code` `bad_request`; the socket stays open. A client
 that falls more than 512 frames behind is disconnected.
