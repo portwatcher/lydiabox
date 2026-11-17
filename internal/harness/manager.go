@@ -445,6 +445,15 @@ func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) 
 			return nil, fmt.Errorf("%w: wake VM: %w", ErrUnavailable, err)
 		}
 		pty, err := m.opts.Runner.AttachPTY(ctx, tenantID, x.PTYID)
+		if errors.Is(err, ErrNotFound) {
+			// The terminal is gone, for example because the machine booted
+			// fresh after a pause: the session ended.
+			sm.Status = StatusExited
+			if perr := m.opts.Store.UpsertSessionMeta(context.WithoutCancel(ctx), tenantID, sm); perr != nil {
+				m.log.Warn("persist session metadata", "harness", harness, "session", nativeID, "err", perr)
+			}
+			return nil, fmt.Errorf("%w: the terminal ended while the VM was paused or stopped", ErrConflict)
+		}
 		if err != nil {
 			break
 		}

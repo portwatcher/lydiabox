@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
 	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/lydiabox/lydiabox/internal/guest/rpc"
 	"github.com/lydiabox/lydiabox/internal/harness"
 	"github.com/lydiabox/lydiabox/internal/harness/adapters"
 	"github.com/lydiabox/lydiabox/internal/magpie"
@@ -130,6 +132,11 @@ func (g guestRunner) StartPTY(ctx context.Context, tenantID string, spec harness
 
 func (g guestRunner) AttachPTY(ctx context.Context, tenantID, id string) (harness.PTY, error) {
 	p, err := g.c.AttachPTY(ctx, tenantID, id)
+	if rpc.IsCode(err, rpc.CodeNotFound) {
+		// The guest has no such terminal (it ended, or the machine booted
+		// fresh after a pause).
+		return nil, fmt.Errorf("%w: %v", harness.ErrNotFound, err)
+	}
 	if err != nil {
 		return nil, err
 	}

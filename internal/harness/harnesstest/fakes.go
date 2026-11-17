@@ -6,6 +6,7 @@ package harnesstest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"sort"
@@ -247,7 +248,7 @@ func (r *Runner) AttachPTY(_ context.Context, _ string, id string) (harness.PTY,
 			return p, nil
 		}
 	}
-	return nil, errors.New("no such pty")
+	return nil, fmt.Errorf("%w: no such pty", harness.ErrNotFound)
 }
 
 // ListPTYs implements harness.PTYRunner.
