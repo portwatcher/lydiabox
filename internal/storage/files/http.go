@@ -1,6 +1,7 @@
 package files
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -28,10 +29,14 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc, MaxUploadBytes: 10 << 30}
 }
 
-// writeErr maps service errors to the JSON error envelope.
-func writeErr(w http.ResponseWriter, err error) {
+// writeErr maps service errors to the JSON error envelope. A request whose
+// client went away gets 499: the error is then a result of the
+// cancellation (context.Canceled, or a closed guest stream), not a fault.
+func writeErr(w http.ResponseWriter, r *http.Request, err error) {
 	status, code := http.StatusInternalServerError, httpx.CodeInternal
 	switch {
+	case errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled):
+		status, code = httpx.StatusClientClosedRequest, httpx.CodeCanceled
 	case errors.Is(err, ErrInvalidPath), errors.Is(err, ErrIsRoot), errors.Is(err, ErrNotDir),
 		errors.Is(err, ErrIsDir), errors.Is(err, ErrNotRegular):
 		status, code = http.StatusBadRequest, httpx.CodeBadRequest
@@ -71,7 +76,7 @@ func (h *Handler) Roots(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	self, entries, err := h.svc.List(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"root": r.PathValue("root"), "dir": self, "entries": entries})
@@ -81,7 +86,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Stat(w http.ResponseWriter, r *http.Request) {
 	e, err := h.svc.Stat(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, e)
@@ -91,7 +96,7 @@ func (h *Handler) Stat(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ReadText(w http.ResponseWriter, r *http.Request) {
 	tf, err := h.svc.ReadText(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, tf)
@@ -114,7 +119,7 @@ func (h *Handler) SaveText(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := h.svc.WriteText(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"), req.Content, req.BaseModTime)
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, e)
@@ -125,7 +130,7 @@ func (h *Handler) SaveText(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	f, err := h.svc.OpenFile(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"))
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	defer f.Close()
@@ -148,7 +153,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	tid, root := tenant.FromContext(r.Context()), r.PathValue("root")
 	dir, overwrite := r.URL.Query().Get("dir"), boolParam(r, "overwrite")
 	if _, err := CleanRel(dir); err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, h.MaxUploadBytes)
@@ -164,7 +169,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			uploadFailed(w, results, err)
+			uploadFailed(w, r, results, err)
 			return
 		}
 		if part.FormName() != "file" {
@@ -174,13 +179,13 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 		name, err := rawFilename(part.Header.Get("Content-Disposition"))
 		if err != nil {
 			part.Close()
-			uploadFailed(w, results, err)
+			uploadFailed(w, r, results, err)
 			return
 		}
 		res, err := h.svc.Upload(r.Context(), tid, root, dir, name, part, overwrite, h.MaxUploadBytes)
 		part.Close()
 		if err != nil {
-			uploadFailed(w, results, err)
+			uploadFailed(w, r, results, err)
 			return
 		}
 		results = append(results, res)
@@ -193,7 +198,7 @@ func (h *Handler) Upload(w http.ResponseWriter, r *http.Request) {
 }
 
 // uploadFailed reports the first failing file; files stored before it remain.
-func uploadFailed(w http.ResponseWriter, done []UploadResult, err error) {
+func uploadFailed(w http.ResponseWriter, r *http.Request, done []UploadResult, err error) {
 	var mbe *http.MaxBytesError
 	if errors.As(err, &mbe) {
 		err = fmt.Errorf("%w: upload exceeds %d bytes", ErrTooLarge, mbe.Limit)
@@ -201,7 +206,7 @@ func uploadFailed(w http.ResponseWriter, done []UploadResult, err error) {
 	if len(done) > 0 {
 		err = fmt.Errorf("%w (%d file(s) stored before the failure)", err, len(done))
 	}
-	writeErr(w, err)
+	writeErr(w, r, err)
 }
 
 // rawFilename returns the filename parameter without the base-name reduction
@@ -239,7 +244,7 @@ func (h *Handler) Mkdir(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := h.svc.Mkdir(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), req.Path, req.Parents)
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, e)
@@ -261,7 +266,7 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := h.svc.Rename(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), req.From, req.To, req.Overwrite)
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, e)
@@ -271,7 +276,7 @@ func (h *Handler) Rename(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	err := h.svc.Delete(r.Context(), tenant.FromContext(r.Context()), r.PathValue("root"), r.URL.Query().Get("path"), boolParam(r, "recursive"))
 	if err != nil {
-		writeErr(w, err)
+		writeErr(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

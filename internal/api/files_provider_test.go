@@ -3,13 +3,18 @@
 package api_test
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/agentfs/agentfstest"
 	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
+	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/lydiabox/lydiabox/internal/httpx"
 	"github.com/lydiabox/lydiabox/internal/storage/files"
 )
 
@@ -53,5 +58,32 @@ func TestFileAPIWakeTimeout(t *testing.T) {
 	resp, _ = e.do(t, "GET", "/api/v1/fs/workspace/list?path=..%2Fx", "", nil, nil)
 	if resp.StatusCode != 400 || g.Waker.Wakes() != wakes {
 		t.Fatalf("invalid path: %d, wakes %d -> %d", resp.StatusCode, wakes, g.Waker.Wakes())
+	}
+}
+
+// A file list that the browser cancels while the machine wakes is a 499,
+// not a 500 logged at the error level.
+func TestFileListClientGoneIsNotServerError(t *testing.T) {
+	g := agentfstest.Start(t, t.TempDir(), t.TempDir())
+	g.Waker.Set(time.Hour, nil)
+	h, buf := newLoggedServer(t, api.FilesRoutes{Handler: files.NewHandler(files.NewService(g.FS, files.Options{}))})
+	ctx, cancel := context.WithCancel(context.Background())
+	req := authed(http.MethodGet, "/api/v1/fs/workspace/list").WithContext(ctx)
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		h.ServeHTTP(rec, req)
+	}()
+	for g.Waker.Wakes() == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if rec.Code != httpx.StatusClientClosedRequest {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, httpx.StatusClientClosedRequest, rec.Body)
+	}
+	if strings.Contains(buf.String(), "level=ERROR") {
+		t.Fatalf("a closed request was logged as an error:\n%s", buf)
 	}
 }
