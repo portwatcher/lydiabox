@@ -1,11 +1,11 @@
-import { Monitor, Play, RotateCw } from "lucide-react";
+import { Monitor, Play, RotateCw, X } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { desktop } from "../api/domains";
 import { availabilityOf, describeError } from "../api/errors";
 import type { AgentAction, DesktopMode, LaunchApp } from "../api/types";
 import { ErrorView, LoadingView, StateView } from "../components/StateView";
 import { useToast } from "../components/Toast";
-import { Banner, Button, cx } from "../components/ui";
+import { Banner, Button, IconButton, cx } from "../components/ui";
 import { VmWakeButton } from "../components/VmPower";
 import { useSystem } from "../hooks/useSystem";
 import { splitLink } from "../lib/outage";
@@ -18,6 +18,9 @@ import { desktopStage, shouldConnect, shouldDisconnect } from "./desktop/stage";
 import { useDesktopStream } from "./desktop/useDesktopStream";
 import { useTakeoverInput } from "./desktop/useTakeoverInput";
 
+/** From this width the activity panel sits beside the stage; below it covers the stage. */
+const WIDE = "(min-width: 1024px)";
+
 export default function DesktopPage() {
   const toast = useToast();
   const { vmState, pending, refresh, fetchedAt, outage } = useSystem();
@@ -27,7 +30,15 @@ export default function DesktopPage() {
   }, []);
   const stream = useDesktopStream(onAction);
   const [probe, setProbe] = useState<{ state: "checking" | "ok" | "error"; error?: unknown }>({ state: "checking" });
-  const [sidebar, setSidebar] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  const [sidebar, setSidebar] = useState(() => window.matchMedia(WIDE).matches);
+  // Below 1024 px the activity panel covers the stage: it closes when the
+  // window becomes narrow, and shows again by default when it becomes wide.
+  useEffect(() => {
+    const mql = window.matchMedia(WIDE);
+    const onChange = (e: MediaQueryListEvent) => setSidebar(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
   const [modeBusy, setModeBusy] = useState(false);
   const [keyboardHeld, setKeyboardHeld] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -252,7 +263,10 @@ export default function DesktopPage() {
             aria-label="Agent activity"
             className="absolute inset-y-0 right-0 z-10 flex w-80 max-w-full flex-col border-l border-border-subtle bg-bg-subtle lg:static"
           >
-            <h2 className="border-b border-border-subtle px-4 py-3 text-sm font-semibold">Agent activity</h2>
+            <div className="flex items-center justify-between gap-2 border-b border-border-subtle py-1.5 ps-4 pe-2 lg:py-3 lg:pe-4">
+              <h2 className="text-sm font-semibold">Agent activity</h2>
+              <IconButton icon={X} label="Close agent activity" className="lg:hidden" onClick={() => setSidebar(false)} />
+            </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
               <ActionFeed feed={overlay.feed} />
             </div>
