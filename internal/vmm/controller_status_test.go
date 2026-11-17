@@ -2,6 +2,7 @@ package vmm
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -85,5 +86,22 @@ func TestStatusShowsAStartBlock(t *testing.T) {
 	d.until = time.Now().Add(-time.Second)
 	if st := c.Status("default"); st.StartBlockedUntil != nil {
 		t.Fatalf("past block = %v", st.StartBlockedUntil)
+	}
+}
+
+// TestAWorkingTransitionClearsAnOldError: after a failed pause, a stop that
+// works does not leave the pause error in the status.
+func TestAWorkingTransitionClearsAnOldError(t *testing.T) {
+	c := newCtl(t, &fakeDriver{}, 0, nil)
+	ctx := context.Background()
+	if err := c.EnsureRunning(ctx, "default"); err != nil {
+		t.Fatal(err)
+	}
+	c.recordError(c.tenant("default"), errors.New("pause failed"))
+	if err := c.Stop(ctx, "default", false); err != nil {
+		t.Fatal(err)
+	}
+	if st := c.Status("default"); st.LastError != "" {
+		t.Fatalf("after a stop: lastError %q", st.LastError)
 	}
 }

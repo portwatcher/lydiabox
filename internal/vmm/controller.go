@@ -430,6 +430,7 @@ func (c *Controller) hibernate(ctx context.Context, tid string, onlyIfIdle bool)
 		return fmt.Errorf("vmm: pause: %w", err)
 	}
 	c.setState(tid, t, StatePaused)
+	c.clearError(t)
 	return nil
 }
 
@@ -444,6 +445,14 @@ func (c *Controller) flush(ctx context.Context, tid string) error {
 		c.opts.Logger.Warn("guest filesystem sync failed", "tenant", tid, "err", err)
 	}
 	return err
+}
+
+// clearError forgets the error of an earlier failed transition after one
+// that worked, so the status does not show an old failure.
+func (c *Controller) clearError(t *tenantVM) {
+	c.mu.Lock()
+	t.lastError = ""
+	c.mu.Unlock()
 }
 
 func (c *Controller) recordError(t *tenantVM, err error) {
@@ -487,6 +496,7 @@ func (c *Controller) stop(ctx context.Context, tid string, t *tenantVM, force bo
 		return fmt.Errorf("vmm: shutdown: %w", err)
 	}
 	c.setState(tid, t, StateStopped)
+	c.clearError(t)
 	return nil
 }
 

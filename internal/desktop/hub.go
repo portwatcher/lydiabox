@@ -119,16 +119,24 @@ func (rl *Relay) pumpEvents(ctx context.Context, tid string) {
 	}
 }
 
+// modeTimeout bounds the guest call of ServeMode, so that a guest that does
+// not answer does not hold the page at "Loading desktop".
+const modeTimeout = 10 * time.Second
+
 // ServeMode handles GET and PUT /api/v1/desktop/mode.
 func (rl *Relay) ServeMode(w http.ResponseWriter, r *http.Request) {
 	tid := tenant.FromContext(r.Context())
-	if !rl.opts.Running(tid) {
+	if !rl.opts.Running(tid) || rl.opts.Paused(tid) || rl.opts.Stopped(tid) {
 		// An expected state, not a fault: the request log keeps it out of
-		// the error level.
+		// the error level. A VM that pauses or stops does not answer the
+		// guest call.
 		httpx.NoteExpected(w)
 		httpx.WriteError(w, http.StatusServiceUnavailable, httpx.CodeUnavailable, "VM is not running")
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), modeTimeout)
+	defer cancel()
+	r = r.WithContext(ctx)
 	var (
 		st  rpc.ModeState
 		err error
