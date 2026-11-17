@@ -67,9 +67,12 @@ type Room struct {
 	cols      uint16
 	rows      uint16
 	done      bool
-	vm        roomVM
-	onEnd     roomEnd
-	writeMu   sync.Mutex
+	// ending is set by the first of the pump and EndPaused to end the room;
+	// the other one then does nothing.
+	ending  bool
+	vm      roomVM
+	onEnd   roomEnd
+	writeMu sync.Mutex
 }
 
 // roomVM tells a room the state of its VM. A nil func reports false.
@@ -117,6 +120,10 @@ func (r *Room) pump(p PTY) {
 			break
 		}
 	}
+	if r.isEnding() {
+		// EndPaused ended the room at the pause; this is the old stream.
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	code, werr := p.Wait(ctx)
 	cancel()
@@ -133,26 +140,71 @@ func (r *Room) pump(p PTY) {
 	case werr != nil && r.vm.paused != nil && r.vm.paused():
 		// The pause cut the stream; the process keeps its memory in the
 		// guest. The clients attach again after the VM runs.
-		last = Frame{Control: CtlError{Type: "error", Code: CodeVMPaused, Message: "the VM was hibernated"}, Close: true}
+		last = pausedFrame
 		detached = true
-		// Release the lease and the live entry before the clients learn of
-		// the end, so that what they read next (VM status, session list, a
-		// new attach) no longer shows this room.
-		if r.onEnd.detached != nil {
-			r.onEnd.detached()
-		}
 	}
+	if !r.claimEnd() {
+		return
+	}
+	if detached {
+		r.detach()
+	}
+	r.finish(last)
+	if !detached && r.onEnd.exited != nil {
+		r.onEnd.exited(code)
+	}
+}
+
+var pausedFrame = Frame{Control: CtlError{Type: "error", Code: CodeVMPaused, Message: "the VM was hibernated"}, Close: true}
+
+// EndPaused ends the room because the host paused its VM. The process
+// keeps running in the paused guest; the clients get "paused" at once and
+// attach again after the VM runs. Without it a frozen guest (docker, chv)
+// would hold the stream open until a connection timeout.
+func (r *Room) EndPaused() {
+	if !r.claimEnd() {
+		return
+	}
+	r.detach()
+	r.finish(pausedFrame)
+}
+
+func (r *Room) isEnding() bool {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.ending
+}
+
+// claimEnd reports whether the caller is the first to end the room.
+func (r *Room) claimEnd() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ending {
+		return false
+	}
+	r.ending = true
+	return true
+}
+
+// detach releases the lease and the live entry before the clients learn of
+// the end, so that what they read next (VM status, session list, a new
+// attach) no longer shows this room.
+func (r *Room) detach() {
+	if r.onEnd.detached != nil {
+		r.onEnd.detached()
+	}
+}
+
+// finish sends the last frame and closes every client.
+func (r *Room) finish(last Frame) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.done = true
 	r.broadcastLocked(last)
 	for s := range r.subs {
 		s.close()
 	}
 	r.subs = map[*Subscriber]struct{}{}
-	r.mu.Unlock()
-	if !detached && r.onEnd.exited != nil {
-		r.onEnd.exited(code)
-	}
 }
 
 func (r *Room) broadcastLocked(f Frame) {

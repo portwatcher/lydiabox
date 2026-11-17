@@ -326,6 +326,23 @@ func (m *Manager) exited(ls *liveSession, code int) {
 	m.log.Info("harness session exited", "session", id, "code", code)
 }
 
+// Paused ends the live terminals of tenantID with "paused" after its VM
+// paused. Their processes keep running in the paused guest; a reconnect
+// after the wake attaches to them again.
+func (m *Manager) Paused(tenantID string) {
+	m.mu.Lock()
+	var rooms []*Room
+	for _, ls := range m.live {
+		if ls.tenantID == tenantID && ls.room != nil {
+			rooms = append(rooms, ls.room)
+		}
+	}
+	m.mu.Unlock()
+	for _, r := range rooms {
+		r.EndPaused()
+	}
+}
+
 // detached runs when a pause of the VM cut the stream of a live terminal.
 // The session stays running in the store with its PTY ID, so the next
 // Room call wakes the VM and attaches to the same PTY.

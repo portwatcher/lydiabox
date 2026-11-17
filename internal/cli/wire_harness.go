@@ -57,6 +57,16 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 		return nil, err
 	}
 
+	// A pause ends the live terminals at once with "paused", also where the
+	// driver keeps the connection open to a frozen guest (docker, chv).
+	if d.VM != nil && d.VM.hooks != nil {
+		d.VM.OnState(func(tid string, st vmm.State) {
+			if st == vmm.StatePaused {
+				mgr.Paused(tid)
+			}
+		})
+	}
+
 	// The guest LLM tunnel replaces guest credentials with the gateway key.
 	if d.VM != nil && d.VM.Gateway != nil {
 		d.VM.Gateway.SetInjectHeaders(sup.InjectHeaders)

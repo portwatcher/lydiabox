@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"sync"
 
 	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
@@ -39,6 +41,32 @@ type vmRuntime struct {
 	// 9002). wireHarness installs the magpie gateway key with
 	// Gateway.SetInjectHeaders.
 	Gateway *credproxy.HostGateway
+	// hooks run after every VM state change (wireHarness adds one).
+	hooks *stateHooks
+}
+
+// OnState adds fn to the functions that run after every VM state change,
+// outside the controller's locks. Add them while wiring, before Start.
+func (v *vmRuntime) OnState(fn func(tenantID string, st vmm.State)) { v.hooks.add(fn) }
+
+type stateHooks struct {
+	mu  sync.Mutex
+	fns []func(string, vmm.State)
+}
+
+func (h *stateHooks) add(fn func(string, vmm.State)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.fns = append(h.fns, fn)
+}
+
+func (h *stateHooks) run(tid string, st vmm.State) {
+	h.mu.Lock()
+	fns := slices.Clone(h.fns)
+	h.mu.Unlock()
+	for _, fn := range fns {
+		fn(tid, st)
+	}
 }
 
 // wireVM builds the VMM driver (chv or docker), the guest client, the
@@ -56,6 +84,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 	}
 	guest := guestclient.New(guestclient.Options{Dialer: drv, Logger: log})
 	remote := vmm.CapabilitiesOf(drv).Remote
+	hooks := &stateHooks{}
 	var holds vmm.HoldStore
 	if d.Store != nil {
 		// The hold of a user stop is in the state database, so a new host
@@ -85,6 +114,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 			if st == vmm.StateStopped || (remote && st == vmm.StateBooting) {
 				guest.Reset(tid)
 			}
+			hooks.run(tid, st)
 		},
 		CPUs: cfg.VM.CPUs, MemMB: cfg.VM.MemMB, GPU: cfg.VM.GPUPCIAddr, Logger: log,
 	})
@@ -97,7 +127,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 	if err != nil {
 		return nil, err
 	}
-	d.VM = &vmRuntime{Controller: ctl, Driver: drv, Gateway: gw}
+	d.VM = &vmRuntime{Controller: ctl, Driver: drv, Gateway: gw, hooks: hooks}
 	d.Guest = guest
 	d.VMStatus = ctl
 	if cfg.ProviderStorage() {

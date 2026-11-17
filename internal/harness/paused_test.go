@@ -131,3 +131,57 @@ func TestTerminalLostWhileRunningExits(t *testing.T) {
 		t.Fatalf("last frame: %#v", got)
 	}
 }
+
+// When the host pauses the VM, a live terminal ends at once with "paused",
+// although the stream to the frozen guest stays open (docker, chv); the
+// next attach after the wake shows the same process.
+func TestPauseEndsALiveTerminalAtOnce(t *testing.T) {
+	runner := &harnesstest.Runner{}
+	e := newEnv(t, runner)
+	ctx := context.Background()
+	w := &pauseWaker{Waker: &harnesstest.Waker{}}
+	mgr, err := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(), Files: localFiles(e.home, e.workspace),
+		Discovery: localDiscovery(e.home, e.workspace), Store: e.store, Runner: runner, Waker: w, Logger: quiet()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := mgr.Create(ctx, tenant, harness.CreateRequest{Harness: harness.Shell, WorkspaceDir: "/home/agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	room, err := mgr.Room(ctx, tenant, s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, _, _, _ := room.Subscribe()
+	w.paused.Store(true)
+	start := time.Now()
+	mgr.Paused(tenant)
+	if got, ok := lastControl(t, sub).(harness.CtlError); !ok || got.Code != harness.CodeVMPaused {
+		t.Fatalf("last frame after the pause: %#v", got)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("the terminal ended %s after the pause", d)
+	}
+	if n := w.Leases("pty"); n != 0 {
+		t.Fatalf("pty leases while paused: %d", n)
+	}
+	mgr.Paused(tenant) // nothing live: no effect
+	room2, err := mgr.Room(ctx, tenant, s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.PTYs()) != 1 || w.paused.Load() {
+		t.Fatalf("attach after the wake: ptys %d, paused %v", len(runner.PTYs()), w.paused.Load())
+	}
+	sub2, _, _, ok := room2.Subscribe()
+	if !ok {
+		t.Fatal("subscribe after the wake")
+	}
+	runner.Last().Emit([]byte("STILL-HERE"))
+	waitData(t, sub2, "STILL-HERE")
+	runner.Last().Exit(0)
+	if got, ok := lastControl(t, sub2).(harness.CtlExit); !ok || got.Code != 0 {
+		t.Fatalf("exit after the wake: %#v", got)
+	}
+}

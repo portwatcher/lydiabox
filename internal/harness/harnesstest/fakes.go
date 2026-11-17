@@ -79,13 +79,19 @@ func (p *PTY) Lose() {
 	_ = w.CloseWithError(errors.New("guest stream lost"))
 }
 
+// reattach gives a new attachment its own stream when the old one was
+// lost or closed (detached), as the guest does; the old stream ends.
 func (p *PTY) reattach() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.lost != nil {
-		p.r, p.w = io.Pipe()
-		p.lost = nil
+	if p.lost == nil && !p.closed {
+		p.mu.Unlock()
+		return
 	}
+	old := p.w
+	p.r, p.w = io.Pipe()
+	p.lost, p.closed = nil, false
+	p.mu.Unlock()
+	_ = old.CloseWithError(errors.New("attachment replaced"))
 }
 
 // Write implements harness.PTY.
