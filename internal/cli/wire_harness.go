@@ -154,6 +154,9 @@ func (w wakeOnly) EnsureRunning(ctx context.Context, tenantID string) error {
 	return w.w.EnsureRunning(ctx, tenantID)
 }
 
+// Held implements harness.VMHolder.
+func (w wakeOnly) Held(tenantID string) bool { return w.w.Held(tenantID) }
+
 // Start implements harness.VMStarter.
 func (w wakeOnly) Start(ctx context.Context, tenantID string) error {
 	return w.w.Start(ctx, tenantID)

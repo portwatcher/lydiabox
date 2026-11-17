@@ -289,7 +289,7 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 	}
 	ls.pty = pty
 	ls.startedAt = time.Now().UTC()
-	ls.room = newRoom(id, pty, cols, rows, func(code int) { m.exited(ls, code) })
+	ls.room = newRoom(id, pty, cols, rows, m.heldFunc(ls.tenantID), func(code int) { m.exited(ls, code) })
 	m.mu.Lock()
 	m.live[liveKey(ls.tenantID, id)] = ls
 	m.mu.Unlock()
@@ -435,7 +435,7 @@ func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) 
 		if la, ok := m.opts.Waker.(LeaseAcquirer); ok {
 			ls.release = la.AcquireLease(tenantID, "pty")
 		}
-		ls.room = newRoom(id, pty, 160, 48, func(code int) { m.exited(ls, code) })
+		ls.room = newRoom(id, pty, 160, 48, m.heldFunc(tenantID), func(code int) { m.exited(ls, code) })
 		m.mu.Lock()
 		m.live[liveKey(tenantID, id)] = ls
 		m.mu.Unlock()
@@ -445,6 +445,16 @@ func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) 
 		return nil, err
 	}
 	return nil, fmt.Errorf("%w: session %s has no running terminal; start it with POST /api/v1/sessions and resumeNativeId", ErrConflict, id)
+}
+
+// heldFunc reports whether the user stopped the VM of tenantID, when the
+// waker knows it (VMHolder).
+func (m *Manager) heldFunc(tenantID string) func() bool {
+	h, ok := m.opts.Waker.(VMHolder)
+	if !ok {
+		return nil
+	}
+	return func() bool { return h.Held(tenantID) }
 }
 
 func (m *Manager) sessionOf(ls *liveSession) Session {

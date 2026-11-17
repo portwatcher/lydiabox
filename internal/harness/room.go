@@ -68,11 +68,13 @@ type Room struct {
 	rows      uint16
 	done      bool
 	onExit    func(code int)
-	writeMu   sync.Mutex
+	// stopped reports whether the user stopped the VM (nil: never).
+	stopped func() bool
+	writeMu sync.Mutex
 }
 
-func newRoom(sessionID string, p PTY, cols, rows uint16, onExit func(int)) *Room {
-	r := &Room{sessionID: sessionID, pty: p, subs: map[*Subscriber]struct{}{}, cols: cols, rows: rows, onExit: onExit}
+func newRoom(sessionID string, p PTY, cols, rows uint16, stopped func() bool, onExit func(int)) *Room {
+	r := &Room{sessionID: sessionID, pty: p, subs: map[*Subscriber]struct{}{}, cols: cols, rows: rows, stopped: stopped, onExit: onExit}
 	r.appendRing(p.Replay())
 	go r.pump(p)
 	return r
@@ -106,10 +108,16 @@ func (r *Room) pump(p PTY) {
 	if werr != nil {
 		code = -1
 	}
+	last := Frame{Control: CtlExit{Type: "exit", Code: code}, Close: true}
+	if r.stopped != nil && r.stopped() {
+		// The terminal ended because the user stopped the VM: the clients
+		// show the stopped state and do not reconnect.
+		last = Frame{Control: CtlError{Type: "error", Code: CodeVMStopped, Message: "the VM was stopped"}, Close: true}
+	}
 	r.mu.Lock()
 	r.done = true
 	onExit := r.onExit
-	r.broadcastLocked(Frame{Control: CtlExit{Type: "exit", Code: code}, Close: true})
+	r.broadcastLocked(last)
 	for s := range r.subs {
 		s.close()
 	}

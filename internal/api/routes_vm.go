@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/agentfs"
+	"github.com/lydiabox/lydiabox/internal/harness"
 	"github.com/lydiabox/lydiabox/internal/httpx"
 	"github.com/lydiabox/lydiabox/internal/tenant"
 )
@@ -40,7 +41,7 @@ var ErrVMUnavailable = errors.New("vm: unavailable")
 // CodeVMStopped is the WebSocket error code (desktop and terminal sockets)
 // of a socket refused or ended because the user stopped the VM. Clients do
 // not reconnect after it.
-const CodeVMStopped = "stopped"
+const CodeVMStopped = harness.CodeVMStopped
 
 // ErrVMStopped marks a request that needs the VM while the user has
 // stopped it: only an explicit start (POST /api/v1/vm/wake) starts it

@@ -148,6 +148,18 @@ type VMStarter interface {
 	Start(ctx context.Context, tenantID string) error
 }
 
+// VMHolder is implemented by wakers that know whether the user stopped the
+// VM (vmm.Controller). A terminal that ends while the VM is held ends with
+// the CodeVMStopped error instead of an exit frame.
+type VMHolder interface {
+	Held(tenantID string) bool
+}
+
+// CodeVMStopped is the error code of a terminal socket that the server
+// refused or ended because the user stopped the VM (api.CodeVMStopped).
+// Clients do not reconnect after it.
+const CodeVMStopped = "stopped"
+
 // LeaseAcquirer is implemented by wakers that track activity leases. The
 // manager holds a "pty" lease for every live harness terminal.
 type LeaseAcquirer interface {
