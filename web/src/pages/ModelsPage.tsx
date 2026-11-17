@@ -102,7 +102,7 @@ export default function ModelsPage() {
                 Gateway {status.label.toLowerCase()}
               </Badge>
               <code>{gateway.data.addr}</code>
-              {gateway.data.version ? <span>magpie {gateway.data.version}</span> : null}
+              {gateway.data.version ? <span>version {gateway.data.version}</span> : null}
             </span>
           ) : gateway.error ? (
             <Badge tone="danger" icon={CircleAlert}>

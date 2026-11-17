@@ -93,7 +93,7 @@ func (a *HTTPAdmin) do(ctx context.Context, method, base, path string, body, out
 		return nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("magpie %s: decode response: %w", path, err)
+		return fmt.Errorf("model gateway %s: decode response: %w", path, err)
 	}
 	return nil
 }
@@ -117,16 +117,16 @@ func remoteError(status int, path string, data []byte) error {
 		// magpie keeps the account its own harness copy is signed in to.
 		return fmt.Errorf("%w: %s", ErrConflict, msg)
 	case status == http.StatusNotFound:
-		return fmt.Errorf("%w: magpie %s: %s", ErrNotFound, path, msg)
+		return fmt.Errorf("%w: model gateway %s: %s", ErrNotFound, path, msg)
 	case status == http.StatusBadRequest:
 		if strings.Contains(strings.ToLower(msg), "not found") {
 			return fmt.Errorf("%w: %s", ErrNotFound, msg)
 		}
 		return fmt.Errorf("%w: %s", ErrBadRequest, msg)
 	case status == http.StatusUnauthorized || status == http.StatusForbidden || status >= 500:
-		return fmt.Errorf("%w: magpie %s: HTTP %d: %s", ErrUnavailable, path, status, msg)
+		return fmt.Errorf("%w: %s: HTTP %d: %s", ErrUnavailable, path, status, msg)
 	}
-	return fmt.Errorf("magpie %s: HTTP %d: %s", path, status, msg)
+	return fmt.Errorf("model gateway %s: HTTP %d: %s", path, status, msg)
 }
 
 // Hello implements AdminAPI.

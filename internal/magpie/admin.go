@@ -8,7 +8,9 @@ import (
 // Error classes returned by the admin client and the models service. The
 // API layer maps them to HTTP status codes with errors.Is.
 var (
-	ErrUnavailable = errors.New("magpie is not available")
+	// Its text reaches the web (Models page), so it names the model
+	// gateway, not the program.
+	ErrUnavailable = errors.New("the model gateway is not available")
 	ErrNotFound    = errors.New("not found")
 	ErrBadRequest  = errors.New("bad request")
 )

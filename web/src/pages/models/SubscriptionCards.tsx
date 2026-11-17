@@ -127,7 +127,7 @@ export function SubscriptionCards({ subscriptions, onChanged }: SubscriptionCard
         title={removing ? `Remove ${removing.user}?` : "Remove account?"}
         confirmLabel="Remove account"
         failed="Account not removed"
-        body="magpie deletes the stored sign-in of this account from the host. Bindings and routing groups that use only this subscription stop working until you sign in again."
+        body="LydiaBox deletes the stored sign-in of this account from the host. Bindings and routing groups that use only this subscription stop working until you sign in again."
         onConfirm={async () => {
           if (!removing) {
             return;
