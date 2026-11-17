@@ -76,7 +76,7 @@ function VmResources() {
   const { vmStatus, status } = useSystem();
   const driver = vmStatus?.driver ?? status?.vm.driver;
   return (
-    <span className="hidden items-center gap-1.5 text-xs text-fg-muted tabular-nums lg:inline-flex">
+    <span className="hidden items-center gap-1.5 text-xs text-fg-muted tabular-nums xl:inline-flex">
       <Cpu aria-hidden className="size-4" />
       {vmStatus && vmStatus.cpus > 0 ? (
         <span>
@@ -107,7 +107,7 @@ function VmProblem() {
 export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
   const { error, status } = useSystem();
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle bg-bg-subtle px-3 py-2 sm:px-4">
+    <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle bg-bg-subtle px-3 py-2 sm:flex-nowrap sm:px-4">
       <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:gap-4">
         <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
           <img src="/favicon.svg" alt="LydiaBox" className="size-5" />
@@ -133,7 +133,7 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
           ))}
         </nav>
       </div>
-      <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="ml-auto flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 sm:flex-nowrap">
         {error && !status ? (
           <span role="status" className="inline-flex items-center gap-1.5 text-xs text-danger-fg">
             <CloudOff aria-hidden className="size-4" />
