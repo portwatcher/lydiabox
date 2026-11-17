@@ -525,6 +525,32 @@ and wake with its duration (`took`) and the link's `connect` time, and warns
 when a resume did not keep the processes
 (`TestInstaboxSlowResumeIsLogged`, `TestInstaboxFreshResumeEndsTheTerminal`).
 
+### Studio, Desktop, and Files through a power cycle (2026-11-17)
+
+Setup as in the user-stop run; the browser pane at 1024 x 768.
+
+| # | Step | Result |
+| :--- | :--- | :--- |
+| 1 | Studio: new shell (starts the VM), `echo PID=$$` gives `46`, Hibernate: "The VM is hibernating." within 3 s (before: about 50 s with `docker pause`) | pass (after fix 1) |
+| 2 | Resume: within 3 s the terminal attaches to the same shell, the list shows `Live` and no "Cached" label | pass (after fix 2) |
+| 3 | Stop: the list shows `Exited` at once; after Wake the terminal says "This terminal ended when the VM stopped." | pass (after fixes 2 and 3) |
+| 4 | Delete an ended shell: one click, no dialog | pass (after fix 4) |
+| 5 | Top bar while `RUNNING`, `PAUSED`, `STOPPED`: one line, the page does not move | pass (after fix 5) |
+| 6 | Files: Hibernate and Resume from the status bar; the tree and the listing stay | pass |
+| 7 | Desktop: paused shows "The VM is hibernating" and Start desktop; Takeover: the keyboard hint is in the toolbar, not on the screen | pass (after fix 6) |
+| 8 | Desktop: no WebRTC path in `dind`: "Starting the desktop stream…", then "Desktop video not connected" with Reconnect (before: a black screen without end) | pass (after fix 7) |
+
+1. The host ends live terminals with `paused` when the VM is `PAUSED`.
+2. The session list reloads on every VM state change and when a terminal
+   attaches.
+3. The stopped banner of a terminal changes when the VM runs again.
+4. An ended shell (no transcript) is deleted without a dialog.
+5. The top bar stays on one line from the `sm` width up (the CPU and
+   memory text shows from `xl`).
+6. The takeover hint moved into the toolbar.
+7. The stage is live only when the WebRTC peer is connected, and a failed
+   peer shows its own state.
+
 ## Integration run (chv on KVM)
 
 Date: 2026-11-10. Host: Apple M3 Pro (macOS 26), Lima 2.3.0 VM with

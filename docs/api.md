@@ -651,10 +651,12 @@ socket (`1008`, or `1013` for `unavailable`). When the user stopped the VM,
 the server sends `error` with `code` `stopped` and closes with `1000`; the
 socket does not start the VM, and the client does not reconnect. A live
 terminal that ends because the user stopped the VM also ends with this
-`stopped` error instead of an `exit` message. When a pause of the VM
-(`hibernate`, or an idle pause) cuts the stream of a live terminal, the
-process stays in the paused guest: the server sends `error` with `code`
-`paused` and closes with `1000`, and the session stays running. The client
+`stopped` error instead of an `exit` message. When the VM pauses
+(`hibernate`, an idle pause, or a pause by the provider), the process stays
+in the paused guest: the server sends `error` with `code` `paused` to each
+live terminal as soon as the VM is `PAUSED` (also where the connection to
+the frozen guest stays open, as with `docker` and `chv`), closes with
+`1000`, and the session stays running. The client
 does not reconnect at once (a new socket wakes the VM); it reconnects when
 the VM is `RUNNING` again and gets the same terminal. If the terminal did
 not survive (the provider resumed the machine without its memory), the
