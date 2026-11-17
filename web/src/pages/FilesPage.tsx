@@ -68,7 +68,8 @@ export default function FilesPage() {
   // In the provider storage mode the files are on the VM. The page lists
   // nothing by itself while the VM is not running: only an action of the
   // user (Start, Resume, open, upload, ...) starts or resumes it.
-  const vmAway = !mountable && vmState !== "RUNNING";
+  // Before the first status the storage mode is not known: wait for it.
+  const vmAway = status === null || (!mountable && vmState !== "RUNNING");
   const loader = useCallback((signal: AbortSignal) => files.list(root, dir, signal), [root, dir]);
   const listing = useResource(loader, { enabled: file === null && !vmAway });
   const reloadListing = listing.reload;
@@ -143,7 +144,9 @@ export default function FilesPage() {
   let content;
   if (file === null && vmAway) {
     content =
-      vmState === "BOOTING" ? (
+      status === null ? (
+        <LoadingView label="Loading files…" />
+      ) : vmState === "BOOTING" ? (
         <LoadingView label="Starting the VM…" />
       ) : (
         <StateView

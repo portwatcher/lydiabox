@@ -23,7 +23,7 @@ export const files = {
    * then does not start or resume the VM for them (provider storage mode).
    */
   list: (root: RootName, path: string, signal?: AbortSignal, auto = true) =>
-    sharedList(`${root}\n${path}\n${auto}`, (s) => http.get<ListResponse>(`${base(root)}/list`, { path, auto: auto || undefined }, s), signal),
+    sharedList(`${root}\n${path}\n${auto}`, (s) => http.get<ListResponse>(`${base(root)}/list`, { path, auto: auto ? 1 : undefined }, s), signal),
   stat: (root: RootName, path: string) => http.get<Entry>(`${base(root)}/stat`, { path }),
   readText: (root: RootName, path: string, signal?: AbortSignal) =>
     http.get<TextFile>(`${base(root)}/text`, { path }, signal),
