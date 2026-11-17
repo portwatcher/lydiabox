@@ -111,11 +111,14 @@ function VmSlow() {
   if (!slowStart) {
     return null;
   }
-  const message = "The VM provider is slow; this can take a few minutes.";
   return (
-    <span role="status" className="inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning-fg" title={message}>
+    <span
+      role="status"
+      className="inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning-fg"
+      title="The VM provider is slow to start or resume the VM. This can take a few minutes."
+    >
       <Hourglass aria-hidden className="size-4 shrink-0" />
-      <span className="truncate">{message}</span>
+      <span className="truncate">The VM provider is slow.</span>
     </span>
   );
 }
