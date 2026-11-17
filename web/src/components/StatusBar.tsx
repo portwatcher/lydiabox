@@ -126,33 +126,37 @@ function VmSlow() {
 export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
   const { error, status } = useSystem();
   return (
-    <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle bg-bg-subtle px-3 py-2 sm:flex-nowrap sm:px-4">
-      <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:gap-4">
+    // The bar keeps one row while everything fits; then the VM group wraps
+    // as a whole to a second row, so every tab stays in view. Below 640 px
+    // the tabs fill the first row as five equal columns.
+    <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle bg-bg-subtle px-3 py-2 sm:px-4">
+      <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0 sm:gap-4">
         <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
           <img src="/favicon.svg" alt="LydiaBox" className="size-5" />
           <span className="hidden sm:inline" aria-hidden>
             LydiaBox
           </span>
         </span>
-        <nav aria-label="Workspace" className="-my-1 flex min-w-0 flex-1 gap-0.5 overflow-x-auto sm:gap-1">
+        <nav aria-label="Workspace" className="-my-1 grid min-w-0 flex-1 grid-cols-5 gap-0.5 sm:flex sm:flex-none sm:gap-1">
           {tabs.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
                 cx(
-                  "inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium whitespace-nowrap transition-colors duration-150 sm:px-2.5",
+                  "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1 text-[11px] leading-tight font-medium whitespace-nowrap transition-colors duration-150",
+                  "sm:h-8 sm:flex-row sm:gap-1.5 sm:px-2.5 sm:py-0 sm:text-[13px]",
                   isActive ? "bg-surface-active text-fg" : "text-fg-muted hover:bg-surface-hover hover:text-fg",
                 )
               }
             >
-              <Icon aria-hidden className="hidden size-4 sm:block" />
+              <Icon aria-hidden className="size-4 shrink-0 sm:hidden lg:block" />
               {label}
             </NavLink>
           ))}
         </nav>
       </div>
-      <div className="ml-auto flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 sm:flex-nowrap">
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
         {error && !status ? (
           <span role="status" className="inline-flex items-center gap-1.5 text-xs text-danger-fg">
             <CloudOff aria-hidden className="size-4" />
