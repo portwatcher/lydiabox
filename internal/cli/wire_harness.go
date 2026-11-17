@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
 	"github.com/lydiabox/lydiabox/internal/api"
@@ -61,8 +62,19 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	// driver keeps the connection open to a frozen guest (docker, chv).
 	if d.VM != nil && d.VM.hooks != nil {
 		d.VM.OnState(func(tid string, st vmm.State) {
-			if st == vmm.StatePaused {
+			switch st {
+			case vmm.StatePaused:
 				mgr.Paused(tid)
+			case vmm.StateRunning:
+				// Terminals that a host restart, a lost link, or a pause
+				// detached become live again; ended ones become exited.
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), reconcileTimeout)
+					defer cancel()
+					if err := mgr.Reconcile(ctx, tid); err != nil {
+						log.Info("reconcile the guest terminals", "err", err)
+					}
+				}()
 			}
 		})
 	}
@@ -141,7 +153,24 @@ func (g guestRunner) StartPTY(ctx context.Context, tenantID string, spec harness
 }
 
 func (g guestRunner) AttachPTY(ctx context.Context, tenantID, id string) (harness.PTY, error) {
-	p, err := g.c.AttachPTY(ctx, tenantID, id)
+	return attachResult(g.c.AttachPTY(ctx, tenantID, id))
+}
+
+// AttachRunningPTY implements harness.RunningAttacher.
+func (g guestRunner) AttachRunningPTY(ctx context.Context, tenantID, id string) (harness.PTY, error) {
+	return attachResult(g.c.AttachRunningPTY(ctx, tenantID, id))
+}
+
+// KillPTY implements harness.PTYKiller.
+func (g guestRunner) KillPTY(ctx context.Context, tenantID, id string) error {
+	err := g.c.KillPTY(ctx, tenantID, id)
+	if rpc.IsCode(err, rpc.CodeNotFound) {
+		return fmt.Errorf("%w: %v", harness.ErrNotFound, err)
+	}
+	return err
+}
+
+func attachResult(p guestclient.PTY, err error) (harness.PTY, error) {
 	if rpc.IsCode(err, rpc.CodeNotFound) {
 		// The guest has no such terminal (it ended, or the machine booted
 		// fresh after a pause).
@@ -160,7 +189,7 @@ func (g guestRunner) ListPTYs(ctx context.Context, tenantID string) ([]harness.P
 	}
 	out := make([]harness.PTYInfo, 0, len(infos))
 	for _, i := range infos {
-		out = append(out, harness.PTYInfo{ID: i.ID, Command: i.Command, Dir: i.Dir, Running: i.Running, ExitCode: i.ExitCode})
+		out = append(out, harness.PTYInfo{ID: i.ID, Command: i.Command, Dir: i.Dir, Running: i.Running, ExitCode: i.ExitCode, ExitedAt: i.ExitedAt})
 	}
 	return out, nil
 }
@@ -185,4 +214,9 @@ func (w wakeOnly) Start(ctx context.Context, tenantID string) error {
 var (
 	_ harness.VMHolder        = wakeOnly{}
 	_ harness.VMPauseReporter = wakeOnly{}
+	_ harness.RunningAttacher = guestRunner{}
+	_ harness.PTYKiller       = guestRunner{}
 )
+
+// reconcileTimeout bounds one reconcile of the guest terminals.
+const reconcileTimeout = time.Minute

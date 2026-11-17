@@ -100,9 +100,10 @@ func (s SessionsRoutes) ws(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var err error
-			if f.Control != nil {
+			switch {
+			case f.Control != nil:
 				err = writeControl(ctx, conn, f.Control)
-			} else {
+			case f.Data != nil:
 				err = writeBinary(ctx, conn, f.Data)
 			}
 			if err != nil {

@@ -106,8 +106,11 @@ func TestTerminalCutByAPauseAttachesAgain(t *testing.T) {
 	}
 }
 
-// A stream that ends while the VM runs is an exit, as before.
-func TestTerminalLostWhileRunningExits(t *testing.T) {
+// A stream that ends without an exit status while the VM runs (the host
+// shuts down, or the guest link dropped) does not end the session: the
+// room closes without a fake exit code, and the next attach shows the
+// same process.
+func TestTerminalLostWhileRunningStaysRunning(t *testing.T) {
 	runner := &harnesstest.Runner{}
 	e := newEnv(t, runner)
 	ctx := context.Background()
@@ -127,9 +130,19 @@ func TestTerminalLostWhileRunningExits(t *testing.T) {
 	}
 	sub, _, _, _ := room.Subscribe()
 	runner.Last().Lose()
-	if got, ok := lastControl(t, sub).(harness.CtlExit); !ok || got.Code != -1 {
-		t.Fatalf("last frame: %#v", got)
+	if got := lastControl(t, sub); got != nil {
+		t.Fatalf("last control frame %#v, want none", got)
 	}
+	if got, err := mgr.Get(ctx, tenant, s.ID); err != nil || got.Status == harness.StatusExited {
+		t.Fatalf("session after a lost stream: %+v %v", got, err)
+	}
+	room2, err := mgr.Room(ctx, tenant, s.ID)
+	if err != nil || len(runner.PTYs()) != 1 {
+		t.Fatalf("attach after a lost stream: %v, %d ptys", err, len(runner.PTYs()))
+	}
+	sub2, _, _, _ := room2.Subscribe()
+	runner.Last().Emit([]byte("STILL-HERE"))
+	waitData(t, sub2, "STILL-HERE")
 }
 
 // When the host pauses the VM, a live terminal ends at once with "paused",

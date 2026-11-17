@@ -35,13 +35,23 @@ type PTY interface {
 	Close() error
 }
 
-// AttachPTY attaches to a running or exited PTY.
+// AttachPTY attaches to a running or exited PTY. It wakes the VM.
 func (c *Client) AttachPTY(ctx context.Context, tenantID, id string) (PTY, error) {
+	return c.attachPTY(ctx, tenantID, id, true)
+}
+
+// AttachRunningPTY is AttachPTY without a wake: it fails when the VM does
+// not run.
+func (c *Client) AttachRunningPTY(ctx context.Context, tenantID, id string) (PTY, error) {
+	return c.attachPTY(ctx, tenantID, id, false)
+}
+
+func (c *Client) attachPTY(ctx context.Context, tenantID, id string, wake bool) (PTY, error) {
 	var (
 		st  *rpc.Stream
 		res rpc.PTYAttachResult
 	)
-	err := c.do(ctx, tenantID, true, func(s *rpc.Session) error {
+	err := c.do(ctx, tenantID, wake, func(s *rpc.Session) error {
 		stream, raw, err := s.Open(ctx, rpc.MethodPTYAttach, rpc.PTYIDParams{ID: id})
 		if err != nil {
 			return err

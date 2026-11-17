@@ -90,6 +90,8 @@ type extra struct {
 	PTYID       string    `json:"ptyId,omitempty"`
 	Provisional bool      `json:"provisional,omitempty"`
 	StartedAt   time.Time `json:"startedAt,omitempty"`
+	// EndedAt is when the terminal ended (exited sessions).
+	EndedAt time.Time `json:"endedAt,omitzero"`
 }
 
 type liveSession struct {
@@ -102,6 +104,7 @@ type liveSession struct {
 	provisional bool
 	ptyID       string
 	startedAt   time.Time
+	endedAt     time.Time
 	room        *Room
 	pty         PTY
 	release     func()
@@ -117,6 +120,11 @@ type Manager struct {
 	mu      sync.Mutex
 	live    map[string]*liveSession // by tenant + "\x00" + session ID
 	aliases map[string]string       // provisional key -> adopted key
+	// starting holds the guest PTY IDs of starts in progress, so that
+	// Reconcile does not take a new terminal for an orphan.
+	starting map[string]bool
+
+	reconcileMu sync.Mutex
 }
 
 // NewManager validates opts.
@@ -143,7 +151,7 @@ func NewManager(opts ManagerOptions) (*Manager, error) {
 		opts.WakeTimeout = 120 * time.Second
 	}
 	m := &Manager{opts: opts, log: opts.Logger.With("component", "harness"), adapters: map[string]Adapter{},
-		live: map[string]*liveSession{}, aliases: map[string]string{}}
+		live: map[string]*liveSession{}, aliases: map[string]string{}, starting: map[string]bool{}}
 	for _, a := range opts.Adapters {
 		m.adapters[a.Name()] = a
 	}
@@ -277,6 +285,14 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 		maps.Copy(env, m.opts.Wiring.Env(ls.harness))
 	}
 	ls.ptyID = randomID("lbx-")
+	m.mu.Lock()
+	m.starting[ls.ptyID] = true
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		delete(m.starting, ls.ptyID)
+		m.mu.Unlock()
+	}()
 	pty, err := m.opts.Runner.StartPTY(ctx, ls.tenantID, PTYSpec{ID: ls.ptyID, Command: cmd, Dir: ls.workspace, Env: env, Cols: cols, Rows: rows})
 	if err != nil {
 		if ls.release != nil {
@@ -299,7 +315,7 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 }
 
 func (m *Manager) persist(ctx context.Context, ls *liveSession, status string) {
-	x, _ := json.Marshal(extra{PTYID: ls.ptyID, Provisional: ls.provisional, StartedAt: ls.startedAt})
+	x, _ := json.Marshal(extra{PTYID: ls.ptyID, Provisional: ls.provisional, StartedAt: ls.startedAt, EndedAt: ls.endedAt})
 	err := m.opts.Store.UpsertSessionMeta(ctx, ls.tenantID, store.SessionMeta{Harness: ls.harness, SessionID: ls.nativeID,
 		WorkspaceDir: ls.workspace, Title: ls.title, Model: ls.model, Status: status, Extra: x})
 	if err != nil {
@@ -321,6 +337,7 @@ func (m *Manager) exited(ls *liveSession, code int) {
 		ls.release = nil
 	}
 	if !deleted {
+		ls.endedAt = time.Now().UTC()
 		m.persist(context.Background(), ls, StatusExited)
 	}
 	m.log.Info("harness session exited", "session", id, "code", code)
@@ -358,7 +375,7 @@ func (m *Manager) detached(ls *liveSession) {
 		ls.release = nil
 	}
 	_ = ls.pty.Close()
-	m.log.Info("harness terminal detached by a VM pause", "session", id)
+	m.log.Info("harness terminal detached; the session stays running", "session", id)
 }
 
 // lookupLive returns the live session for an API ID (following aliases).
@@ -410,6 +427,9 @@ func (m *Manager) Delete(ctx context.Context, tenantID, id string, purge bool) e
 		if _, err := m.Get(ctx, tenantID, id); err != nil {
 			return err
 		}
+		// A terminal that is not attached (after a host restart or a
+		// pause) still runs in the guest: end it.
+		m.killStored(ctx, tenantID, harness, nativeID)
 	} else {
 		harness, nativeID = ls.harness, ls.nativeID
 		m.mu.Lock()
@@ -461,29 +481,14 @@ func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) 
 			// A VM that the user stopped is not started for a reconnect.
 			return nil, fmt.Errorf("%w: wake VM: %w", ErrUnavailable, err)
 		}
-		pty, err := m.opts.Runner.AttachPTY(ctx, tenantID, x.PTYID)
+		room, err := m.attachStored(ctx, tenantID, sm, x, m.opts.Runner.AttachPTY)
 		if errors.Is(err, ErrNotFound) {
-			// The terminal is gone, for example because the machine booted
-			// fresh after a pause: the session ended.
-			sm.Status = StatusExited
-			if perr := m.opts.Store.UpsertSessionMeta(context.WithoutCancel(ctx), tenantID, sm); perr != nil {
-				m.log.Warn("persist session metadata", "harness", harness, "session", nativeID, "err", perr)
-			}
 			return nil, fmt.Errorf("%w: the terminal ended while the VM was paused or stopped", ErrConflict)
 		}
 		if err != nil {
 			break
 		}
-		ls := &liveSession{tenantID: tenantID, harness: harness, nativeID: nativeID, workspace: sm.WorkspaceDir,
-			model: sm.Model, title: sm.Title, provisional: x.Provisional, ptyID: x.PTYID, startedAt: x.StartedAt, pty: pty}
-		if la, ok := m.opts.Waker.(LeaseAcquirer); ok {
-			ls.release = la.AcquireLease(tenantID, "pty")
-		}
-		ls.room = newRoom(id, pty, 160, 48, m.roomVM(tenantID), m.roomEnd(ls))
-		m.mu.Lock()
-		m.live[liveKey(tenantID, id)] = ls
-		m.mu.Unlock()
-		return ls.room, nil
+		return room, nil
 	}
 	if _, err := m.Get(ctx, tenantID, id); err != nil {
 		return nil, err

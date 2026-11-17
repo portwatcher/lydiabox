@@ -202,10 +202,10 @@ func (c *Client) StartPTY(ctx context.Context, tenantID string, spec PTYSpec) (P
 	return c.AttachPTY(ctx, tenantID, info.ID)
 }
 
-// ListPTYs lists the guest PTYs.
+// ListPTYs lists the guest PTYs. It does not wake the VM.
 func (c *Client) ListPTYs(ctx context.Context, tenantID string) ([]PTYInfo, error) {
 	var res rpc.PTYListResult
-	if err := c.call(ctx, tenantID, true, rpc.MethodPTYList, nil, &res); err != nil {
+	if err := c.call(ctx, tenantID, false, rpc.MethodPTYList, nil, &res); err != nil {
 		return nil, err
 	}
 	for _, info := range res.PTYs {

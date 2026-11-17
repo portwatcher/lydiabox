@@ -108,6 +108,8 @@ type PTYInfo struct {
 	Dir      string
 	Running  bool
 	ExitCode int
+	// ExitedAt is when the process ended (zero while it runs).
+	ExitedAt time.Time
 }
 
 // PTY is one terminal in the guest. Read returns io.EOF after the process

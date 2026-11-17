@@ -34,6 +34,7 @@ type PTY struct {
 	closed  bool
 	code    int
 	done    chan struct{}
+	exitAt  time.Time
 	// lost is closed while the stream is lost (Lose) and the process runs.
 	lost chan struct{}
 	// IgnoreSIGINT makes the process survive SIGINT (it still exits on
@@ -173,6 +174,7 @@ func (p *PTY) Exit(code int) {
 	default:
 	}
 	p.code = code
+	p.exitAt = time.Now().UTC()
 	close(p.done)
 	w := p.w
 	p.mu.Unlock()
@@ -263,9 +265,44 @@ func (r *Runner) ListPTYs(context.Context, string) ([]harness.PTYInfo, error) {
 	defer r.mu.Unlock()
 	out := make([]harness.PTYInfo, 0, len(r.ptys))
 	for _, p := range r.ptys {
-		out = append(out, harness.PTYInfo{ID: p.id, Command: p.Spec.Command, Dir: p.Spec.Dir, Running: !p.Exited()})
+		p.mu.Lock()
+		exitAt := p.exitAt
+		p.mu.Unlock()
+		out = append(out, harness.PTYInfo{ID: p.id, Command: p.Spec.Command, Dir: p.Spec.Dir, Running: !p.Exited(), ExitedAt: exitAt})
 	}
 	return out, nil
+}
+
+// AttachRunningPTY implements harness.RunningAttacher.
+func (r *Runner) AttachRunningPTY(ctx context.Context, tenantID, id string) (harness.PTY, error) {
+	return r.AttachPTY(ctx, tenantID, id)
+}
+
+// KillPTY implements harness.PTYKiller: the process ends with -9.
+func (r *Runner) KillPTY(_ context.Context, _ string, id string) error {
+	r.mu.Lock()
+	var target *PTY
+	for _, p := range r.ptys {
+		if p.id == id {
+			target = p
+		}
+	}
+	r.mu.Unlock()
+	if target == nil {
+		return fmt.Errorf("%w: no such pty", harness.ErrNotFound)
+	}
+	target.Exit(-9)
+	return nil
+}
+
+// AddPTY adds a running PTY that no session started (a guest terminal of
+// before a host restart, or one without a session).
+func (r *Runner) AddPTY(id string) *PTY {
+	p := newPTY(harness.PTYSpec{ID: id, Command: []string{"bash"}}, nil)
+	r.mu.Lock()
+	r.ptys = append(r.ptys, p)
+	r.mu.Unlock()
+	return p
 }
 
 // PTYs returns every PTY started so far.

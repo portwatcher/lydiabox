@@ -134,6 +134,10 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 		if sm.UpdatedAt.After(s.UpdatedAt) {
 			s.UpdatedAt = sm.UpdatedAt
 		}
+		if sm.Status == StatusExited && !x.EndedAt.IsZero() {
+			// The time of an ended session is its end, not its last activity.
+			s.UpdatedAt = x.EndedAt
+		}
 	}
 	m.mu.Lock()
 	for _, ls := range m.live {

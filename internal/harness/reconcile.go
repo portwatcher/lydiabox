@@ -1,0 +1,179 @@
+package harness
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/lydiabox/lydiabox/internal/store"
+)
+
+// RunningAttacher is implemented by runners that can attach to a guest
+// PTY without waking the VM (guestRunner). Reconcile uses it, so that a
+// reconcile never resumes a VM that pauses.
+type RunningAttacher interface {
+	AttachRunningPTY(ctx context.Context, tenantID, id string) (PTY, error)
+}
+
+// PTYKiller is implemented by runners that can end a guest PTY by ID
+// without an attachment and without waking the VM (guestRunner).
+type PTYKiller interface {
+	KillPTY(ctx context.Context, tenantID, id string) error
+}
+
+// ptyPrefix starts the IDs of the guest PTYs that this manager starts.
+const ptyPrefix = "lbx-"
+
+// attachStored attaches a terminal to the guest PTY of a session stored as
+// running (after a host restart, a lost stream, or a pause) and makes it
+// live. A PTY that the guest no longer has marks the session exited and
+// returns an error that wraps ErrNotFound.
+func (m *Manager) attachStored(ctx context.Context, tenantID string, sm store.SessionMeta, x extra,
+	attach func(ctx context.Context, tenantID, id string) (PTY, error)) (*Room, error) {
+	id := SessionID(sm.Harness, sm.SessionID)
+	pty, err := attach(ctx, tenantID, x.PTYID)
+	if errors.Is(err, ErrNotFound) {
+		m.markExited(ctx, tenantID, sm, x, time.Now().UTC())
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	ls := &liveSession{tenantID: tenantID, harness: sm.Harness, nativeID: sm.SessionID, workspace: sm.WorkspaceDir,
+		model: sm.Model, title: sm.Title, provisional: x.Provisional, ptyID: x.PTYID, startedAt: x.StartedAt, pty: pty}
+	m.mu.Lock()
+	if cur := m.live[liveKey(tenantID, id)]; cur != nil {
+		// Another attach won the race; keep it.
+		m.mu.Unlock()
+		_ = pty.Close()
+		return cur.room, nil
+	}
+	if la, ok := m.opts.Waker.(LeaseAcquirer); ok {
+		ls.release = la.AcquireLease(tenantID, "pty")
+	}
+	ls.room = newRoom(id, pty, 160, 48, m.roomVM(tenantID), m.roomEnd(ls))
+	m.live[liveKey(tenantID, id)] = ls
+	m.mu.Unlock()
+	m.log.Info("harness terminal attached again", "session", id, "pty", x.PTYID)
+	return ls.room, nil
+}
+
+// markExited records that the terminal of a stored session ended at end.
+func (m *Manager) markExited(ctx context.Context, tenantID string, sm store.SessionMeta, x extra, end time.Time) {
+	x.EndedAt = end.UTC()
+	raw, _ := json.Marshal(x)
+	sm.Status, sm.Extra = StatusExited, raw
+	if err := m.opts.Store.UpsertSessionMeta(context.WithoutCancel(ctx), tenantID, sm); err != nil {
+		m.log.Warn("persist session metadata", "harness", sm.Harness, "session", sm.SessionID, "err", err)
+		return
+	}
+	m.log.Info("harness session exited", "session", SessionID(sm.Harness, sm.SessionID), "pty", x.PTYID)
+}
+
+// Reconcile brings the stored sessions in line with the PTYs that the
+// guest has. Call it while the VM runs (it does not wake the VM):
+//   - a session stored as running whose PTY runs is attached again and is
+//     live (a host restart or a lost stream does not end a terminal);
+//   - a session stored as running whose PTY ended or is gone is exited,
+//     with the guest's end time when the guest still knows it;
+//   - a running guest PTY that this manager started (ID "lbx-") and that
+//     no stored session and no start in progress refers to is ended: its
+//     session was deleted while the host could not reach the guest.
+func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
+	m.reconcileMu.Lock()
+	defer m.reconcileMu.Unlock()
+	// The PTYs first: a PTY in this list was registered in m.starting
+	// before it started, and it stays in m.starting until m.live and the
+	// store have it.
+	ptys, err := m.opts.Runner.ListPTYs(ctx, tenantID)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]PTYInfo, len(ptys))
+	for _, p := range ptys {
+		byID[p.ID] = p
+	}
+	metas, err := m.opts.Store.ListSessionMeta(ctx, tenantID, "")
+	if err != nil {
+		return err
+	}
+	attach := m.opts.Runner.AttachPTY
+	if ra, ok := m.opts.Runner.(RunningAttacher); ok {
+		attach = ra.AttachRunningPTY
+	}
+	referenced := map[string]bool{}
+	for _, sm := range metas {
+		var x extra
+		_ = json.Unmarshal(sm.Extra, &x)
+		if x.PTYID == "" {
+			continue
+		}
+		referenced[x.PTYID] = true
+		if sm.Status != StatusRunning || m.lookupLive(tenantID, SessionID(sm.Harness, sm.SessionID)) != nil {
+			continue
+		}
+		info, ok := byID[x.PTYID]
+		switch {
+		case ok && info.Running:
+			if _, err := m.attachStored(ctx, tenantID, sm, x, attach); err != nil && !errors.Is(err, ErrNotFound) {
+				m.log.Warn("attach a guest terminal again", "session", SessionID(sm.Harness, sm.SessionID), "err", err)
+			}
+		case ok && !info.ExitedAt.IsZero():
+			m.markExited(ctx, tenantID, sm, x, info.ExitedAt)
+		default:
+			m.markExited(ctx, tenantID, sm, x, time.Now())
+		}
+	}
+	m.mu.Lock()
+	busy := make(map[string]bool, len(m.starting)+len(m.live))
+	for id := range m.starting {
+		busy[id] = true
+	}
+	for _, ls := range m.live {
+		busy[ls.ptyID] = true
+	}
+	m.mu.Unlock()
+	killer, canKill := m.opts.Runner.(PTYKiller)
+	for _, p := range ptys {
+		if !p.Running || !strings.HasPrefix(p.ID, ptyPrefix) || referenced[p.ID] || busy[p.ID] || !canKill {
+			continue
+		}
+		if err := killer.KillPTY(ctx, tenantID, p.ID); err != nil {
+			m.log.Warn("end a guest terminal without a session", "pty", p.ID, "err", err)
+			continue
+		}
+		m.log.Info("ended a guest terminal without a session", "pty", p.ID, "command", p.Command)
+	}
+	return nil
+}
+
+// killStored ends the guest PTY of a stored session that is not live (its
+// terminal was detached, or the host restarted). It does not wake the VM;
+// when the guest cannot be reached, Reconcile ends the PTY later, because
+// no session refers to it any more.
+func (m *Manager) killStored(ctx context.Context, tenantID, harness, nativeID string) {
+	killer, ok := m.opts.Runner.(PTYKiller)
+	if !ok {
+		return
+	}
+	metas, err := m.opts.Store.ListSessionMeta(ctx, tenantID, harness)
+	if err != nil {
+		return
+	}
+	for _, sm := range metas {
+		if sm.SessionID != nativeID || sm.Status != StatusRunning {
+			continue
+		}
+		var x extra
+		_ = json.Unmarshal(sm.Extra, &x)
+		if x.PTYID == "" {
+			return
+		}
+		if err := killer.KillPTY(ctx, tenantID, x.PTYID); err != nil && !errors.Is(err, ErrNotFound) {
+			m.log.Info("end the guest terminal of a deleted session later", "pty", x.PTYID, "err", err)
+		}
+		return
+	}
+}

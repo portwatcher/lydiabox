@@ -142,6 +142,13 @@ func (r *Room) pump(p PTY) {
 		// guest. The clients attach again after the VM runs.
 		last = pausedFrame
 		detached = true
+	case werr != nil:
+		// The stream ended without an exit status (the host shuts down,
+		// or the guest link dropped): the process may still run. The
+		// session stays running; the clients reconnect, and a new attach
+		// (or Reconcile) finds out whether the process lives.
+		last = Frame{Close: true}
+		detached = true
 	}
 	if !r.claimEnd() {
 		return
