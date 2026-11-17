@@ -14,7 +14,7 @@ import { useSystem } from "../hooks/useSystem";
 import { harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { SessionList } from "./studio/SessionList";
-import { becameRunning, deletesWithoutConfirm } from "./studio/sessionActions";
+import { deletesWithoutConfirm, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
 import { TerminalView } from "./studio/TerminalView";
 
@@ -46,12 +46,12 @@ export default function StudioPage() {
   const cachedAt = list.data?.cached ? (list.data.cachedAt ?? "") : null;
   const reloadList = list.reload;
 
-  // When the VM runs again (start, wake, resume), the guest can be scanned
-  // again and terminals attach: load a fresh list at once.
+  // A stop or pause ends live terminals; a start or resume lets the guest be
+  // scanned again: load a fresh list at once.
   const { vmState } = useSystem();
   const prevState = useRef(vmState);
   useEffect(() => {
-    if (becameRunning(prevState.current, vmState)) {
+    if (listOutOfDate(prevState.current, vmState)) {
       reloadList();
     }
     prevState.current = vmState;

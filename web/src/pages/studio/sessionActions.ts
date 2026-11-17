@@ -1,8 +1,12 @@
 import type { Session, VMState } from "../../api/types";
 
-/** The VM runs again (start, wake, resume): the session list is out of date. */
-export function becameRunning(previous: VMState, next: VMState): boolean {
-  return next === "RUNNING" && previous !== "RUNNING";
+/**
+ * A change of the VM state makes the session list out of date: a stop or
+ * pause ends live terminals, and a start or resume lets the guest be
+ * scanned again and terminals attach.
+ */
+export function listOutOfDate(previous: VMState, next: VMState): boolean {
+  return previous !== next;
 }
 
 /** An ended shell has no transcript, so deleting it loses nothing and needs no confirmation. */

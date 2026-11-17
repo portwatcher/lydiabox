@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { HARNESSES } from "../../api/types";
-import { becameRunning, deletesWithoutConfirm } from "./sessionActions";
+import { deletesWithoutConfirm, listOutOfDate } from "./sessionActions";
 
-describe("becameRunning", () => {
-  it("is true only on the change to RUNNING", () => {
-    expect(becameRunning("PAUSED", "RUNNING")).toBe(true);
-    expect(becameRunning("BOOTING", "RUNNING")).toBe(true);
-    expect(becameRunning("STOPPED", "RUNNING")).toBe(true);
-    expect(becameRunning("RUNNING", "RUNNING")).toBe(false);
-    expect(becameRunning("RUNNING", "PAUSED")).toBe(false);
+describe("listOutOfDate", () => {
+  it("is true on every change of the VM state", () => {
+    expect(listOutOfDate("PAUSED", "RUNNING")).toBe(true);
+    expect(listOutOfDate("RUNNING", "STOPPED")).toBe(true);
+    expect(listOutOfDate("RUNNING", "PAUSED")).toBe(true);
+    expect(listOutOfDate("RUNNING", "RUNNING")).toBe(false);
   });
 });
 

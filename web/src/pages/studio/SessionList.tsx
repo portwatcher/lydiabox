@@ -165,7 +165,8 @@ export function SessionList(props: SessionListProps) {
       <div className="flex flex-col gap-2 border-b border-border-subtle p-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Sessions</h2>
-          {cachedAt !== null ? (
+          {/* Without a scan and without sessions there is nothing that could be out of date. */}
+          {cachedAt !== null && (cachedAt !== "" || (sessions?.length ?? 0) > 0) ? (
             <span
               className="mr-auto inline-flex items-center gap-1 text-xs text-fg-muted tabular-nums"
               title="The machine is paused or stopped. This list is from its last scan."
