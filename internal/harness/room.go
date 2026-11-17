@@ -67,14 +67,29 @@ type Room struct {
 	cols      uint16
 	rows      uint16
 	done      bool
-	onExit    func(code int)
-	// stopped reports whether the user stopped the VM (nil: never).
-	stopped func() bool
-	writeMu sync.Mutex
+	vm        roomVM
+	onEnd     roomEnd
+	writeMu   sync.Mutex
 }
 
-func newRoom(sessionID string, p PTY, cols, rows uint16, stopped func() bool, onExit func(int)) *Room {
-	r := &Room{sessionID: sessionID, pty: p, subs: map[*Subscriber]struct{}{}, cols: cols, rows: rows, stopped: stopped, onExit: onExit}
+// roomVM tells a room the state of its VM. A nil func reports false.
+type roomVM struct {
+	// stopped reports whether the user stopped the VM.
+	stopped func() bool
+	// paused reports whether a pause of the VM runs or the VM is paused.
+	paused func() bool
+}
+
+// roomEnd receives the end of a room: exited when the process ended (or
+// its end is not known), detached when the stream ended because the VM
+// paused and the process lives on in the guest.
+type roomEnd struct {
+	exited   func(code int)
+	detached func()
+}
+
+func newRoom(sessionID string, p PTY, cols, rows uint16, vm roomVM, onEnd roomEnd) *Room {
+	r := &Room{sessionID: sessionID, pty: p, subs: map[*Subscriber]struct{}{}, cols: cols, rows: rows, vm: vm, onEnd: onEnd}
 	r.appendRing(p.Replay())
 	go r.pump(p)
 	return r
@@ -109,22 +124,31 @@ func (r *Room) pump(p PTY) {
 		code = -1
 	}
 	last := Frame{Control: CtlExit{Type: "exit", Code: code}, Close: true}
-	if r.stopped != nil && r.stopped() {
+	detached := false
+	switch {
+	case r.vm.stopped != nil && r.vm.stopped():
 		// The terminal ended because the user stopped the VM: the clients
 		// show the stopped state and do not reconnect.
 		last = Frame{Control: CtlError{Type: "error", Code: CodeVMStopped, Message: "the VM was stopped"}, Close: true}
+	case werr != nil && r.vm.paused != nil && r.vm.paused():
+		// The pause cut the stream; the process keeps its memory in the
+		// guest. The clients attach again after the VM runs.
+		last = Frame{Control: CtlError{Type: "error", Code: CodeVMPaused, Message: "the VM was hibernated"}, Close: true}
+		detached = true
 	}
 	r.mu.Lock()
 	r.done = true
-	onExit := r.onExit
 	r.broadcastLocked(last)
 	for s := range r.subs {
 		s.close()
 	}
 	r.subs = map[*Subscriber]struct{}{}
 	r.mu.Unlock()
-	if onExit != nil {
-		onExit(code)
+	switch {
+	case detached && r.onEnd.detached != nil:
+		r.onEnd.detached()
+	case !detached && r.onEnd.exited != nil:
+		r.onEnd.exited(code)
 	}
 }
 

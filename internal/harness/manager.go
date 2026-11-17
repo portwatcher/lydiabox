@@ -289,7 +289,7 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 	}
 	ls.pty = pty
 	ls.startedAt = time.Now().UTC()
-	ls.room = newRoom(id, pty, cols, rows, m.heldFunc(ls.tenantID), func(code int) { m.exited(ls, code) })
+	ls.room = newRoom(id, pty, cols, rows, m.roomVM(ls.tenantID), m.roomEnd(ls))
 	m.mu.Lock()
 	m.live[liveKey(ls.tenantID, id)] = ls
 	m.mu.Unlock()
@@ -324,6 +324,24 @@ func (m *Manager) exited(ls *liveSession, code int) {
 		m.persist(context.Background(), ls, StatusExited)
 	}
 	m.log.Info("harness session exited", "session", id, "code", code)
+}
+
+// detached runs when a pause of the VM cut the stream of a live terminal.
+// The session stays running in the store with its PTY ID, so the next
+// Room call wakes the VM and attaches to the same PTY.
+func (m *Manager) detached(ls *liveSession) {
+	m.mu.Lock()
+	id := SessionID(ls.harness, ls.nativeID)
+	if cur := m.live[liveKey(ls.tenantID, id)]; cur == ls {
+		delete(m.live, liveKey(ls.tenantID, id))
+	}
+	m.mu.Unlock()
+	if ls.release != nil {
+		ls.release()
+		ls.release = nil
+	}
+	_ = ls.pty.Close()
+	m.log.Info("harness terminal detached by a VM pause", "session", id)
 }
 
 // lookupLive returns the live session for an API ID (following aliases).
@@ -435,7 +453,7 @@ func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) 
 		if la, ok := m.opts.Waker.(LeaseAcquirer); ok {
 			ls.release = la.AcquireLease(tenantID, "pty")
 		}
-		ls.room = newRoom(id, pty, 160, 48, m.heldFunc(tenantID), func(code int) { m.exited(ls, code) })
+		ls.room = newRoom(id, pty, 160, 48, m.roomVM(tenantID), m.roomEnd(ls))
 		m.mu.Lock()
 		m.live[liveKey(tenantID, id)] = ls
 		m.mu.Unlock()
@@ -447,14 +465,21 @@ func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) 
 	return nil, fmt.Errorf("%w: session %s has no running terminal; start it with POST /api/v1/sessions and resumeNativeId", ErrConflict, id)
 }
 
-// heldFunc reports whether the user stopped the VM of tenantID, when the
-// waker knows it (VMHolder).
-func (m *Manager) heldFunc(tenantID string) func() bool {
-	h, ok := m.opts.Waker.(VMHolder)
-	if !ok {
-		return nil
+// roomVM reports the state of the VM of tenantID to a room, as far as the
+// waker knows it (VMHolder, VMPauseReporter).
+func (m *Manager) roomVM(tenantID string) roomVM {
+	var vm roomVM
+	if h, ok := m.opts.Waker.(VMHolder); ok {
+		vm.stopped = func() bool { return h.Held(tenantID) }
 	}
-	return func() bool { return h.Held(tenantID) }
+	if p, ok := m.opts.Waker.(VMPauseReporter); ok {
+		vm.paused = func() bool { return p.Paused(tenantID) }
+	}
+	return vm
+}
+
+func (m *Manager) roomEnd(ls *liveSession) roomEnd {
+	return roomEnd{exited: func(code int) { m.exited(ls, code) }, detached: func() { m.detached(ls) }}
 }
 
 func (m *Manager) sessionOf(ls *liveSession) Session {

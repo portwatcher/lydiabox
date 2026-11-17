@@ -160,6 +160,19 @@ type VMHolder interface {
 // Clients do not reconnect after it.
 const CodeVMStopped = "stopped"
 
+// VMPauseReporter is implemented by wakers that know whether the VM
+// pauses or is paused (vmm.Controller). A terminal whose stream ends then
+// is detached, not exited: the process lives on in the paused guest, and
+// the terminal attaches again after a wake. The clients get CodeVMPaused.
+type VMPauseReporter interface {
+	Paused(tenantID string) bool
+}
+
+// CodeVMPaused is the error code of a terminal socket that the server
+// ended because the VM was hibernated. Clients reconnect after the VM
+// runs again; the reconnect itself wakes the VM.
+const CodeVMPaused = "paused"
+
 // LeaseAcquirer is implemented by wakers that track activity leases. The
 // manager holds a "pty" lease for every live harness terminal.
 type LeaseAcquirer interface {

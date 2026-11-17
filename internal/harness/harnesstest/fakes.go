@@ -33,6 +33,8 @@ type PTY struct {
 	closed  bool
 	code    int
 	done    chan struct{}
+	// lost is closed while the stream is lost (Lose) and the process runs.
+	lost chan struct{}
 	// IgnoreSIGINT makes the process survive SIGINT (it still exits on
 	// SIGTERM), to exercise the escalation path.
 	IgnoreSIGINT bool
@@ -55,7 +57,35 @@ func (p *PTY) ID() string { return p.id }
 func (p *PTY) Replay() []byte { return p.replay }
 
 // Read implements harness.PTY.
-func (p *PTY) Read(b []byte) (int, error) { return p.r.Read(b) }
+func (p *PTY) Read(b []byte) (int, error) {
+	p.mu.Lock()
+	r := p.r
+	p.mu.Unlock()
+	return r.Read(b)
+}
+
+// Lose ends the stream but not the process, like a VM pause that cuts
+// the guest link: Read fails and Wait cannot learn the exit status. A
+// later AttachPTY attaches to the process again.
+func (p *PTY) Lose() {
+	p.mu.Lock()
+	if p.lost == nil {
+		p.lost = make(chan struct{})
+		close(p.lost)
+	}
+	w := p.w
+	p.mu.Unlock()
+	_ = w.CloseWithError(errors.New("guest stream lost"))
+}
+
+func (p *PTY) reattach() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.lost != nil {
+		p.r, p.w = io.Pipe()
+		p.lost = nil
+	}
+}
 
 // Write implements harness.PTY.
 func (p *PTY) Write(b []byte) (int, error) {
@@ -95,11 +125,16 @@ func (p *PTY) Signal(sig string) error {
 
 // Wait implements harness.PTY.
 func (p *PTY) Wait(ctx context.Context) (int, error) {
+	p.mu.Lock()
+	lost := p.lost
+	p.mu.Unlock()
 	select {
 	case <-p.done:
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		return p.code, nil
+	case <-lost:
+		return 0, errors.New("guest stream lost")
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}
@@ -114,7 +149,12 @@ func (p *PTY) Close() error {
 }
 
 // Emit writes terminal output.
-func (p *PTY) Emit(b []byte) { _, _ = p.w.Write(b) }
+func (p *PTY) Emit(b []byte) {
+	p.mu.Lock()
+	w := p.w
+	p.mu.Unlock()
+	_, _ = w.Write(b)
+}
 
 // Exit ends the process with code.
 func (p *PTY) Exit(code int) {
@@ -127,8 +167,9 @@ func (p *PTY) Exit(code int) {
 	}
 	p.code = code
 	close(p.done)
+	w := p.w
 	p.mu.Unlock()
-	_ = p.w.Close()
+	_ = w.Close()
 }
 
 // Input returns everything written to the terminal.
@@ -202,6 +243,7 @@ func (r *Runner) AttachPTY(_ context.Context, _ string, id string) (harness.PTY,
 	defer r.mu.Unlock()
 	for _, p := range r.ptys {
 		if p.id == id && !p.Exited() {
+			p.reattach()
 			return p, nil
 		}
 	}

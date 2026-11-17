@@ -157,7 +157,15 @@ func (w wakeOnly) EnsureRunning(ctx context.Context, tenantID string) error {
 // Held implements harness.VMHolder.
 func (w wakeOnly) Held(tenantID string) bool { return w.w.Held(tenantID) }
 
+// Paused implements harness.VMPauseReporter.
+func (w wakeOnly) Paused(tenantID string) bool { return w.w.Paused(tenantID) }
+
 // Start implements harness.VMStarter.
 func (w wakeOnly) Start(ctx context.Context, tenantID string) error {
 	return w.w.Start(ctx, tenantID)
 }
+
+var (
+	_ harness.VMHolder        = wakeOnly{}
+	_ harness.VMPauseReporter = wakeOnly{}
+)
