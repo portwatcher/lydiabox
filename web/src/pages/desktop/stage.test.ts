@@ -5,6 +5,21 @@ import type { StageInput } from "./stage";
 const base: StageInput = { vmState: "RUNNING", pending: null, socket: null, stopped: false, live: false };
 
 describe("desktop stage", () => {
+  it("closes the stream and offers no start while the status poll fails", () => {
+    // A stop from the cloud dashboard: the last status said RUNNING, and the
+    // control plane answers every call with "not running".
+    const lost = { ...base, socket: "open" as const, live: true };
+    for (const outage of ["stopped", "unknown"] as const) {
+      expect(shouldDisconnect({ ...lost, outage })).toBe(true);
+      expect(shouldConnect({ ...base, outage })).toBe(false);
+      expect(desktopStage({ ...base, outage })).toBe("unavailable");
+      expect(desktopStage({ ...lost, outage })).toBe("unavailable");
+      expect(desktopStage({ ...base, stopped: true, outage })).toBe("unavailable");
+    }
+    expect(desktopStage({ ...base, outage: "starting" })).toBe("starting");
+    expect(shouldConnect({ ...base, outage: null })).toBe(true);
+  });
+
   it("streams a running VM", () => {
     expect(shouldConnect(base)).toBe(true);
     expect(desktopStage(base)).toBe("connecting");

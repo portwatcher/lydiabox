@@ -4,6 +4,8 @@ import { availabilityOf, describeError } from "../api/errors";
 import { getStatus, vm } from "../api/system";
 import type { Status, VMState, VMStatus } from "../api/types";
 import { useToast } from "../components/Toast";
+import { STATUS_GRACE_MS, statusOutage } from "../lib/outage";
+import type { Outage } from "../lib/outage";
 
 export type VMAction = "wake" | "hibernate" | "stop";
 
@@ -18,6 +20,13 @@ export interface SystemState {
   fetchedAt: number;
   /** Set when the last status poll failed. */
   error: unknown;
+  /**
+   * The status poll fails in a way that makes the last state no fact: the
+   * cell is stopped or starts (LydiaBox Cloud), or no status came for
+   * STATUS_GRACE_MS. Power controls are hidden while it is set; it clears
+   * at the next status answer.
+   */
+  outage: Outage | null;
   pending: VMAction | null;
   /** The VM has been starting or resuming for more than SLOW_START_MS. */
   slowStart: boolean;
@@ -57,8 +66,23 @@ export function SystemProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<VMAction | null>(null);
   const [tick, setTick] = useState(0);
   const vmControlRef = useRef(true);
+  const [failing, setFailing] = useState(false);
+  const [graceOver, setGraceOver] = useState(false);
 
-  const vmState: VMState = pending === "wake" ? "BOOTING" : (vmStatus?.state ?? status?.vm.state ?? "STOPPED");
+  // One lost poll changes nothing; a status that stays away for
+  // STATUS_GRACE_MS is no longer shown as a fact.
+  useEffect(() => {
+    if (!failing) {
+      setGraceOver(false);
+      return;
+    }
+    const id = setTimeout(() => setGraceOver(true), STATUS_GRACE_MS);
+    return () => clearTimeout(id);
+  }, [failing]);
+  const outage = useMemo(() => statusOutage(error, graceOver), [error, graceOver]);
+
+  const reported: VMState = pending === "wake" ? "BOOTING" : (vmStatus?.state ?? status?.vm.state ?? "STOPPED");
+  const vmState: VMState = outage?.kind === "stopped" ? "STOPPED" : outage?.kind === "starting" ? "BOOTING" : reported;
   const fast = vmState === "BOOTING" || pending !== null;
 
   // A start or resume can take minutes at a cloud provider: say so after
@@ -88,9 +112,11 @@ export function SystemProvider({ children }: { children: ReactNode }) {
         setStatus(next);
         setFetchedAt(Date.now());
         setError(null);
+        setFailing(false);
       } catch (err) {
         if (!disposed && !(err instanceof DOMException && err.name === "AbortError")) {
           setError(err);
+          setFailing(true);
         }
       }
       if (vmControlRef.current && !disposed) {
@@ -149,8 +175,8 @@ export function SystemProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<SystemState>(
-    () => ({ status, vmStatus, vmState, vmControl, fetchedAt, error, pending, slowStart, runVM, refresh }),
-    [status, vmStatus, vmState, vmControl, fetchedAt, error, pending, slowStart, runVM, refresh],
+    () => ({ status, vmStatus, vmState, vmControl, fetchedAt, error, outage, pending, slowStart, runVM, refresh }),
+    [status, vmStatus, vmState, vmControl, fetchedAt, error, outage, pending, slowStart, runVM, refresh],
   );
 
   return <SystemContext.Provider value={value}>{children}</SystemContext.Provider>;

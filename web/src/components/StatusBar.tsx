@@ -16,6 +16,7 @@ import { NavLink } from "react-router";
 import { useSystem } from "../hooks/useSystem";
 import { useNow } from "../hooks/useResource";
 import { formatAgo, formatDateTime, formatMemory, parseTime, vmProblem } from "../lib/format";
+import { splitLink } from "../lib/outage";
 import { syncState } from "../lib/sync";
 import { VmPower } from "./VmPower";
 import { IconButton, cx } from "./ui";
@@ -105,6 +106,26 @@ function VmProblem() {
   );
 }
 
+/** The status poll fails: the server's text (with its dashboard link), not the last state. */
+function VmOutage() {
+  const { outage } = useSystem();
+  if (!outage) {
+    return null;
+  }
+  const { text, href } = splitLink(outage.message);
+  return (
+    <span role="status" className="inline-flex max-w-sm min-w-0 items-center gap-1.5 text-xs text-warning-fg" title={text}>
+      <CloudOff aria-hidden className="size-4 shrink-0" />
+      <span className="truncate">{text}</span>
+      {href ? (
+        <a href={href} className="shrink-0 font-medium underline underline-offset-2">
+          Open the dashboard
+        </a>
+      ) : null}
+    </span>
+  );
+}
+
 /** A start or resume that takes long: the provider is slow, LydiaBox is not stuck. */
 function VmSlow() {
   const { slowStart } = useSystem();
@@ -124,7 +145,7 @@ function VmSlow() {
 }
 
 export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
-  const { error, status } = useSystem();
+  const { error, status, outage } = useSystem();
   return (
     // The bar keeps one row while everything fits; then the VM group wraps
     // as a whole to a second row, so every tab stays in view. Below 640 px
@@ -157,13 +178,14 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
         </nav>
       </div>
       <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
-        {error && !status ? (
+        {error && !status && !outage ? (
           <span role="status" className="inline-flex items-center gap-1.5 text-xs text-danger-fg">
             <CloudOff aria-hidden className="size-4" />
             Server unreachable
           </span>
         ) : null}
         <SyncIndicator />
+        <VmOutage />
         <VmProblem />
         <VmSlow />
         <VmResources />

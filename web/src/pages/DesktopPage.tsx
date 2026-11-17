@@ -8,6 +8,8 @@ import { useToast } from "../components/Toast";
 import { Banner, Button, cx } from "../components/ui";
 import { VmWakeButton } from "../components/VmPower";
 import { useSystem } from "../hooks/useSystem";
+import { splitLink } from "../lib/outage";
+import type { Outage } from "../lib/outage";
 import { ActionFeed } from "./desktop/ActionFeed";
 import { DesktopOverlay } from "./desktop/DesktopOverlay";
 import { DesktopToolbar } from "./desktop/DesktopToolbar";
@@ -18,7 +20,7 @@ import { useTakeoverInput } from "./desktop/useTakeoverInput";
 
 export default function DesktopPage() {
   const toast = useToast();
-  const { vmState, pending, refresh, fetchedAt } = useSystem();
+  const { vmState, pending, refresh, fetchedAt, outage } = useSystem();
   const [overlay, dispatch] = useReducer(overlayReducer, initialOverlay);
   const onAction = useCallback((action: AgentAction) => {
     dispatch({ type: "action", action, now: Date.now() });
@@ -51,7 +53,15 @@ export default function DesktopPage() {
 
   // Stream only a running VM. Opening the stream never starts the VM: the
   // start control does (the status bar, or the stage below).
-  const stageInput = { vmState, pending, socket: stream.socket, stopped: stream.stopped, paused: stream.paused, live: false };
+  const stageInput = {
+    vmState,
+    pending,
+    socket: stream.socket,
+    stopped: stream.stopped,
+    paused: stream.paused,
+    live: false,
+    outage: outage?.kind ?? null,
+  };
   const connectNow = probe.state === "ok" && shouldConnect(stageInput);
   useEffect(() => {
     if (connectNow) {
@@ -60,7 +70,7 @@ export default function DesktopPage() {
   }, [connectNow, connect]);
 
   // A stop, hibernate, or start elsewhere closes the stream before the guest goes down.
-  const disconnectNow = shouldDisconnect({ vmState, pending });
+  const disconnectNow = shouldDisconnect({ vmState, pending, outage: outage?.kind ?? null });
   useEffect(() => {
     if (disconnectNow) {
       disconnect();
@@ -173,6 +183,9 @@ export default function DesktopPage() {
     case "starting":
       stageContent = <LoadingView label="Starting the VM…" />;
       break;
+    case "unavailable":
+      stageContent = <OutageView outage={outage} />;
+      break;
     case "stopping":
       stageContent = <LoadingView label={pending === "hibernate" ? "Hibernating the VM…" : "Stopping the VM…"} />;
       break;
@@ -247,5 +260,25 @@ export default function DesktopPage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** The status poll fails: the server's text and its dashboard link, no start control (none would work). */
+function OutageView({ outage }: { outage: Outage | null }) {
+  const { text, href } = splitLink(outage?.message ?? "");
+  return (
+    <StateView
+      icon={Monitor}
+      title={outage?.kind === "stopped" ? "The VM is stopped" : "The VM status is not available"}
+      action={
+        href ? (
+          <a href={href} className="text-sm font-medium text-accent-fg underline underline-offset-2">
+            Open the dashboard
+          </a>
+        ) : undefined
+      }
+    >
+      {text}
+    </StateView>
   );
 }

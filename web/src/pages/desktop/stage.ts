@@ -1,6 +1,7 @@
 import type { SocketState } from "../../api/socket";
 import type { VMState } from "../../api/types";
 import type { VMAction } from "../../hooks/useSystem";
+import type { OutageKind } from "../../lib/outage";
 
 /** What the stage of the Desktop page shows when there is no live video. */
 export type DesktopStage =
@@ -15,7 +16,9 @@ export type DesktopStage =
   /** The socket gave up after its retries. */
   | "lost"
   /** The signaling works, but the browser could not open the video connection. */
-  | "videoFailed";
+  | "videoFailed"
+  /** The status poll fails (the cell is stopped, or no status came): no stream, no start control. */
+  | "unavailable";
 
 export interface StageInput {
   vmState: VMState;
@@ -29,6 +32,8 @@ export interface StageInput {
   live: boolean;
   /** State of the WebRTC peer connection ("new" before the first offer). */
   peer?: RTCPeerConnectionState;
+  /** Set while the status poll fails (useSystem().outage). */
+  outage?: OutageKind | null;
 }
 
 /**
@@ -38,15 +43,21 @@ export interface StageInput {
  * hibernate.
  */
 export function shouldConnect(s: StageInput): boolean {
-  return s.vmState === "RUNNING" && s.pending === null && s.socket === null && !s.stopped && !s.paused;
+  return s.vmState === "RUNNING" && s.pending === null && s.socket === null && !s.stopped && !s.paused && !s.outage;
 }
 
-/** Whether the page closes the stream: a power action runs or the VM does not run. */
-export function shouldDisconnect(s: Pick<StageInput, "vmState" | "pending">): boolean {
-  return s.vmState !== "RUNNING" || s.pending === "stop" || s.pending === "hibernate";
+/** Whether the page closes the stream: a power action runs, the VM does not run, or its state is not known. */
+export function shouldDisconnect(s: Pick<StageInput, "vmState" | "pending" | "outage">): boolean {
+  return s.vmState !== "RUNNING" || s.pending === "stop" || s.pending === "hibernate" || Boolean(s.outage);
 }
 
 export function desktopStage(s: StageInput): DesktopStage {
+  if (s.outage === "starting") {
+    return "starting";
+  }
+  if (s.outage) {
+    return "unavailable";
+  }
   if (s.pending === "stop" || s.pending === "hibernate") {
     return "stopping";
   }

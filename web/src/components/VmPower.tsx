@@ -22,8 +22,17 @@ const toneClass: Record<Tone, string> = {
   danger: "bg-danger-subtle text-danger-fg",
 };
 
-/** The VM state as a labeled pill; the dot repeats the state, the label carries it. */
-export function VmPill({ state }: { state: VMState }) {
+/** The VM state as a labeled pill; the dot repeats the state, the label carries it. `unknown` shows that no status came. */
+export function VmPill({ state, unknown = false }: { state: VMState; unknown?: boolean }) {
+  if (unknown) {
+    return (
+      <span className={cx("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold tracking-wide", toneClass.warning)}>
+        <span aria-hidden className="size-1.5 rounded-full bg-current" />
+        <span className="sr-only">VM </span>
+        NO STATUS
+      </span>
+    );
+  }
   return (
     <span
       className={cx(
@@ -74,17 +83,19 @@ const unavailableTitle = "VM power control is not available in this build";
 
 /** Start or Resume / Hibernate / Stop controls for the current VM state. */
 export function VmPower({ compact = false }: { compact?: boolean }) {
-  const { vmState, vmControl, pending, runVM } = useSystem();
+  const { vmState, vmControl, pending, runVM, outage } = useSystem();
   const [confirmStop, setConfirmStop] = useState(false);
   const size = compact ? "sm" : "md";
   const unavailable = vmControl ? undefined : unavailableTitle;
-  const canWake = vmState === "STOPPED" || vmState === "PAUSED";
-  const canHibernate = vmState === "RUNNING";
-  const canStop = vmState === "RUNNING" || vmState === "PAUSED";
+  // During an outage the server in front of the VM refuses every call: no
+  // power control works, so none shows.
+  const canWake = !outage && (vmState === "STOPPED" || vmState === "PAUSED");
+  const canHibernate = !outage && vmState === "RUNNING";
+  const canStop = !outage && (vmState === "RUNNING" || vmState === "PAUSED");
 
   return (
     <div className="flex items-center gap-2">
-      <VmPill state={vmState} />
+      <VmPill state={vmState} unknown={outage?.kind === "unknown"} />
       {canWake ? <VmWakeButton size={size} variant="secondary" /> : null}
       {canHibernate ? (
         <Button
