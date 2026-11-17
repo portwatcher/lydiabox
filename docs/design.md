@@ -207,7 +207,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      | Terminal socket of a live terminal | no | The room exists; no wake is needed |
      | Desktop socket (`GET /api/v1/desktop/ws`) | no | `paused` (or `stopped` when the VM does not run); the page opens it only while the VM runs |
      | Desktop app launch (Chrome, Blender, Terminal) | no | Sent over the desktop socket, which exists only while the VM runs |
-     | File API in `provider` mode (list, stat, read, download, upload, mkdir, rename, delete) | yes | A file operation of the user; the Files page sends none by itself (it reloads only when the VM runs again) |
+     | File API in `provider` mode (list, stat, read, download, upload, mkdir, rename, delete) | yes | A file operation of the user. Opening the Files page lists the open folder, which is such an operation: it resumes a paused VM and starts a stopped one, except after a user stop (then `503`, and the page offers Start) |
      | `GET /api/v1/fs/roots` | no | Last answer of the guest, or the defaults |
      | `DELETE /api/v1/sessions/{id}?purge=true` in `provider` mode | yes | Deletes the transcript in the guest |
      | `DELETE /api/v1/sessions/{id}` without purge | no | Ends the guest terminal without a wake; the next reconcile ends it when the guest is not reachable |
@@ -219,6 +219,23 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      | Guest traffic: LLM gateway (9002), connector broker (9001) | n/a | Comes from the running guest |
      | Reconcile of terminals (VM changes to `RUNNING`, host start) | no | No-wake list and attach |
      | `instabox` driver: link reconnect after a pause | no | The link is closed at the pause and opens again only at the next boot or resume |
+
+   - **State matrix (2026-11-18):** what the workstation shows in each state. "Top bar" is the VM pill and its controls; Models, Connectors, and Subscriptions (on the Models page) need only the host, so they work in every VM state while the cell answers.
+
+     | State | Top bar | Studio | Desktop | Files (`provider` mode) | Models, Connectors | Automatic requests |
+     | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+     | `RUNNING` | `RUNNING`; Hibernate, Stop | All actions | Stream | All actions | All actions | Status 5 s, sessions 10 s, connectors 30 s, gateway 10 s |
+     | Pausing (`transition: pausing`) | `PAUSING`; no controls (the tab that asked shows its busy button) | Actions start the VM after the pause | "Hibernating the VM…", stream closed | Actions resume the VM after the pause | All actions | Status 1.5 s |
+     | `PAUSED` | `PAUSED`; Resume, Stop | New and resume start the VM; live terminals show "The VM is hibernating." | "The VM is hibernating", Resume | Opening or an action resumes the VM | All actions | As `RUNNING`; none wakes the VM |
+     | Stopping (`transition: stopping`) | `STOPPING`; no controls | As pausing | "Stopping the VM…" | As pausing | All actions | Status 1.5 s |
+     | `STOPPED` (user stop, held) | `STOPPED`; Start | Cached list; New and resume start the VM | "The VM is stopped", Start | "The VM is stopped", Start; change actions disabled | All actions | Status 5 s, sessions 10 s (cached) |
+     | `BOOTING` | `BOOTING`; no controls; after 15 s "The VM provider is slow." | Actions wait for the start | "Starting the VM…" | Actions wait for the start | All actions | Status 1.5 s |
+     | Provider cooldown (`startBlockedUntil`) | State; Start or Resume disabled, the reason in the bar and tooltip | New and resume disabled with the reason | Start or Resume disabled | Start disabled | All actions | As the state |
+     | Cell stopped (`cell_stopped`) | `STOPPED`, no controls, no figures | Banner "The VM is stopped", the server's text, Open the dashboard; page dimmed and inert | Same banner; stream closed | Same banner | Same banner | Status 5 s only |
+     | Cell starting (`cell_starting`) | `BOOTING`, no controls | Banner "The VM is starting. LydiaBox connects again by itself."; page inert | Same | Same | Same | Status 1.5 s only |
+     | No status (network error or 5xx for 10 s) | `NO STATUS`, no controls, no figures | Banner "The VM status is not available. LydiaBox tries again by itself."; page inert | Same | Same | Same | Status 5 s only |
+
+     A cell outage keeps the pages mounted, so unsaved text stays; the next status answer ends it, and each page loads again once. A page loaded during an outage (start screen) shows the same title and tries again every 5 s.
 
 ---
 

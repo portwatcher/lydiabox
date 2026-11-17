@@ -505,10 +505,15 @@ always lists `pty` (running guest PTYs) and `desktop` (open desktop
 sockets). In the `provider` storage mode, `files` counts File API requests
 and downloads in progress (it is listed while it is not zero). After `idleTimeoutSeconds` without leases the VM is synced and
 paused (`PAUSED`). `gpu` and `lastError` are omitted when empty;
-`lastError` holds the last failed boot, transition, or state read, for
+`lastError` holds the last failed boot, transition, or state read (a later
+transition that works clears it), for
 example `InstaBox refused the API key: check LYDIABOX_INSTABOX_API_KEY
 (InstaBox invalid_key)`; the web status bar shows it while the VM is not
-running. `driver` is `chv`, `docker`, or `instabox`. With the `instabox`
+running. `transition` (`pausing` or `stopping`, omitted otherwise) is set
+while a pause or stop runs; `state` stays `RUNNING` until it ends.
+`startBlockedUntil` (omitted otherwise) is set while the provider refuses a
+start or resume until a known time (for example the InstaBox cooldown after
+the maximum run time); `lastError` says why. `driver` is `chv`, `docker`, or `instabox`. With the `instabox`
 driver, `PAUSED` also reports a pause that InstaBox made by itself (an idle
 pause); the next request wakes the machine. A provider refusal (key,
 payment, scope, quota, no capacity) answers `503` from `wake` and from the
