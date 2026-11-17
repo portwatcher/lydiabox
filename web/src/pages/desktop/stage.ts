@@ -23,6 +23,8 @@ export interface StageInput {
   socket: SocketState | null;
   /** The server ended the stream because the user stopped the VM. */
   stopped: boolean;
+  /** The server ended or refused the stream because the VM pauses or is paused. */
+  paused?: boolean;
   /** The video track is there and the peer connection is connected. */
   live: boolean;
   /** State of the WebRTC peer connection ("new" before the first offer). */
@@ -32,10 +34,11 @@ export interface StageInput {
 /**
  * Whether the page opens the stream now. Only a running VM is streamed, and
  * never during a power action or after the server said that the user stopped
- * the VM: opening the stream must not undo a stop.
+ * the VM or that it pauses: opening the stream must not undo a stop or a
+ * hibernate.
  */
 export function shouldConnect(s: StageInput): boolean {
-  return s.vmState === "RUNNING" && s.pending === null && s.socket === null && !s.stopped;
+  return s.vmState === "RUNNING" && s.pending === null && s.socket === null && !s.stopped && !s.paused;
 }
 
 /** Whether the page closes the stream: a power action runs or the VM does not run. */
@@ -51,7 +54,7 @@ export function desktopStage(s: StageInput): DesktopStage {
     if (s.vmState === "BOOTING" || s.pending === "wake") {
       return "starting";
     }
-    if (s.vmState === "PAUSED") {
+    if (s.vmState === "PAUSED" || s.paused) {
       return "hibernating";
     }
     if (s.vmState === "STOPPED" || s.stopped) {

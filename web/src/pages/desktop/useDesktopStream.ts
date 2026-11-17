@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DesktopSignalClient } from "../../api/desktopSignal";
-import { STOPPED_CODE } from "../../api/socket";
+import { PAUSED_CODE, STOPPED_CODE } from "../../api/socket";
 import type { SocketState } from "../../api/socket";
 import type { AgentAction, DesktopMode, DesktopServerMessage, IceCandidate, InputMessage, LaunchApp } from "../../api/types";
 
@@ -15,6 +15,9 @@ export interface DesktopStream {
   error: string | null;
   /** The server ended the stream because the user stopped the VM; cleared by connect and disconnect. */
   stopped: boolean;
+  /** The server ended or refused the stream because the VM pauses or is paused; cleared by connect and clearPaused. */
+  paused: boolean;
+  clearPaused: () => void;
   inputReady: boolean;
   connect: () => void;
   disconnect: () => void;
@@ -64,6 +67,7 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
   const [screen, setScreen] = useState({ width: 1920, height: 1080 });
   const [error, setError] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [inputReady, setInputReady] = useState(false);
 
   const clientRef = useRef<DesktopSignalClient | null>(null);
@@ -192,6 +196,15 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
             }
             return;
           }
+          if (msg.code === PAUSED_CODE) {
+            // The VM pauses or is paused (from any source): a calm state,
+            // and no reconnect until the VM runs again.
+            if (clientRef.current === client) {
+              disconnect();
+              setPaused(true);
+            }
+            return;
+          }
           setError(msg.message || msg.code);
           return;
         case "pong":
@@ -207,6 +220,7 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
     }
     setError(null);
     setStopped(false);
+    setPaused(false);
     const client: DesktopSignalClient = new DesktopSignalClient({
       onMessage: (msg) => handle(client, msg),
       onState: (state) => {
@@ -235,5 +249,7 @@ export function useDesktopStream(onAgentAction: (action: AgentAction) => void): 
 
   const launch = useCallback((app: LaunchApp) => clientRef.current?.send({ type: "launch", app }) ?? false, []);
 
-  return { socket, peer, stream, mode, viewers, screen, error, stopped, inputReady, connect, disconnect, retry, sendInput, launch, setMode };
+  const clearPaused = useCallback(() => setPaused(false), []);
+
+  return { socket, peer, stream, mode, viewers, screen, error, stopped, paused, clearPaused, inputReady, connect, disconnect, retry, sendInput, launch, setMode };
 }

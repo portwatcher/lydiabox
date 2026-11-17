@@ -11,6 +11,13 @@
  */
 export const STOPPED_CODE = "stopped";
 
+/**
+ * Error code with which the desktop and terminal sockets end, or are
+ * refused, when the VM pauses or is paused. Their clients do not reconnect
+ * until the VM runs again: a reconnect is not a reason to wake the VM.
+ */
+export const PAUSED_CODE = "paused";
+
 export type SocketState = "connecting" | "open" | "reconnecting" | "closed" | "failed";
 
 /** The subset of the browser WebSocket this module uses (lets tests inject a fake). */

@@ -163,7 +163,8 @@ describe("PtyClient", () => {
     expect(client.sessionId).toBe("dsh:a91f");
     sockets[0]?.serverClose();
     vi.advanceTimersByTime(1000);
-    expect(sockets[1]?.url).toBe("/api/v1/sessions/dsh%3Aa91f/ws");
+    // The reconnect says so, and uses the adopted session ID.
+    expect(sockets[1]?.url).toBe("/api/v1/sessions/dsh%3Aa91f/ws?reconnect=1");
     sockets[1]?.open();
     sockets[1]?.receiveJson({ type: "exit", code: 0, signal: "" });
     sockets[1]?.serverClose(1000);
@@ -202,6 +203,7 @@ describe("PtyClient", () => {
     expect(client.state).toBe("closed");
     client.retry();
     expect(sockets).toHaveLength(2);
-    expect(sockets[1]?.url).toBe(sockets[0]?.url);
+    expect(sockets[0]?.url).toBe("/api/v1/sessions/dsh%3Aa91f/ws");
+    expect(sockets[1]?.url).toBe("/api/v1/sessions/dsh%3Aa91f/ws?reconnect=1");
   });
 });

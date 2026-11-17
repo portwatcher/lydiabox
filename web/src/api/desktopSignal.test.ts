@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeFactory } from "../test/fakeSocket";
 import { DESKTOP_PROTOCOL, DesktopSignalClient, parseDesktopMessage } from "./desktopSignal";
-import { STOPPED_CODE } from "./socket";
+import { PAUSED_CODE, STOPPED_CODE } from "./socket";
 import type { DesktopServerMessage } from "./types";
 
 beforeEach(() => {
@@ -118,6 +118,19 @@ describe("DesktopSignalClient", () => {
     expect(client.state).toBe("closed");
     expect(received).toEqual([{ type: "error", code: STOPPED_CODE, message: "the VM was stopped" }]);
     expect(states).not.toContain("reconnecting");
+  });
+
+  it("does not reconnect after the server says the VM pauses", () => {
+    const { factory, sockets } = fakeFactory();
+    const client = new DesktopSignalClient({ onMessage: () => undefined, factory, url: (p) => `ws://h${p}` });
+    client.connect();
+    sockets[0]?.open();
+    sockets[0]?.receiveJson({ type: "error", code: PAUSED_CODE, message: "the VM is hibernating" });
+    sockets[0]?.serverClose(1000);
+    vi.advanceTimersByTime(60_000);
+    // A reconnect would ask the paused VM for the desktop again.
+    expect(sockets).toHaveLength(1);
+    expect(client.state).toBe("closed");
   });
 
   it("reconnects after other stream errors", () => {

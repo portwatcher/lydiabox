@@ -18,6 +18,14 @@ describe("desktop stage", () => {
     expect(desktopStage({ ...open, peer: "connected", live: true })).toBe("live");
   });
 
+  it("does not reconnect after the server said the VM pauses", () => {
+    // The poll still says RUNNING: the page waits for a new status.
+    const paused = { ...base, paused: true };
+    expect(shouldConnect(paused)).toBe(false);
+    expect(desktopStage(paused)).toBe("hibernating");
+    expect(shouldConnect({ ...base, paused: false })).toBe(true);
+  });
+
   it("shows a calm stopped state and does not reconnect after a user stop", () => {
     // The server ended the stream before the status poll saw the stop.
     const ended = { ...base, stopped: true };

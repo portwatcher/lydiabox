@@ -18,7 +18,7 @@ import { useTakeoverInput } from "./desktop/useTakeoverInput";
 
 export default function DesktopPage() {
   const toast = useToast();
-  const { vmState, pending, refresh } = useSystem();
+  const { vmState, pending, refresh, fetchedAt } = useSystem();
   const [overlay, dispatch] = useReducer(overlayReducer, initialOverlay);
   const onAction = useCallback((action: AgentAction) => {
     dispatch({ type: "action", action, now: Date.now() });
@@ -51,7 +51,7 @@ export default function DesktopPage() {
 
   // Stream only a running VM. Opening the stream never starts the VM: the
   // start control does (the status bar, or the stage below).
-  const stageInput = { vmState, pending, socket: stream.socket, stopped: stream.stopped, live: false };
+  const stageInput = { vmState, pending, socket: stream.socket, stopped: stream.stopped, paused: stream.paused, live: false };
   const connectNow = probe.state === "ok" && shouldConnect(stageInput);
   useEffect(() => {
     if (connectNow) {
@@ -74,6 +74,27 @@ export default function DesktopPage() {
       refresh();
     }
   }, [stream.stopped, refresh]);
+
+  // The server ended or refused the stream because the VM pauses (from any
+  // source, also another tab or the idle pause). The page shows the
+  // hibernating state and connects again only after a newer status says
+  // that the VM runs: a reconnect must not wake the VM.
+  const pausedSeenAt = useRef<number | null>(null);
+  const clearPaused = stream.clearPaused;
+  useEffect(() => {
+    if (!stream.paused) {
+      pausedSeenAt.current = null;
+      return;
+    }
+    if (pausedSeenAt.current === null) {
+      pausedSeenAt.current = fetchedAt;
+      refresh();
+      return;
+    }
+    if (fetchedAt !== pausedSeenAt.current) {
+      clearPaused();
+    }
+  }, [stream.paused, fetchedAt, refresh, clearPaused]);
 
   useEffect(() => {
     if (overlay.ripples.length === 0 && overlay.pills.length === 0 && !overlay.drag) {

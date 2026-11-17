@@ -1,17 +1,16 @@
 import { isRecord, num, str } from "./decode";
 import { sessions } from "./domains";
-import { ReconnectingSocket, STOPPED_CODE, wsUrl } from "./socket";
+import { PAUSED_CODE, ReconnectingSocket, STOPPED_CODE, wsUrl } from "./socket";
 import type { SocketState, WebSocketFactory } from "./socket";
 import type { PtyClientMessage, PtyServerMessage, PtySignal } from "./types";
 
 export const PTY_PROTOCOL = "lydiabox.pty.v1";
 
 /**
- * Error code with which a terminal socket ends when the VM was hibernated.
- * The process lives on in the paused VM; a reconnect would wake the VM, so
- * the client waits until the VM runs again and then calls `retry`.
+ * A terminal socket that ends with this code keeps its process in the
+ * paused VM; the client waits until the VM runs again and then calls `retry`.
  */
-export const PAUSED_CODE = "paused";
+export { PAUSED_CODE };
 
 /** Decodes one `lydiabox.pty.v1` text frame; unknown or malformed frames give null. */
 export function parsePtyMessage(message: unknown): PtyServerMessage | null {
@@ -63,6 +62,8 @@ export interface PtyClientOptions {
  */
 export class PtyClient {
   private id: string;
+  /** Set by the first hello: later connects are reconnects. */
+  private attached = false;
   private readonly socket: ReconnectingSocket;
   private readonly encoder = new TextEncoder();
   private size: { cols: number; rows: number } | null = null;
@@ -71,7 +72,8 @@ export class PtyClient {
     this.id = sessionId;
     const toUrl = options.url ?? ((path: string) => wsUrl(path));
     this.socket = new ReconnectingSocket({
-      url: () => toUrl(sessions.wsPath(this.id)),
+      // A reconnect says so: the server does not wake a paused VM for it.
+      url: () => toUrl(sessions.wsPath(this.id) + (this.attached ? "?reconnect=1" : "")),
       protocol: PTY_PROTOCOL,
       binaryType: "arraybuffer",
       factory: options.factory,
@@ -139,6 +141,7 @@ export class PtyClient {
     }
     switch (msg.type) {
       case "hello":
+        this.attached = true;
         if (msg.sessionId) {
           this.id = msg.sessionId;
         }

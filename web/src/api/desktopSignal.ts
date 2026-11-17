@@ -1,7 +1,7 @@
 import { bool, isRecord, num, oneOf, str } from "./decode";
 import type { Json } from "./decode";
 import { desktop } from "./domains";
-import { ReconnectingSocket, STOPPED_CODE, wsUrl } from "./socket";
+import { PAUSED_CODE, ReconnectingSocket, STOPPED_CODE, wsUrl } from "./socket";
 import type { SocketState, WebSocketFactory } from "./socket";
 import type {
   AgentAction,
@@ -150,7 +150,7 @@ export class DesktopSignalClient {
       factory: options.factory,
       onJson: (raw) => {
         const msg = parseDesktopMessage(raw);
-        if (msg?.type === "error" && msg.code === STOPPED_CODE) {
+        if (msg?.type === "error" && (msg.code === STOPPED_CODE || msg.code === PAUSED_CODE)) {
           this.socket.finish();
         }
         if (msg) {
