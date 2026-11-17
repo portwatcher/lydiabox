@@ -170,9 +170,22 @@ func (s *Supervisor) Admin() (AdminAPI, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.admin == nil {
-		return nil, fmt.Errorf("%w: gateway is %s", ErrUnavailable, s.status.State)
+		return nil, fmt.Errorf("%w: %s", ErrUnavailable, stateText(s.status.State))
 	}
 	return s.admin, nil
+}
+
+// stateText says why the gateway cannot answer, for the API and the web.
+func stateText(state string) string {
+	switch state {
+	case StateStarting:
+		return "the gateway is starting"
+	case StateStopped:
+		return "the gateway is stopped"
+	case StateError:
+		return "the gateway did not start"
+	}
+	return "the gateway is not ready"
 }
 
 // GatewayKey returns the provisioned gateway key ("" until provisioned).
