@@ -568,6 +568,22 @@ stand-in for a long agent process).
 `TestInstaboxHostRestartKeepsLiveTerminals` covers the production case: a
 graceful restart of an InstaBox cell, where the machine keeps running.
 
+### Hibernate from another source (2026-11-17)
+
+Setup as in the user-stop run. Tab A in the browser pane; the hibernate goes
+through `POST /api/v1/vm/hibernate` with the admin token, as from another tab,
+device, or the idle pause. The VM state was read every 2 s.
+
+| # | Tab A | Result |
+| :--- | :--- | :--- |
+| 1 | Desktop with a connected stream | The stream ends with `paused`; the page shows "The VM is hibernating"; the VM stays `PAUSED` for 20 s | pass |
+| 2 | Studio with a live shell | "The VM is hibernating."; the session is `idle`; the VM stays `PAUSED` for 30 s | pass |
+| 3 | Files | The listing stays; no file request; the VM stays `PAUSED` for 30 s | pass |
+| 4 | Desktop: Start desktop | The VM resumes and the stream connects again | pass |
+
+No WARN or ERROR in the cell log except the expected `magpie` and S3 setup
+lines.
+
 ## Integration run (chv on KVM)
 
 Date: 2026-11-10. Host: Apple M3 Pro (macOS 26), Lima 2.3.0 VM with
