@@ -12,7 +12,7 @@ interface ModelInputProps {
 }
 
 /** A model ID field that suggests known `provider/model` IDs and accepts any value. */
-export function ModelInput({ id, value, onChange, models, placeholder = "kimi/kimi-k3", describedBy }: ModelInputProps) {
+export function ModelInput({ id, value, onChange, models, placeholder, describedBy }: ModelInputProps) {
   const listId = useId();
   return (
     <>

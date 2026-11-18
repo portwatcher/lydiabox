@@ -954,6 +954,12 @@ Details:
   `lydiabox-connectors` (`http://127.0.0.1:8911/mcp`). Harnesses inside the
   VM send the placeholder token `lydiabox-local`; the host side of the
   gateway tunnel replaces it with the VM gateway key `lydiabox-vm`.
+- Claude Code starts at the prompt: `~/.claude.json` gets
+  `hasCompletedOnboarding` (no theme step or security notes) and
+  `hasTrustDialogAccepted` for `/workspace`, `/home/agent`, and their InstaBox
+  link targets `/data/workspace` and `/data/lydiabox/home` (no folder trust
+  question; Claude Code also trusts subfolders). A value that the user set
+  stays.
 
 ### 10.1 Subscriptions
 

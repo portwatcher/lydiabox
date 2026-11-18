@@ -5,6 +5,18 @@
     "/workspace/lydiabox": {
       "allowedTools": [],
       "mcpServers": {}
+    },
+    "/workspace": {
+      "hasTrustDialogAccepted": true
+    },
+    "/home/agent": {
+      "hasTrustDialogAccepted": true
+    },
+    "/data/workspace": {
+      "hasTrustDialogAccepted": true
+    },
+    "/data/lydiabox/home": {
+      "hasTrustDialogAccepted": true
     }
   },
   "mcpServers": {
@@ -26,5 +38,6 @@
       "type": "http",
       "url": "http://127.0.0.1:8911/mcp"
     }
-  }
+  },
+  "hasCompletedOnboarding": true
 }

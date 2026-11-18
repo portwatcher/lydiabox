@@ -2,6 +2,7 @@ package wire
 
 import (
 	"errors"
+	"encoding/json"
 	"flag"
 	"io/fs"
 	"os"
@@ -235,5 +236,54 @@ func TestEnvEdit(t *testing.T) {
 	}
 	if _, ok := d.get("C"); ok {
 		t.Fatal("commented variable must not be read")
+	}
+}
+
+// TestClaudeFirstStart: a new home starts at the prompt (onboarding done,
+// the persistent trees trusted); a value that the user set stays.
+func TestClaudeFirstStart(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"),
+		[]byte(`{"hasCompletedOnboarding": false, "projects": {"/workspace": {"hasTrustDialogAccepted": false, "allowedTools": ["Read"]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w, _ := For("claude-code")
+	if err := w.Apply(DirHome(home), Binding{}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".claude.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st struct {
+		Onboarding *bool `json:"hasCompletedOnboarding"`
+		Projects   map[string]struct {
+			Trust        *bool    `json:"hasTrustDialogAccepted"`
+			AllowedTools []string `json:"allowedTools"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(b, &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Onboarding == nil || *st.Onboarding {
+		t.Errorf("the user's onboarding value changed: %s", b)
+	}
+	if p := st.Projects["/workspace"]; p.Trust == nil || *p.Trust || len(p.AllowedTools) != 1 {
+		t.Errorf("the user's /workspace entry changed: %s", b)
+	}
+	for _, dir := range []string{"/home/agent", "/data/workspace", "/data/lydiabox/home"} {
+		if p := st.Projects[dir]; p.Trust == nil || !*p.Trust {
+			t.Errorf("%s not trusted: %s", dir, b)
+		}
+	}
+
+	fresh := t.TempDir()
+	if err := w.Apply(DirHome(fresh), Binding{}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(fresh, ".claude.json"))
+	st.Onboarding, st.Projects = nil, nil
+	if err := json.Unmarshal(b, &st); err != nil || st.Onboarding == nil || !*st.Onboarding || st.Projects["/workspace"].Trust == nil {
+		t.Errorf("new home = %s, %v", b, err)
 	}
 }

@@ -6,13 +6,52 @@ import (
 )
 
 // claudeWirer edits ~/.claude/settings.json (env, model) and registers the
-// MCP servers at user scope in ~/.claude.json.
+// MCP servers at user scope in ~/.claude.json. It also marks the first-start
+// steps (theme, security notes) as done and trusts the persistent trees, so a
+// session starts at the prompt; values that the user set stay.
 type claudeWirer struct{}
 
 const (
 	claudeSettings = ".claude/settings.json"
 	claudeState    = ".claude.json"
 )
+
+// claudeTrustedDirs are the folders that Claude Code trusts without its
+// folder trust question; it also trusts their subfolders. The VM is the
+// agent's own computer. Claude Code asks for the real path of the working
+// directory, so the list has the guest paths and, for the InstaBox image,
+// their link targets (docs/instabox.md, "Run-time layout").
+var claudeTrustedDirs = []string{"/workspace", "/home/agent", "/data/workspace", "/data/lydiabox/home"}
+
+// claudeFirstStart marks the first-start steps as done unless the user
+// state already has them, and trusts claudeTrustedDirs.
+func claudeFirstStart(o *object) error {
+	if _, ok := o.get("hasCompletedOnboarding"); !ok {
+		if err := o.set("hasCompletedOnboarding", true); err != nil {
+			return err
+		}
+	}
+	projects, err := o.child("projects")
+	if err != nil {
+		return err
+	}
+	for _, dir := range claudeTrustedDirs {
+		p, err := projects.child(dir)
+		if err != nil {
+			return err
+		}
+		if _, ok := p.get("hasTrustDialogAccepted"); ok {
+			continue
+		}
+		if err := p.set("hasTrustDialogAccepted", true); err != nil {
+			return err
+		}
+		if err := projects.setChild(dir, p); err != nil {
+			return err
+		}
+	}
+	return o.setChild("projects", projects)
+}
 
 func (claudeWirer) Harness() string    { return "claude-code" }
 func (claudeWirer) ConfigPath() string { return guestPath(claudeSettings) }
@@ -55,7 +94,10 @@ func (claudeWirer) Apply(h Home, b Binding) error {
 		if err != nil {
 			return err
 		}
-		return o.setChild("mcpServers", servers)
+		if err := o.setChild("mcpServers", servers); err != nil {
+			return err
+		}
+		return claudeFirstStart(o)
 	})
 }
 

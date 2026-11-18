@@ -186,7 +186,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
           </Field>
         ) : null}
         <Field id="ns-title" label="Title">
-          <TextInput id="ns-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Fix flaky upload test" />
+          <TextInput id="ns-title" value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
       </form>
     </Dialog>
