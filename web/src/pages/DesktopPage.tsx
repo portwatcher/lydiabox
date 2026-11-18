@@ -16,6 +16,14 @@ import { desktopStage, shouldConnect, shouldDisconnect } from "./desktop/stage";
 import { useDesktopStream } from "./desktop/useDesktopStream";
 import { useTakeoverInput } from "./desktop/useTakeoverInput";
 
+function ReleaseHint() {
+  return (
+    <>
+      <kbd className="kbd kbd-xs">Shift</kbd>+<kbd className="kbd kbd-xs">Esc</kbd> releases the keyboard
+    </>
+  );
+}
+
 /** From this width the activity panel sits beside the stage; below it covers the stage. */
 const WIDE = "(min-width: 1024px)";
 
@@ -235,7 +243,7 @@ export default function DesktopPage() {
         connected={connected}
         viewers={stream.viewers}
         sidebar={sidebar}
-        hint={takeover && live ? (keyboardHeld ? "Shift+Esc releases the keyboard" : "Click the desktop to take control") : null}
+        hint={takeover && live ? keyboardHeld ? <ReleaseHint /> : "Click the desktop to take control" : null}
         onModeChange={(m) => void changeMode(m)}
         onLaunch={launch}
         onToggleSidebar={() => setSidebar((s) => !s)}
@@ -254,22 +262,22 @@ export default function DesktopPage() {
           onFocus={() => setKeyboardHeld(true)}
           onBlur={() => setKeyboardHeld(false)}
           className={cx(
-            "relative min-w-0 flex-1 overflow-hidden bg-black outline-none select-none",
+            "relative min-w-0 flex-1 overflow-hidden bg-base-300 outline-none select-none",
             takeover && live ? "cursor-none touch-none" : "",
-            takeover && live && keyboardHeld ? "ring-2 ring-accent-solid ring-inset" : "",
+            takeover && live && keyboardHeld ? "ring-2 ring-primary ring-inset" : "",
           )}
         >
           <video ref={videoRef} autoPlay playsInline muted className={cx("absolute inset-0 h-full w-full object-contain", !live && "invisible")} />
           {live ? <DesktopOverlay state={overlay} screen={stream.screen} /> : null}
-          {stageContent ? <div className="absolute inset-0 bg-bg">{stageContent}</div> : null}
+          {stageContent ? <div className="absolute inset-0 bg-base-300">{stageContent}</div> : null}
         </div>
         {sidebar ? (
           <aside
             id="desktop-feed"
             aria-label="Agent activity"
-            className="absolute inset-y-0 right-0 z-10 flex w-80 max-w-full flex-col border-l border-border-subtle bg-bg-subtle lg:static"
+            className="absolute inset-y-0 right-0 z-10 flex w-80 max-w-full flex-col border-l border-base-content/10 bg-base-200 lg:static"
           >
-            <div className="flex items-center justify-between gap-2 border-b border-border-subtle py-1.5 ps-4 pe-2 lg:py-3 lg:pe-4">
+            <div className="flex items-center justify-between gap-2 border-b border-base-content/10 py-1.5 ps-4 pe-2 lg:py-3 lg:pe-4">
               <h2 className="text-sm font-semibold">Agent activity</h2>
               <IconButton icon={X} label="Close agent activity" className="lg:hidden" onClick={() => setSidebar(false)} />
             </div>

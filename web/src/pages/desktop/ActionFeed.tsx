@@ -24,15 +24,15 @@ export function ActionFeed({ feed }: { feed: FeedItem[] }) {
     return <StateView title="No agent actions yet">Tool calls from the agent show here as they happen.</StateView>;
   }
   return (
-    <ol aria-label="Recent agent actions" className="flex flex-col">
+    <ol aria-label="Recent agent actions" className="list">
       {feed.map((item) => {
         const Icon = icons[item.action.action];
         return (
-          <li key={item.id} className="flex gap-3 border-b border-border-subtle px-4 py-2.5">
-            <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-fg-muted" />
+          <li key={item.id} className="list-row gap-3 rounded-none px-4 py-2.5 after:border-base-content/10">
+            <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-base-content/70" />
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-sm break-words text-fg">{describeAction(item.action)}</span>
-              <span className="flex items-center gap-2 text-xs text-fg-muted">
+              <span className="text-sm break-words">{describeAction(item.action)}</span>
+              <span className="flex items-center gap-2 text-xs text-base-content/70">
                 {item.action.tool ? <code className="truncate">{item.action.tool}</code> : null}
                 <span className="ml-auto shrink-0 tabular-nums">{formatAgo(now - item.receivedAt)}</span>
               </span>

@@ -1,5 +1,6 @@
 import { Box, Eye, Globe, MousePointer2, PanelRightClose, PanelRightOpen, SquareTerminal, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import type { DesktopMode, LaunchApp } from "../../api/types";
 import { Button, cx } from "../../components/ui";
 import { count } from "../../lib/format";
@@ -16,7 +17,7 @@ function ModeSwitch({ mode, busy, disabled, onChange }: { mode: DesktopMode; bus
     { value: "TAKEOVER", label: "Takeover", icon: MousePointer2 },
   ];
   return (
-    <div role="group" aria-label="Control mode" className="inline-flex rounded-md border border-border bg-bg p-0.5">
+    <div role="group" aria-label="Control mode" className="tabs tabs-box tabs-sm flex-nowrap bg-base-300 p-0.5">
       {options.map(({ value, label, icon: Icon }) => {
         const active = mode === value;
         return (
@@ -27,12 +28,8 @@ function ModeSwitch({ mode, busy, disabled, onChange }: { mode: DesktopMode; bus
             disabled={disabled || busy}
             onClick={() => !active && onChange(value)}
             className={cx(
-              "inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-[13px] font-medium transition-colors duration-150 disabled:opacity-50",
-              active
-                ? value === "TAKEOVER"
-                  ? "bg-accent-solid text-on-accent"
-                  : "bg-surface-active text-fg"
-                : "text-fg-muted hover:text-fg",
+              "tab h-7 gap-1.5 px-2.5 text-[13px] font-medium",
+              active ? (value === "TAKEOVER" ? "tab-active bg-primary text-primary-content" : "tab-active") : "text-base-content/70 hover:text-base-content",
             )}
           >
             <Icon aria-hidden className="size-4" />
@@ -51,7 +48,7 @@ interface DesktopToolbarProps {
   viewers: number;
   sidebar: boolean;
   /** Keyboard hint of the takeover mode, shown beside the mode switch (outside the remote screen). */
-  hint?: string | null;
+  hint?: ReactNode;
   onModeChange: (mode: DesktopMode) => void;
   onLaunch: (app: LaunchApp, label: string) => void;
   onToggleSidebar: () => void;
@@ -60,10 +57,10 @@ interface DesktopToolbarProps {
 /** Desktop controls. The VM state and power actions are in the status bar only. */
 export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hint = null, onModeChange, onLaunch, onToggleSidebar }: DesktopToolbarProps) {
   return (
-    <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-border-subtle px-3 py-2">
+    <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-base-content/10 px-3 py-2">
       <ModeSwitch mode={mode} busy={modeBusy} disabled={!connected} onChange={onModeChange} />
       {/* A keyboard hint; hidden at phone widths, where the toolbar wraps and touch has no Shift+Esc. */}
-      {hint ? <span className="hidden text-xs text-fg-muted sm:inline">{hint}</span> : null}
+      {hint ? <span className="hidden text-xs text-base-content/70 sm:inline">{hint}</span> : null}
       <div className="flex flex-wrap items-center gap-1">
         {apps.map(({ app, label, icon }) => (
           <Button key={app} size="sm" variant="ghost" icon={icon} disabled={!connected} onClick={() => onLaunch(app, label)}>
@@ -71,7 +68,7 @@ export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hi
           </Button>
         ))}
       </div>
-      <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted tabular-nums">
+      <span className="inline-flex items-center gap-1.5 text-xs text-base-content/70 tabular-nums">
         <Users aria-hidden className="size-4" />
         {count(viewers, { one: "# viewer", other: "# viewers" })}
       </span>
