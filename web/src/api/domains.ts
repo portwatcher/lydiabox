@@ -21,6 +21,7 @@ import type {
   SubscriptionLogin,
   SessionsResponse,
   TokenRequest,
+  Transcript,
   UpdateProviderRequest,
 } from "./types";
 
@@ -29,6 +30,7 @@ export const sessions = {
   list: (filter: { harness?: HarnessID | ""; workspace?: string }, signal?: AbortSignal) =>
     http.get<SessionsResponse>("/api/v1/sessions", { harness: filter.harness, workspace: filter.workspace }, signal),
   create: (body: CreateSessionRequest) => http.post<Session>("/api/v1/sessions", body),
+  transcript: (id: string, signal?: AbortSignal) => http.get<Transcript>(`/api/v1/sessions/${seg(id)}/transcript`, undefined, signal),
   remove: (id: string, purge = false) => http.delete(`/api/v1/sessions/${seg(id)}`, { purge: purge || undefined }),
   wsPath: (id: string) => `/api/v1/sessions/${seg(id)}/ws`,
 };

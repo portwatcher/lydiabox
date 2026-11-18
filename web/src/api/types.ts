@@ -187,6 +187,20 @@ export interface SessionsResponse {
   cachedAt?: string;
 }
 
+export interface TranscriptEntry {
+  role: "user" | "assistant" | "tool";
+  text: string;
+  /** Tool name, on "tool" entries. */
+  tool?: string;
+  time?: string;
+}
+
+export interface Transcript {
+  entries: TranscriptEntry[];
+  /** True when older entries or long texts were cut. */
+  truncated?: boolean;
+}
+
 export interface CreateSessionRequest {
   harness: HarnessID;
   workspaceDir: string;

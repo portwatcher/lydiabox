@@ -18,6 +18,7 @@ import { SessionList } from "./studio/SessionList";
 import { deleteText, deletesWithoutConfirm, listDisagrees, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
 import { TerminalView } from "./studio/TerminalView";
+import { TranscriptView } from "./studio/TranscriptView";
 
 const CELL = { width: 7.8, height: 17 };
 
@@ -245,18 +246,18 @@ export default function StudioPage() {
                 termSize.current = { cols, rows };
               }}
             />
+          ) : selected && selected.harness !== "shell" ? (
+            <TranscriptView session={selected} onResume={() => void resume(selected)} resumeBlocked={startBlocked} />
           ) : selected ? (
             <StateView
               icon={SquareTerminal}
-              title={selected.status === "exited" ? "This session has ended" : "This session is not running"}
+              title={selected.status === "exited" ? "This shell has ended" : "This shell is not running"}
               action={
                 <Button variant="primary" icon={Play} onClick={() => void resume(selected)} disabled={startBlocked !== null} title={startBlocked ?? undefined}>
-                  {selected.harness === "shell" ? "Start a new shell" : "Resume session"}
+                  Start a new shell
                 </Button>
               }
-            >
-              {selected.harness === "shell" ? null : "Resuming starts the harness in the VM, and starts or resumes the VM if needed."}
-            </StateView>
+            />
           ) : selectedId && listed ? (
             <StateView title="Session not found" action={<Button onClick={() => select(null)}>Back to sessions</Button>}>
               It may have been deleted.
