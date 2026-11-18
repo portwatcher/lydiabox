@@ -656,6 +656,32 @@ the delete (for example `claude --resume` in a shell). A resume through
 `POST /api/v1/sessions` with `resumeNativeId` and a purge remove the record. A
 failed purge records nothing, so the session stays listed for another try.
 
+### `GET /api/v1/sessions/{id}/transcript`
+
+Returns the read-only history of a session from its native transcript:
+
+```json
+{"entries": [
+  {"role": "user", "text": "Fix the flaky upload test", "time": "2026-11-10T05:10:05Z"},
+  {"role": "tool", "tool": "shell", "text": "go test ./internal/storage/files/"},
+  {"role": "assistant", "text": "The test now passes five times in a row."}
+], "truncated": false}
+```
+
+`role` is `user`, `assistant`, or `tool`. A `tool` entry is a tool call:
+`tool` is its name and `text` a short form of its input (the command, the
+path, or the compact JSON, at most 400 characters). Tool results, reasoning,
+and injected context (system reminders, `AGENTS.md`) are left out. `time`
+is absent when the format has no time (Antigravity). The newest entries are
+kept: texts over 32 KiB are cut, and older entries are dropped to keep the
+texts under 3 MiB; `truncated` is then `true`.
+
+In the `juicefs` storage mode the host reads the files without the VM. In the
+`provider` mode the guest reads them (`harness.transcript`), which starts or
+resumes the machine; `503` when it does not start or its guest program is
+too old. `404` for an unknown session, a shell session, or a session whose
+harness has not written a transcript yet; `400` for an invalid ID.
+
 ### `GET /api/v1/sessions/{id}/ws` — WebSocket
 
 Subprotocol: `lydiabox.pty.v1`. Several clients may attach to one session

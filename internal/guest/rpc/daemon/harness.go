@@ -72,3 +72,39 @@ func (f *fsService) purge(_ context.Context, params json.RawMessage) (any, error
 	}
 	return nil, rpc.Errorf(rpc.CodeNotFound, "unknown harness %q", p.Harness)
 }
+
+// transcript reads the native transcript of one session.
+func (f *fsService) transcript(_ context.Context, params json.RawMessage) (any, error) {
+	var p rpc.HarnessSessionParams
+	if err := f.decode(params, &p); err != nil {
+		return nil, err
+	}
+	home, err := f.files.Dir(agentfs.RootHome)
+	if err != nil {
+		return nil, fsErr(err)
+	}
+	for _, a := range adapters.All() {
+		if a.Name() != p.Harness {
+			continue
+		}
+		tr, ok := a.(harness.Transcriber)
+		if !ok {
+			return nil, rpc.Errorf(rpc.CodeNotFound, "%s has no transcript reader", p.Harness)
+		}
+		var t harness.Transcript
+		err := f.files.Do(func() (err error) {
+			t, err = tr.Transcript(home, p.ID)
+			return err
+		})
+		switch {
+		case errors.Is(err, harness.ErrBadRequest):
+			return nil, rpc.Errorf(rpc.CodeBadRequest, "%v", err)
+		case errors.Is(err, harness.ErrNotFound):
+			return nil, rpc.Errorf(rpc.CodeNotFound, "%v", err)
+		case err != nil:
+			return nil, fsErr(err)
+		}
+		return t.Fit(), nil
+	}
+	return nil, rpc.Errorf(rpc.CodeNotFound, "unknown harness %q", p.Harness)
+}

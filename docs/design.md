@@ -211,6 +211,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      | `GET /api/v1/fs/{root}/list?auto=1` (lists that the Files page sends by itself) | no | `503` while the VM does not serve; the page sends none while the VM is not running and shows Resume or Start |
      | `GET /api/v1/fs/roots` | no | Last answer of the guest, or the defaults |
      | `DELETE /api/v1/sessions/{id}?purge=true` in `provider` mode | yes | Deletes the transcript in the guest |
+     | `GET /api/v1/sessions/{id}/transcript` in `provider` mode | yes | The user opened a session; the guest reads its transcript |
      | `DELETE /api/v1/sessions/{id}` without purge | no | Ends the guest terminal without a wake; the next reconcile ends it when the guest is not reachable |
      | `GET /api/v1/sessions` (Studio list, 10 s poll) | no | Guest discovery only while the VM serves; otherwise the cached result |
      | `GET /api/v1/status`, `GET /api/v1/vm/status` (5 s poll) | no | Host only |
@@ -313,7 +314,7 @@ Build a responsive, dark-themed workstation UI (TailwindCSS + Lucide icons + `xt
    - On 2026-11-17 the owner asked for the VM power controls (state pill, Start or Resume / Hibernate / Stop) to show only in this global status bar. No page repeats them; the Desktop page starts a stopped VM or resumes a paused one from its own "Start" or "Resume" action, which is the same explicit start as the status bar. The verbs are the same on every workstation page (2026-11-18): "Start" for a stopped VM, "Resume" for a paused VM; "Start desktop" shows only when the VM runs and only the desktop stream is off. A stop by the user holds until such an explicit start: the desktop stream, a terminal reconnect, and file requests do not start the VM again, also after a restart of the host process (the hold is in the state database; `docs/api.md` section 7). Hibernate has no confirm step because it ends no process: the guest keeps its memory, and a live terminal attaches again to the same process after the wake.
 2. **Studio Tab (`/studio`)**:
    - Left pane: Unified Sessions list filterable by Harness (`claude-code`, `codex`, `dsh`, `antigravity`, `opencode`) and Workspace directory; works even when VM is `STOPPED`.
-   - Center pane: Live `xterm.js` WebSocket PTY terminal attached to the active Harness session.
+   - Center pane: Live `xterm.js` WebSocket PTY terminal attached to the active Harness session. A session without a live terminal shows its read-only history (user and assistant messages and tool calls, `GET /api/v1/sessions/{id}/transcript`) with "Continue session", which resumes it in a terminal.
 3. **Desktop & Computer Use Tab (`/desktop`)**:
    - Full-viewport WebRTC `<video>` player with aspect-ratio scaling (`1920x1080` coordinate mapping).
    - Live SVG overlay rendering Agent cursor position, click ripples, and recent MCP tool call feed on a collapsible right sidebar.

@@ -52,6 +52,7 @@ func registerFS(srv *rpc.Server, files *guestfs.Service) {
 	srv.HandleUnary(rpc.MethodFSMkdirAll, f.mkdirAll)
 	srv.HandleUnary(rpc.MethodHarnessDiscover, f.discover)
 	srv.HandleUnary(rpc.MethodHarnessPurge, f.purge)
+	srv.HandleUnary(rpc.MethodHarnessTranscript, f.transcript)
 }
 
 // fsErr converts an FS error to an rpc.Error with its agentfs code.

@@ -20,6 +20,7 @@ func (s SessionsRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("GET /api/v1/sessions", s.list)
 	r.HandleFunc("POST /api/v1/sessions", s.create)
 	r.HandleFunc("DELETE /api/v1/sessions/{id}", s.remove)
+	r.HandleFunc("GET /api/v1/sessions/{id}/transcript", s.transcript)
 	r.HandleFunc("GET /api/v1/sessions/{id}/ws", s.ws)
 }
 
@@ -102,4 +103,13 @@ func (s SessionsRoutes) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s SessionsRoutes) transcript(w http.ResponseWriter, r *http.Request) {
+	t, err := s.Manager.Transcript(r.Context(), tenant.FromContext(r.Context()), r.PathValue("id"))
+	if err != nil {
+		writeHarnessError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, t)
 }

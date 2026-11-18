@@ -170,6 +170,36 @@ func (g *GuestDiscovery) Purge(ctx context.Context, tenantID, harness, nativeID 
 	return nil
 }
 
+// Transcript implements Discovery. The files are on the machine disk, so
+// it starts or resumes the machine (an action of the user: the view of one
+// session).
+func (g *GuestDiscovery) Transcript(ctx context.Context, tenantID, harness, nativeID string) (Transcript, error) {
+	if g.Begin != nil {
+		release, err := g.Begin(ctx, tenantID)
+		if err != nil {
+			return Transcript{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		}
+		defer release()
+	}
+	var t Transcript
+	err := g.Guest.FSCall(ctx, tenantID, rpc.MethodHarnessTranscript, rpc.HarnessSessionParams{Harness: harness, ID: nativeID}, &t)
+	switch {
+	case err == nil:
+		return t, nil
+	case rpc.IsCode(err, rpc.CodeBadRequest):
+		return Transcript{}, fmt.Errorf("%w: %v", ErrBadRequest, err)
+	case rpc.IsCode(err, rpc.CodeNotFound):
+		return Transcript{}, fmt.Errorf("%w: %v", ErrNotFound, err)
+	case rpc.IsCode(err, rpc.CodeNoMethod):
+		return Transcript{}, fmt.Errorf("%w: the guest program of the machine is too old to read transcripts; update the machine image", ErrUnavailable)
+	}
+	var re *rpc.Error
+	if errors.As(err, &re) {
+		return Transcript{}, err
+	}
+	return Transcript{}, fmt.Errorf("%w: read the transcript in the guest: %v", ErrUnavailable, err)
+}
+
 func (g *GuestDiscovery) dropCached(ctx context.Context, tenantID, harness, nativeID string) {
 	if g.Cache == nil {
 		return

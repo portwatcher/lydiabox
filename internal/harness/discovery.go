@@ -17,6 +17,8 @@ type Discovery interface {
 	Discover(ctx context.Context, tenantID string, harnesses []string) (Discovered, error)
 	// Purge deletes the native transcript of one session.
 	Purge(ctx context.Context, tenantID, harness, nativeID string) error
+	// Transcript reads the native transcript of one session.
+	Transcript(ctx context.Context, tenantID, harness, nativeID string) (Transcript, error)
 }
 
 // Discovered is the result of one discovery.
@@ -76,4 +78,23 @@ func (l LocalDiscovery) Purge(_ context.Context, tenantID, harness, nativeID str
 		return a.Purge(home, nativeID)
 	}
 	return fmt.Errorf("%w: unknown harness %q", ErrNotFound, harness)
+}
+
+// Transcript implements Discovery.
+func (l LocalDiscovery) Transcript(_ context.Context, tenantID, harness, nativeID string) (Transcript, error) {
+	for _, a := range l.Adapters {
+		if a.Name() != harness {
+			continue
+		}
+		tr, ok := a.(Transcriber)
+		if !ok {
+			return Transcript{}, fmt.Errorf("%w: %s has no transcript reader", ErrNotFound, harness)
+		}
+		home, err := l.Dirs.HomeDir(tenantID)
+		if err != nil {
+			return Transcript{}, err
+		}
+		return tr.Transcript(home, nativeID)
+	}
+	return Transcript{}, fmt.Errorf("%w: unknown harness %q", ErrNotFound, harness)
 }

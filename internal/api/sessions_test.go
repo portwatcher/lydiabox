@@ -153,6 +153,16 @@ func TestSessionsHTTP(t *testing.T) {
 			t.Errorf("%s %s = %d %s, want %d", tc.method, tc.path, resp.StatusCode, body, tc.code)
 		}
 	}
+	resp, body = e.do(t, http.MethodGet, "/api/v1/sessions/"+url.PathEscape("dsh:"+adapterstest.DSHID)+"/transcript", nil)
+	var tr harness.Transcript
+	if resp.StatusCode != 200 || json.Unmarshal(body, &tr) != nil || len(tr.Entries) != 6 || tr.Entries[2].Tool != "read" {
+		t.Fatalf("transcript = %d %s", resp.StatusCode, body)
+	}
+	for path, code := range map[string]int{"codex:nope": 404, "shell:abc": 404, "claude-code:..%2Fetc": 400} {
+		if resp, body := e.do(t, http.MethodGet, "/api/v1/sessions/"+path+"/transcript", nil); resp.StatusCode != code {
+			t.Errorf("transcript %s = %d %s, want %d", path, resp.StatusCode, body, code)
+		}
+	}
 	resp, _ = e.do(t, http.MethodDelete, "/api/v1/sessions/"+url.PathEscape("dsh:"+adapterstest.DSHID)+"?purge=true", nil)
 	if resp.StatusCode != 204 {
 		t.Fatalf("purge = %d", resp.StatusCode)

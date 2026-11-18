@@ -73,6 +73,11 @@ type ocPart struct {
 	Type      string `json:"type"`
 	Text      string `json:"text"`
 	Synthetic bool   `json:"synthetic"`
+	// Tool and State are set on parts of type "tool".
+	Tool  string `json:"tool"`
+	State struct {
+		Input json.RawMessage `json:"input"`
+	} `json:"state"`
 }
 
 // openOCDB opens the opencode database read-only, or returns nil when it

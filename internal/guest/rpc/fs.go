@@ -49,6 +49,9 @@ const (
 	MethodHarnessDiscover = "harness.discover"
 	// MethodHarnessPurge (unary): HarnessPurgeParams -> {}.
 	MethodHarnessPurge = "harness.purge"
+	// MethodHarnessTranscript (unary): HarnessSessionParams ->
+	// harness.Transcript.
+	MethodHarnessTranscript = "harness.transcript"
 )
 
 // Guest daemon environment of the file methods.
@@ -183,8 +186,11 @@ type HarnessDiscoverResult struct {
 	Errors   map[string]string          `json:"errors,omitempty"`
 }
 
-// HarnessPurgeParams deletes the native transcript of one session.
-type HarnessPurgeParams struct {
+// HarnessSessionParams names one session of a harness.
+type HarnessSessionParams struct {
 	Harness string `json:"harness"`
 	ID      string `json:"id"`
 }
+
+// HarnessPurgeParams deletes the native transcript of one session.
+type HarnessPurgeParams = HarnessSessionParams
