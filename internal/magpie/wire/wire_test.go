@@ -1,8 +1,8 @@
 package wire
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io/fs"
 	"os"
