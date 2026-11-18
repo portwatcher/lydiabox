@@ -98,7 +98,6 @@ export default function ModelsPage() {
               <Badge tone={status.tone} icon={status.icon}>
                 Gateway {status.label.toLowerCase()}
               </Badge>
-              <code>{gateway.data.addr}</code>
               {gateway.data.version ? <span>version {gateway.data.version}</span> : null}
             </span>
           ) : gateway.error ? (
