@@ -307,3 +307,10 @@ func (r *Room) Signal(sig string) error {
 	}
 	return pty.Signal(sig)
 }
+
+// Size returns the current terminal size.
+func (r *Room) Size() (cols, rows uint16) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cols, r.rows
+}

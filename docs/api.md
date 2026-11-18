@@ -628,8 +628,10 @@ guest terminal service is not available.
 Details:
 
 - `workspaceDir` defaults to `/workspace` and is created when it is missing.
-- `model` is passed to the harness for this session only (`--model`); the
-  default model of a harness is its binding (section 10).
+- `model` is passed to the harness (`--model`) and becomes the binding of
+  the harness (section 10): the New session dialog preselects it next time,
+  and the harness config uses it when the harness starts without a model. A
+  model that is not a `provider/model` ID is passed but not bound.
 - Before every start the harness config is pointed at the gateway again
   (`PUT /api/v1/models/bindings` rewrites the same keys).
 - `codex`, `dsh`, `opencode`, and `antigravity` pick the native ID of a new
@@ -638,6 +640,21 @@ Details:
   shows the session under its real ID, and the old ID keeps resolving for
   the WebSocket. `claude-code` and resumed sessions keep their ID.
 - A live session holds a `pty` lease, so the VM does not idle-pause.
+
+### `PATCH /api/v1/sessions/{id}`
+
+Changes the model of a live session. Body `{ "model": "kimi/kimi-k3",
+"cols": 120, "rows": 40 }` (`cols` and `rows` default to the current
+terminal size). The harness process ends like a delete (`SIGINT`, then
+`SIGTERM` and `SIGHUP`), and the same native session resumes with the new
+model, so the conversation stays; clients attach to the new terminal under
+the same session ID. The model becomes the binding of the harness. The
+harness of a session cannot change. Response `200 Session`.
+
+`400` for an empty model or a shell session, `404` for an unknown session,
+`409` when the session is not running (resume it with `POST` and the model
+instead) or when the harness has not saved the session yet (a provisional
+`nativeId`).
 
 ### `DELETE /api/v1/sessions/{id}[?purge=true]`
 
@@ -892,6 +909,10 @@ include key values, only `hasKey`.
 | `PUT /api/v1/models/routing` | `{ "groups": [RoutingGroup] }` | `200 { "groups": [RoutingGroup] }` |
 | `GET /api/v1/models/bindings` | | `200 { "bindings": [Binding] }` (one per harness, `model` empty when unbound) |
 | `PUT /api/v1/models/bindings/{harness}` | `{ "model": "kimi/kimi-k3" }` | `200 Binding` (config file rewritten atomically in `home/agent`) |
+
+A binding is the last model of a harness: every session start with a model
+sets it (section 8). The web UI has no page to edit bindings; it reads them
+to preselect the model of a new session.
 
 ```json
 Provider:     { "id": "openai", "kind": "openai", "name": "OpenAI", "baseUrl": "", "enabled": true, "hasKey": true,

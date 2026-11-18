@@ -146,6 +146,9 @@ func TestSessionsHTTP(t *testing.T) {
 		{http.MethodPost, "/api/v1/sessions", map[string]any{"harness": "codex", "workspaceDir": "/tmp"}, 400},
 		{http.MethodPost, "/api/v1/sessions", map[string]any{"harness": "codex", "bogus": 1}, 400},
 		{http.MethodDelete, "/api/v1/sessions/codex:nope", nil, 404},
+		{http.MethodPatch, "/api/v1/sessions/" + url.PathEscape("codex:"+adapterstest.CodexID), map[string]any{"model": "x/y"}, 409},
+		{http.MethodPatch, "/api/v1/sessions/" + url.PathEscape("codex:"+adapterstest.CodexID), map[string]any{"model": ""}, 400},
+		{http.MethodPatch, "/api/v1/sessions/codex:nope", map[string]any{"model": "x/y"}, 404},
 		{http.MethodDelete, "/api/v1/sessions/" + url.PathEscape("codex:"+adapterstest.CodexID) + "?purge=maybe", nil, 400},
 		{http.MethodPost, "/api/v1/sessions/switch", map[string]any{"sourceSessionId": "codex:" + adapterstest.CodexID, "targetHarness": "dsh"}, 405},
 	} {

@@ -116,6 +116,13 @@ func (b *Bindings) Bind(ctx context.Context, tenantID, harness, model string) (B
 	return Binding{Harness: harness, Model: got.Model, ConfigPath: w.ConfigPath(), UpdatedAt: got.UpdatedAt}, nil
 }
 
+// RememberModel binds harness to the model of a session start, so the
+// model becomes its default (harness.ModelMemory).
+func (b *Bindings) RememberModel(ctx context.Context, tenantID, harness, model string) error {
+	_, err := b.Bind(ctx, tenantID, harness, model)
+	return err
+}
+
 // EnsureWired points harness at the gateway with its stored model. It is
 // called before every harness start, so a config the user edited inside
 // the VM is repaired without losing their other settings.

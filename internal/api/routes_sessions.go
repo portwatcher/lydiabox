@@ -20,6 +20,7 @@ func (s SessionsRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("GET /api/v1/sessions", s.list)
 	r.HandleFunc("POST /api/v1/sessions", s.create)
 	r.HandleFunc("DELETE /api/v1/sessions/{id}", s.remove)
+	r.HandleFunc("PATCH /api/v1/sessions/{id}", s.patch)
 	r.HandleFunc("GET /api/v1/sessions/{id}/transcript", s.transcript)
 	r.HandleFunc("GET /api/v1/sessions/{id}/ws", s.ws)
 }
@@ -86,6 +87,22 @@ func (s SessionsRoutes) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, sess)
+}
+
+// patch changes the model of a live session (the only field that can
+// change: a session keeps its harness).
+func (s SessionsRoutes) patch(w http.ResponseWriter, r *http.Request) {
+	var req harness.ModelRequest
+	if err := httpx.DecodeJSON(w, r, 0, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
+		return
+	}
+	sess, err := s.Manager.SetModel(r.Context(), tenant.FromContext(r.Context()), r.PathValue("id"), req)
+	if err != nil {
+		writeHarnessError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, sess)
 }
 
 func (s SessionsRoutes) remove(w http.ResponseWriter, r *http.Request) {

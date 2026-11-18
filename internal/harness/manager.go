@@ -280,11 +280,7 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 	if cols == 0 || rows == 0 {
 		cols, rows = 160, 48
 	}
-	if ls.harness != Shell && m.opts.Wiring != nil {
-		if err := m.opts.Wiring.EnsureWired(ctx, ls.tenantID, ls.harness); err != nil {
-			m.log.Warn("harness config wiring failed; starting with the existing config", "harness", ls.harness, "err", err)
-		}
-	}
+	m.wire(ctx, ls)
 	wctx, cancel := context.WithTimeout(ctx, m.opts.WakeTimeout)
 	defer cancel()
 	if err := m.opts.Waker.EnsureRunning(wctx, ls.tenantID); err != nil {
