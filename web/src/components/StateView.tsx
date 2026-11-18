@@ -35,12 +35,25 @@ export function LoadingView({ label, className }: { label: string; className?: s
   );
 }
 
-/** Placeholder rows while a list loads; the label names it for screen readers. */
-export function SkeletonList({ label, rows = 4, className }: { label: string; rows?: number; className?: string }) {
+const skeletonHeights = { row: "h-16", card: "h-40" };
+
+/** Placeholder rows or cards while a list loads; the label names it for screen readers. */
+export function SkeletonList({
+  label,
+  rows = 4,
+  shape = "row",
+  className,
+}: {
+  label: string;
+  rows?: number;
+  shape?: keyof typeof skeletonHeights;
+  /** Layout of the placeholders; replaces the default column with padding. */
+  className?: string;
+}) {
   return (
-    <div role="status" aria-label={label} className={cx("flex flex-col gap-2 p-3", className)}>
+    <div role="status" aria-label={label} className={cx("gap-2", className ?? "flex flex-col p-3")}>
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} aria-hidden className="skeleton h-16 w-full bg-base-100" />
+        <div key={i} aria-hidden className={cx("skeleton w-full bg-base-100", skeletonHeights[shape])} />
       ))}
     </div>
   );
