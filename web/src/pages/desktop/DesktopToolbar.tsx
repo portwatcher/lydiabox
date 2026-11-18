@@ -52,10 +52,12 @@ interface DesktopToolbarProps {
   onModeChange: (mode: DesktopMode) => void;
   onLaunch: (app: LaunchApp, label: string) => void;
   onToggleSidebar: () => void;
+  /** The VM state and power actions (only on this page: other pages start the VM when they need it). */
+  machine?: ReactNode;
 }
 
-/** Desktop controls. The VM state and power actions are in the status bar only. */
-export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hint = null, onModeChange, onLaunch, onToggleSidebar }: DesktopToolbarProps) {
+/** Desktop controls and the VM controls. */
+export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hint = null, onModeChange, onLaunch, onToggleSidebar, machine }: DesktopToolbarProps) {
   return (
     <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-base-content/10 px-3 py-2">
       <ModeSwitch mode={mode} busy={modeBusy} disabled={!connected} onChange={onModeChange} />
@@ -72,10 +74,10 @@ export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hi
         <Users aria-hidden className="size-4" />
         {count(viewers, { one: "# viewer", other: "# viewers" })}
       </span>
+      <div className="ml-auto flex flex-wrap items-center gap-3">{machine}</div>
       <Button
         size="sm"
         variant="ghost"
-        className="ml-auto"
         icon={sidebar ? PanelRightClose : PanelRightOpen}
         aria-expanded={sidebar}
         aria-controls="desktop-feed"

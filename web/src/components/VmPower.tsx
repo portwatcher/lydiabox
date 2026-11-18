@@ -1,8 +1,9 @@
-import { Moon, Play, Square } from "lucide-react";
+import { Cpu, Moon, Play, Square } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { VMState } from "../api/types";
 import { useSystem } from "../hooks/useSystem";
+import { formatMemory } from "../lib/format";
 import { ConfirmDialog } from "./Dialog";
 import { Button, Spinner, badgeTones, cx } from "./ui";
 import type { Tone } from "./ui";
@@ -149,5 +150,55 @@ export function VmPower({ compact = false }: { compact?: boolean }) {
         }}
       />
     </div>
+  );
+}
+
+/** CPUs, memory, GPU, and driver of the VM. */
+export function VmResources() {
+  const { vmStatus, status, outage } = useSystem();
+  if (outage) {
+    // Not current while the status poll fails.
+    return null;
+  }
+  const driver = vmStatus?.driver ?? status?.vm.driver;
+  return (
+    <span className="hidden items-center gap-1.5 text-xs text-base-content/70 tabular-nums md:inline-flex">
+      <Cpu aria-hidden className="size-4" />
+      {vmStatus && vmStatus.cpus > 0 ? (
+        <span>
+          {vmStatus.cpus} vCPU · {formatMemory(vmStatus.memMb)}
+          {vmStatus.gpu ? " · GPU" : ""}
+        </span>
+      ) : null}
+      {driver ? <span className="badge badge-soft badge-xs font-mono text-base-content/70">{driver}</span> : null}
+    </span>
+  );
+}
+
+/**
+ * A start, resume, pause, or stop that runs. Pages start or resume the VM
+ * when they need it, so this is the only VM state outside the Desktop page.
+ */
+export function VmActivity() {
+  const { vmState, transition, outage } = useSystem();
+  if (outage) {
+    return null;
+  }
+  let label = null;
+  if (transition === "pausing") {
+    label = "Hibernating the VM…";
+  } else if (transition === "stopping") {
+    label = "Stopping the VM…";
+  } else if (vmState === "BOOTING") {
+    label = "Starting the VM…";
+  }
+  if (!label) {
+    return null;
+  }
+  return (
+    <span role="status" className="inline-flex items-center gap-1.5 text-xs text-base-content/70">
+      <Spinner size="xs" className="" />
+      {label}
+    </span>
   );
 }
