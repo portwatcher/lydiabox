@@ -93,7 +93,7 @@ export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, o
           </thead>
           <tbody>
             {entries.map((entry) => (
-              <tr key={entry.path} className="group border-base-content/10 hover:bg-base-content/5">
+              <tr key={entry.path} className="group border-base-content/10 text-sm hover:bg-base-content/5">
                 <td className="py-1">
                   <button
                     type="button"

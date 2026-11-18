@@ -104,7 +104,7 @@ export function FileTree({ root, rootLabel, current, onOpen, version }: FileTree
     const Icon = dir === "" ? House : open ? FolderOpen : Folder;
     return (
       <li key={dir}>
-        <div className={cx("flex items-center gap-0 p-0", active ? "menu-active" : "text-base-content/70 hover:text-base-content")}>
+        <div className={cx("flex items-center gap-0 p-0 duration-150", active ? "menu-active" : "text-base-content/70 hover:text-base-content")}>
           <button
             type="button"
             aria-label={`${open ? "Collapse" : "Expand"} ${name}`}
@@ -134,8 +134,10 @@ export function FileTree({ root, rootLabel, current, onOpen, version }: FileTree
         ) : null}
         {open && showsLoadError(node) ? (
           <ul className="ms-3 ps-1">
-            <li className="menu-disabled">
-              <span className="py-1 text-xs text-error">Folder not loaded</span>
+            <li>
+              <button type="button" onClick={() => load(dir)} className="py-1 text-xs text-error duration-150">
+                Folder not loaded. Try again
+              </button>
             </li>
           </ul>
         ) : null}

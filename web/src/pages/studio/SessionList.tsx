@@ -62,7 +62,7 @@ function SessionRow({ session, selected, onSelect, onDelete, now }: { session: S
         type="button"
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
-        className="flex w-full flex-col items-stretch gap-1 py-2.5 pr-10 pl-3 text-left"
+        className="flex w-full flex-col items-stretch gap-1 py-2.5 pr-10 pl-3 text-left duration-150"
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm font-medium" title={sessionName(session)}>

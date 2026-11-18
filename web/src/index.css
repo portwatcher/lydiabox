@@ -124,7 +124,7 @@
  * with a background tint only: add the focus ring.
  */
 @layer utilities {
-  .menu :where(li > a, li > button, li > div):focus-visible {
+  .menu :where(li > a, li > button):focus-visible {
     outline: 2px solid var(--color-base-content);
     outline-offset: -2px;
   }

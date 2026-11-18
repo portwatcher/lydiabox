@@ -11,6 +11,8 @@ import {
   SquareTerminal,
   TriangleAlert,
 } from "lucide-react";
+import { useId } from "react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router";
 import { useSystem } from "../hooks/useSystem";
 import { useNow } from "../hooks/useResource";
@@ -26,6 +28,26 @@ const tabs = [
   { to: "/models", label: "Models", icon: Sparkles },
   { to: "/connectors", label: "Connectors", icon: Plug },
 ];
+
+/**
+ * A status item with details in a daisyUI tooltip. The item is a button so
+ * that the keyboard can open the tooltip; the details describe it for
+ * screen readers. The tooltip opens to the left: below the right edge its
+ * hidden text would widen the page.
+ */
+function StatusTip({ tip, role, className, children }: { tip: string; role?: "status"; className?: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <span role={role} className="tooltip tooltip-left min-w-0">
+      <span id={id} role="tooltip" className="tooltip-content max-w-xs text-xs">
+        {tip}
+      </span>
+      <button type="button" aria-describedby={id} className={cx("inline-flex min-w-0 cursor-default items-center gap-1.5 rounded-field text-xs", className)}>
+        {children}
+      </button>
+    </span>
+  );
+}
 
 function SyncIndicator() {
   const { status, fetchedAt, error, outage } = useSystem();
@@ -49,11 +71,10 @@ function SyncIndicator() {
   }
   if (sync.kind === "failed") {
     return (
-      <span className="tooltip tooltip-left inline-flex items-center gap-1.5 text-xs text-error" data-tip={sync.error}>
+      <StatusTip tip={sync.error} className="text-error">
         <CloudAlert aria-hidden className="size-4" />
         Sync failed
-        <span className="sr-only">: {sync.error}</span>
-      </span>
+      </StatusTip>
     );
   }
   const synced = sync.kind === "synced" ? parseTime(sync.at) : null;
@@ -63,13 +84,13 @@ function SyncIndicator() {
       ? "Not synced yet"
       : `Synced ${formatAgo(serverNow - synced + (now - fetchedAt))}`;
   return (
-    <span
-      className={cx("tooltip tooltip-left inline-flex items-center gap-1.5 text-xs tabular-nums", error ? "text-warning" : "text-base-content/70")}
-      data-tip={`Last S3 sync: ${formatDateTime(storage.lastSyncAt)}. Last upload: ${formatDateTime(storage.lastUploadAt)}.`}
+    <StatusTip
+      tip={`Last S3 sync: ${formatDateTime(storage.lastSyncAt)}. Last upload: ${formatDateTime(storage.lastUploadAt)}.`}
+      className={cx("tabular-nums", error ? "text-warning" : "text-base-content/70")}
     >
       <CloudCheck aria-hidden className="size-4" />
       {label}
-    </span>
+    </StatusTip>
   );
 }
 
@@ -81,10 +102,10 @@ function VmProblem() {
     return null;
   }
   return (
-    <span role="status" className="tooltip tooltip-left inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-error" data-tip={message}>
+    <StatusTip role="status" tip={message} className="max-w-xs text-error">
       <TriangleAlert aria-hidden className="size-4 shrink-0" />
       <span className="truncate">{message}</span>
-    </span>
+    </StatusTip>
   );
 }
 
@@ -95,14 +116,10 @@ function VmSlow() {
     return null;
   }
   return (
-    <span
-      role="status"
-      className="tooltip tooltip-left inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning"
-      data-tip="The VM provider is slow to start or resume the VM. This can take a few minutes."
-    >
+    <StatusTip role="status" tip="The VM provider is slow to start or resume the VM. This can take a few minutes." className="max-w-xs text-warning">
       <Hourglass aria-hidden className="size-4 shrink-0" />
       <span className="truncate">The VM provider is slow.</span>
-    </span>
+    </StatusTip>
   );
 }
 
@@ -129,7 +146,7 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
                   to={to}
                   className={({ isActive }) =>
                     cx(
-                      "flex flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] leading-tight font-medium whitespace-nowrap",
+                      "flex flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] leading-tight font-medium whitespace-nowrap duration-150",
                       "sm:h-8 sm:flex-row sm:gap-1.5 sm:px-2.5 sm:py-0 sm:text-[13px]",
                       !isActive && "text-base-content/70 hover:text-base-content",
                     )

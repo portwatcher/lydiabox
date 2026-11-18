@@ -17,7 +17,7 @@ function ModeSwitch({ mode, busy, disabled, onChange }: { mode: DesktopMode; bus
     { value: "TAKEOVER", label: "Takeover", icon: MousePointer2 },
   ];
   return (
-    <div role="group" aria-label="Control mode" className="tabs tabs-box tabs-sm flex-nowrap p-0.5">
+    <div role="group" aria-label="Control mode" className="tabs tabs-box tabs-sm flex-nowrap border border-base-content/20 p-0.5">
       {options.map(({ value, label, icon: Icon }) => {
         const active = mode === value;
         return (
@@ -30,7 +30,7 @@ function ModeSwitch({ mode, busy, disabled, onChange }: { mode: DesktopMode; bus
             className={cx(
               "tab h-7 gap-1.5 px-2.5 text-[13px] font-medium",
               // The fill is explicit: daisyUI drops it on a disabled tab, and the mode shows also while the desktop is not connected.
-              active ? (value === "TAKEOVER" ? "tab-active bg-primary text-primary-content" : "tab-active bg-base-100") : "text-base-content/70 hover:text-base-content",
+              active ? (value === "TAKEOVER" ? "tab-active bg-primary text-primary-content" : "tab-active bg-base-100 ring-1 ring-base-content/60 ring-inset") : "text-base-content/70 hover:text-base-content",
             )}
           >
             <Icon aria-hidden className="size-4" />

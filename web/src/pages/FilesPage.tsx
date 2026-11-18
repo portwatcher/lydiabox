@@ -27,19 +27,19 @@ function nameError(value: string): string | null {
 
 /** A breadcrumb button: a ghost button that keeps the daisyUI separator. */
 function crumb(className?: string): string {
-  return cx("btn btn-ghost btn-sm h-7 px-1.5 font-normal text-base-content/70 hover:bg-base-content/10 hover:text-base-content", className);
+  return cx("btn btn-ghost btn-sm h-7 px-1.5 text-sm font-normal text-base-content/70 hover:bg-base-content/10 hover:text-base-content", className);
 }
 
 function RootSwitch({ root, onChange, className }: { root: RootName; onChange: (r: RootName) => void; className?: string }) {
   return (
-    <div role="group" aria-label="Root" className={cx("tabs tabs-box tabs-sm flex-nowrap bg-base-300 p-0.5", className)}>
+    <div role="group" aria-label="Root" className={cx("tabs tabs-box tabs-sm flex-nowrap border border-base-content/20 bg-base-300 p-0.5", className)}>
       {(["workspace", "home"] as const).map((r) => (
         <button
           key={r}
           type="button"
           aria-pressed={root === r}
           onClick={() => onChange(r)}
-          className={cx("tab h-7 flex-1 px-2.5 font-mono text-xs", root === r ? "tab-active" : "text-base-content/70 hover:text-base-content")}
+          className={cx("tab h-7 flex-1 px-2.5 font-mono text-xs", root === r ? "tab-active ring-1 ring-base-content/60 ring-inset" : "text-base-content/70 hover:text-base-content")}
         >
           {rootLabels[r]}
         </button>
@@ -188,17 +188,17 @@ export default function FilesPage() {
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-base-content/10 px-3 py-2">
           <RootSwitch root={root} onChange={(r) => navigate({ root: r, file: null })} className="md:hidden" />
-          <nav aria-label="Breadcrumb" className="breadcrumbs min-w-0 flex-[1_1_16rem] py-0 text-sm">
+          <nav aria-label="Breadcrumb" className="breadcrumbs min-w-0 flex-[1_1_16rem] py-1 text-sm [&>ul]:flex-wrap [&>ul]:whitespace-normal">
             <ul>
               <li>
-                <button type="button" onClick={() => navigate({ dir: "", file: null })} className={crumb("font-mono text-[13px]")}>
+                <button type="button" onClick={() => navigate({ dir: "", file: null })} className={crumb("font-mono")}>
                   {rootLabels[root]}
                 </button>
               </li>
               {trail.map((c, i) =>
                 i === trail.length - 1 ? (
                   <li key={c.path}>
-                    <span aria-current="page" className="px-1.5 py-1 font-medium">
+                    <span aria-current="page" className="cursor-default px-1.5 py-1 font-medium break-all hover:no-underline">
                       {c.name}
                     </span>
                   </li>

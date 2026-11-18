@@ -19,7 +19,7 @@ import { useTakeoverInput } from "./desktop/useTakeoverInput";
 function ReleaseHint() {
   return (
     <>
-      <kbd className="kbd kbd-xs">Shift</kbd>+<kbd className="kbd kbd-xs">Esc</kbd> releases the keyboard
+      <kbd className="kbd kbd-sm">Shift</kbd>+<kbd className="kbd kbd-sm">Esc</kbd> releases the keyboard
     </>
   );
 }

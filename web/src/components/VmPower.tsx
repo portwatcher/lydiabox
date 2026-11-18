@@ -170,7 +170,7 @@ export function VmResources() {
           {vmStatus.gpu ? " · GPU" : ""}
         </span>
       ) : null}
-      {driver ? <span className="badge badge-soft badge-xs font-mono text-base-content/70">{driver}</span> : null}
+      {driver ? <span className="badge badge-soft badge-sm font-mono text-base-content/70">{driver}</span> : null}
     </span>
   );
 }

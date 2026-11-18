@@ -45,7 +45,7 @@ function ModelsTable({ list }: { list: Model[] }) {
         </thead>
         <tbody>
           {list.map((m) => (
-            <tr key={m.id} className="border-base-content/10">
+            <tr key={m.id} className="border-base-content/10 text-sm">
               <td className="px-4 font-mono text-[13px] break-all">{m.id}</td>
               <td className="px-4 text-base-content/70">{m.provider}</td>
               <td className="px-4 text-right text-base-content/70 tabular-nums">

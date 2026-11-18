@@ -17,7 +17,7 @@ export const buttonVariants: Record<Variant, string> = {
   danger: "btn-error",
 };
 
-const buttonSizes: Record<Size, string> = { sm: "btn-sm", md: "" };
+const buttonSizes: Record<Size, string> = { sm: "btn-sm text-[13px]", md: "" };
 
 /** daisyUI classes of a button-styled element, for links and labels. */
 export function buttonClass(variant: Variant = "secondary", size: Size = "md", className?: string): string {

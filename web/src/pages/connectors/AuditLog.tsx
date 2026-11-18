@@ -113,7 +113,7 @@ export function AuditLog({ names }: { names: Record<string, string> }) {
             </thead>
             <tbody>
               {entries.map((entry) => (
-                <tr key={entry.id} className="border-base-content/10 align-top">
+                <tr key={entry.id} className="border-base-content/10 align-top text-sm">
                   <td className="px-4">
                     {isFailureKind(entry.kind) ? (
                       <Badge tone="danger" icon={CircleAlert}>
