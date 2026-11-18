@@ -16,9 +16,9 @@ interface TranscriptViewProps {
 function Entry({ entry }: { entry: TranscriptEntry }) {
   if (entry.role === "tool") {
     return (
-      <div className="flex min-w-0 items-baseline gap-2 font-mono text-xs text-fg-muted">
+      <div className="flex min-w-0 items-baseline gap-2 font-mono text-xs text-base-content/70">
         <Wrench aria-hidden className="size-3.5 shrink-0 self-center" />
-        <span className="shrink-0 text-fg">{entry.tool}</span>
+        <span className="shrink-0 text-base-content">{entry.tool}</span>
         <span className="min-w-0 truncate" title={entry.text}>
           {entry.text}
         </span>
@@ -27,12 +27,12 @@ function Entry({ entry }: { entry: TranscriptEntry }) {
   }
   if (entry.role === "user") {
     return (
-      <div className="ml-auto max-w-[85%] rounded-lg bg-surface-active px-3 py-2 text-sm break-words whitespace-pre-wrap text-fg">
-        {entry.text}
+      <div className="chat chat-end p-0">
+        <div className="chat-bubble chat-bubble-neutral max-w-[85%] text-sm break-words whitespace-pre-wrap">{entry.text}</div>
       </div>
     );
   }
-  return <div className="text-sm break-words whitespace-pre-wrap text-fg">{entry.text}</div>;
+  return <div className="text-sm break-words whitespace-pre-wrap">{entry.text}</div>;
 }
 
 /** The read-only history of a session that has no running terminal. */
@@ -59,7 +59,7 @@ export function TranscriptView({ session, onResume, resumeBlocked }: TranscriptV
   } else {
     body = (
       <ol aria-label="History" className="mx-auto flex max-w-3xl flex-col gap-3 p-4">
-        {transcript.data?.truncated ? <li className="text-center text-xs text-fg-muted">Older messages are not shown.</li> : null}
+        {transcript.data?.truncated ? <li className="text-center text-xs text-base-content/70">Older messages are not shown.</li> : null}
         {entries.map((e, i) => (
           <li key={i} className="flex min-w-0 flex-col">
             <Entry entry={e} />
@@ -75,7 +75,7 @@ export function TranscriptView({ session, onResume, resumeBlocked }: TranscriptV
         {body}
         <div ref={endRef} />
       </div>
-      <div className="flex justify-center border-t border-border-subtle p-3">
+      <div className="flex justify-center border-t border-base-content/10 p-3">
         <Button variant="primary" icon={Play} onClick={onResume} disabled={resumeBlocked !== null} title={resumeBlocked ?? undefined}>
           Continue session
         </Button>

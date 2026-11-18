@@ -11,21 +11,28 @@ import type { SocketState } from "../../api/socket";
 import { Banner, Button, cx } from "../../components/ui";
 import { useSystem } from "../../hooks/useSystem";
 
-/** Reads the color tokens so the terminal matches the app palette. */
+/** A hex color with an alpha channel (xterm.js does not read color-mix). */
+function withAlpha(color: string, alpha: string, fallback: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? `${color}${alpha}` : fallback;
+}
+
+/** Reads the daisyUI theme colors so the terminal matches the app palette. */
 function terminalTheme(): ITheme {
   const css = getComputedStyle(document.documentElement);
-  const token = (name: string) => css.getPropertyValue(name).trim();
+  const token = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+  const background = token("--color-base-300", "#0d1013");
+  const foreground = token("--color-base-content", "#eceff2");
   return {
-    background: token("--color-bg"),
-    foreground: token("--color-fg"),
-    cursor: token("--color-fg"),
-    cursorAccent: token("--color-bg"),
-    selectionBackground: token("--color-accent-subtle"),
+    background,
+    foreground,
+    cursor: foreground,
+    cursorAccent: background,
+    selectionBackground: withAlpha(token("--color-primary", "#3065cc"), "73", "#1a2b49"),
     black: "#1c1f24",
-    red: "#fc918e",
-    green: "#6ad895",
-    yellow: "#f7c15f",
-    blue: "#8ebcff",
+    red: token("--color-error", "#fc918e"),
+    green: token("--color-success", "#6ad895"),
+    yellow: token("--color-warning", "#f7c15f"),
+    blue: token("--color-info", "#8ebcff"),
     magenta: "#d6a4ff",
     cyan: "#6fd6dc",
     white: "#d5d9de",
@@ -36,7 +43,7 @@ function terminalTheme(): ITheme {
     brightBlue: "#b5d3ff",
     brightMagenta: "#e6c4ff",
     brightCyan: "#9de8ec",
-    brightWhite: "#eceff2",
+    brightWhite: foreground,
   };
 }
 
@@ -217,7 +224,7 @@ export function TerminalView({ sessionId, onExit, onAttach, onSize }: TerminalVi
         ref={hostRef}
         role="application"
         aria-label="Terminal"
-        className={cx("min-h-0 flex-1 bg-bg px-2 py-2", exited && "opacity-80")}
+        className={cx("min-h-0 flex-1 bg-base-300 px-2 py-2", exited && "opacity-80")}
       />
     </div>
   );

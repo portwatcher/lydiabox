@@ -28,7 +28,7 @@ export function NoModelNotice({ problem, onNavigate }: { problem: ModelProblem; 
     <Banner
       tone="warning"
       action={
-        <Link to="/models" onClick={onNavigate} className="font-medium underline underline-offset-2">
+        <Link to="/models" onClick={onNavigate} className="link font-medium underline-offset-2">
           {t.link}
         </Link>
       }

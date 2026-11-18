@@ -1,8 +1,8 @@
 import { CircleDot, History, Plus, Radio, Trash2 } from "lucide-react";
 import { SESSION_HARNESSES } from "../../api/types";
 import type { HarnessID, Session, SessionStatus } from "../../api/types";
-import { ErrorView, LoadingView, StateView } from "../../components/StateView";
-import { Badge, Button, IconButton, Select, cx } from "../../components/ui";
+import { ErrorView, SkeletonList, StateView } from "../../components/StateView";
+import { Badge, Button, IconButton, Select } from "../../components/ui";
 import type { Tone } from "../../components/ui";
 import { useNow } from "../../hooks/useResource";
 import { formatCompact, formatUsd, timeAgo } from "../../lib/format";
@@ -57,15 +57,15 @@ function UsageLine({ session }: { session: Session }) {
 function SessionRow({ session, selected, onSelect, onDelete, now }: { session: Session; selected: boolean; onSelect: () => void; onDelete: () => void; now: number }) {
   const info = statusInfo[session.status];
   return (
-    <li className={cx("group relative rounded-md", selected ? "bg-surface-active" : "hover:bg-surface-hover")}>
+    <li className="group relative">
       <button
         type="button"
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
-        className="flex w-full flex-col gap-1 rounded-md px-3 py-2.5 pr-10 text-left"
+        className="flex w-full flex-col items-stretch gap-1 py-2.5 pr-10 pl-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg" title={sessionName(session)}>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium" title={sessionName(session)}>
             {sessionName(session)}
           </span>
           {session.live ? (
@@ -74,7 +74,7 @@ function SessionRow({ session, selected, onSelect, onDelete, now }: { session: S
             </Badge>
           ) : null}
         </span>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-base-content/70">
           <Badge tone="accent">{harnessLabel(session.harness)}</Badge>
           {!session.live || session.status !== "running" ? (
             <Badge tone={info.tone} icon={CircleDot}>
@@ -83,10 +83,10 @@ function SessionRow({ session, selected, onSelect, onDelete, now }: { session: S
           ) : null}
           <span className="tabular-nums">{timeAgo(session.updatedAt, now) ?? ""}</span>
         </span>
-        <span className="truncate font-mono text-xs text-fg-muted" title={session.workspaceDir}>
+        <span className="truncate font-mono text-xs text-base-content/70" title={session.workspaceDir}>
           {session.workspaceDir}
         </span>
-        <span className="flex flex-wrap gap-x-2 text-xs text-fg-muted">
+        <span className="flex flex-wrap gap-x-2 text-xs text-base-content/70">
           {session.model ? (
             <span className="truncate" title={session.model}>
               {session.model}
@@ -117,7 +117,7 @@ export function SessionList(props: SessionListProps) {
 
   let body;
   if (loading && !sessions) {
-    body = <LoadingView label="Loading sessions…" />;
+    body = <SkeletonList label="Loading sessions…" />;
   } else if (error && !sessions) {
     body = <ErrorView error={error} subsystem="Sessions" failed="Sessions not loaded" onRetry={onRetry} />;
   } else if (sessions && sessions.length === 0) {
@@ -150,7 +150,7 @@ export function SessionList(props: SessionListProps) {
     );
   } else {
     body = (
-      <ul aria-label="Sessions" className="flex flex-col gap-0.5 p-2">
+      <ul aria-label="Sessions" className="menu w-full gap-0.5 p-2">
         {(sessions ?? []).map((s) => (
           <SessionRow
             key={s.id}
@@ -167,13 +167,13 @@ export function SessionList(props: SessionListProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-col gap-2 border-b border-border-subtle p-3">
+      <div className="flex flex-col gap-2 border-b border-base-content/10 p-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Sessions</h2>
           {/* Without a scan and without sessions there is nothing that could be out of date. */}
           {cachedAt !== null && (cachedAt !== "" || (sessions?.length ?? 0) > 0) ? (
             <span
-              className="mr-auto inline-flex items-center gap-1 text-xs text-fg-muted tabular-nums"
+              className="mr-auto inline-flex items-center gap-1 text-xs text-base-content/70 tabular-nums"
               title="The machine is paused or stopped. This list is from its last scan."
             >
               <History aria-hidden className="size-3.5" />

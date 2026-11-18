@@ -218,7 +218,7 @@ export default function StudioPage() {
     <div className="flex h-full min-h-0">
       <aside
         className={cx(
-          "w-full shrink-0 border-r border-border-subtle bg-bg-subtle md:flex md:w-80 md:flex-col",
+          "w-full shrink-0 border-r border-base-content/10 bg-base-200 md:flex md:w-80 md:flex-col",
           selectedId ? "hidden" : "flex flex-col",
         )}
       >
@@ -242,11 +242,11 @@ export default function StudioPage() {
       </aside>
       <section ref={centerRef} className={cx("min-w-0 flex-1 flex-col", selectedId ? "flex" : "hidden md:flex")}>
         {selectedId ? (
-          <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-2">
+          <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-base-content/10 px-3 py-2">
             <Button size="sm" variant="ghost" icon={ArrowLeft} className="md:hidden" onClick={() => select(null)}>
               Sessions
             </Button>
-            <h1 className="min-w-0 flex-1 truncate text-sm font-semibold" title={selected ? sessionName(selected) : selectedId}>
+            <h1 className="min-w-32 flex-1 truncate text-sm font-semibold" title={selected ? sessionName(selected) : selectedId}>
               {selected ? sessionName(selected) : selectedId}
             </h1>
             {selected ? <Badge tone="accent">{harnessLabel(selected.harness)}</Badge> : null}
@@ -256,7 +256,7 @@ export default function StudioPage() {
           </header>
         ) : null}
         {noModel && selected && selected.harness !== "shell" ? (
-          <div className="border-b border-border-subtle px-3 py-2">
+          <div className="border-b border-base-content/10 px-3 py-2">
             <NoModelNotice problem={noModel} />
           </div>
         ) : null}
@@ -320,8 +320,8 @@ export default function StudioPage() {
         body={deleteCopy.body}
         extra={
           deleteCopy.purgeLabel ? (
-            <label className="flex items-center gap-2 text-sm text-fg">
-              <input type="checkbox" checked={purge} onChange={(e) => setPurge(e.target.checked)} className="size-4 accent-danger-solid" />
+            <label className="flex items-center gap-2 text-sm text-base-content">
+              <input type="checkbox" checked={purge} onChange={(e) => setPurge(e.target.checked)} className="checkbox checkbox-error checkbox-sm" />
               {deleteCopy.purgeLabel}
             </label>
           ) : undefined
