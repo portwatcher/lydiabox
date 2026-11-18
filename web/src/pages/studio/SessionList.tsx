@@ -1,9 +1,8 @@
 import { CircleDot, History, Plus, Radio, Trash2 } from "lucide-react";
-import { useId } from "react";
 import { SESSION_HARNESSES } from "../../api/types";
 import type { HarnessID, Session, SessionStatus } from "../../api/types";
 import { ErrorView, LoadingView, StateView } from "../../components/StateView";
-import { Badge, Button, IconButton, Select, TextInput, cx } from "../../components/ui";
+import { Badge, Button, IconButton, Select, cx } from "../../components/ui";
 import type { Tone } from "../../components/ui";
 import { useNow } from "../../hooks/useResource";
 import { formatCompact, formatUsd, timeAgo } from "../../lib/format";
@@ -28,10 +27,11 @@ interface SessionListProps {
   loading: boolean;
   onRetry: () => void;
   filter: SessionFilter;
-  /** Raw workspace input; the parent debounces it into `filter`. */
-  workspaceInput: string;
   onHarness: (harness: HarnessID | "") => void;
-  onWorkspaceInput: (value: string) => void;
+  onWorkspace: (workspace: string) => void;
+  /** Harnesses of the sessions seen so far. */
+  harnesses: HarnessID[];
+  /** Folders of the sessions seen so far, sorted. */
   workspaces: string[];
   selectedId: string | null;
   onSelect: (session: Session) => void;
@@ -107,9 +107,12 @@ function SessionRow({ session, selected, onSelect, onDelete, now }: { session: S
 }
 
 export function SessionList(props: SessionListProps) {
-  const { sessions, cachedAt = null, error, loading, onRetry, filter, workspaceInput, onHarness, onWorkspaceInput, workspaces, selectedId, onSelect, onDelete, onNew, newBlocked = null } = props;
+  const { sessions, cachedAt = null, error, loading, onRetry, filter, onHarness, onWorkspace, harnesses, workspaces, selectedId, onSelect, onDelete, onNew, newBlocked = null } = props;
   const now = useNow(15_000);
-  const listId = useId();
+  // A menu shows only the values that sessions have; the selected value stays
+  // in it even if no listed session has it now.
+  const harnessOptions = SESSION_HARNESSES.filter((h) => h === filter.harness || harnesses.includes(h));
+  const folders = filter.workspace !== "" && !workspaces.includes(filter.workspace) ? [...workspaces, filter.workspace].sort() : workspaces;
   const filtered = filter.harness !== "" || filter.workspace !== "";
 
   let body;
@@ -126,7 +129,7 @@ export function SessionList(props: SessionListProps) {
             size="sm"
             onClick={() => {
               onHarness("");
-              onWorkspaceInput("");
+              onWorkspace("");
             }}
           >
             Clear filters
@@ -181,36 +184,35 @@ export function SessionList(props: SessionListProps) {
             New
           </Button>
         </div>
-        <div className="grid grid-cols-1 gap-2">
-          <Select
-            aria-label="Harness"
-            value={filter.harness}
-            onChange={(e) => {
-              const value = SESSION_HARNESSES.find((h) => h === e.target.value) ?? "";
-              onHarness(value);
-            }}
-          >
-            <option value="">All harnesses</option>
-            {SESSION_HARNESSES.map((h) => (
-              <option key={h} value={h}>
-                {harnessLabels[h]}
-              </option>
-            ))}
-          </Select>
-          <TextInput
-            aria-label="Workspace"
-            type="search"
-            list={listId}
-            value={workspaceInput}
-            onChange={(e) => onWorkspaceInput(e.target.value)}
-            placeholder="/workspace/app"
-            spellCheck={false}
-          />
-          <datalist id={listId}>
-            {workspaces.map((w) => (
-              <option key={w} value={w} />
-            ))}
-          </datalist>
+        {/* With one value, a filter cannot narrow the list; a set filter stays visible so it can be cleared. */}
+        <div className="grid grid-cols-1 gap-2 empty:hidden">
+          {harnessOptions.length > 1 || filter.harness !== "" ? (
+            <Select
+              aria-label="Harness"
+              value={filter.harness}
+              onChange={(e) => {
+                const value = SESSION_HARNESSES.find((h) => h === e.target.value) ?? "";
+                onHarness(value);
+              }}
+            >
+              <option value="">All harnesses</option>
+              {harnessOptions.map((h) => (
+                <option key={h} value={h}>
+                  {harnessLabels[h]}
+                </option>
+              ))}
+            </Select>
+          ) : null}
+          {folders.length > 1 || filter.workspace !== "" ? (
+            <Select aria-label="Folder" value={filter.workspace} onChange={(e) => onWorkspace(e.target.value)}>
+              <option value="">All folders</option>
+              {folders.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </Select>
+          ) : null}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>

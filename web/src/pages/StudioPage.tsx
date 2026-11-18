@@ -26,7 +26,7 @@ export default function StudioPage() {
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("session");
   const [filter, setFilter] = useState<SessionFilter>({ harness: "", workspace: "" });
-  const [workspaceInput, setWorkspaceInput] = useState("");
+  const [harnesses, setHarnesses] = useState<HarnessID[]>([]);
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [room, setRoom] = useState<{ key: number; id: string } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -36,11 +36,6 @@ export default function StudioPage() {
   const centerRef = useRef<HTMLDivElement>(null);
   const { models, state: modelState } = useModelOptions();
   const noModel = modelProblem(modelState, models.length);
-
-  useEffect(() => {
-    const id = setTimeout(() => setFilter((f) => ({ ...f, workspace: workspaceInput.trim() })), 300);
-    return () => clearTimeout(id);
-  }, [workspaceInput]);
 
   const loader = useCallback((signal: AbortSignal) => sessions.list(filter, signal), [filter]);
   const list = useResource(loader, { pollMs: 10_000 });
@@ -81,6 +76,11 @@ export default function StudioPage() {
     if (!listed) {
       return;
     }
+    const seenHarnesses = listed.map((s) => s.harness);
+    setHarnesses((prev) => {
+      const merged = Array.from(new Set([...prev, ...seenHarnesses]));
+      return merged.length === prev.length ? prev : merged;
+    });
     const seen = listed.map((s) => s.workspaceDir);
     setWorkspaces((prev) => {
       const merged = Array.from(new Set([...prev, ...seen])).sort();
@@ -205,9 +205,9 @@ export default function StudioPage() {
           loading={list.loading}
           onRetry={list.reload}
           filter={filter}
-          workspaceInput={workspaceInput}
           onHarness={(harness: HarnessID | "") => setFilter((f) => ({ ...f, harness }))}
-          onWorkspaceInput={setWorkspaceInput}
+          onWorkspace={(workspace) => setFilter((f) => ({ ...f, workspace }))}
+          harnesses={harnesses}
           workspaces={workspaces}
           selectedId={selectedId}
           onSelect={(s) => select(s.id)}
