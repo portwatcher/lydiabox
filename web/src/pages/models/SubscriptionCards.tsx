@@ -24,54 +24,56 @@ function SubscriptionCard({ sub, onSignIn, onRemove, onToggle, toggling }: { sub
   const switchId = `sub-enabled-${sub.kind}`;
   const signedIn = sub.accounts.length > 0;
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-      <div className="flex items-center gap-2">
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{sub.name}</h3>
-        {signedIn ? <Badge>{count(sub.models.length, { one: "# model", other: "# models" })}</Badge> : null}
-      </div>
-      {signedIn ? (
-        <ul className="flex flex-col divide-y divide-border-subtle">
-          {sub.accounts.map((a) => (
-            <li key={a.user} className="flex items-center gap-2 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-[13px]" title={a.user}>
-                {a.user}
-              </span>
-              {a.needsSignIn ? (
-                <Badge tone="warning" icon={CircleAlert}>
-                  Sign in again
-                </Badge>
-              ) : a.plan ? (
-                <Badge>{a.plan}</Badge>
-              ) : null}
-              <IconButton icon={Trash2} tone="danger" label={`Remove ${a.user}`} onClick={() => onRemove(a.user)} />
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <div className="mt-auto flex flex-wrap items-center gap-3">
+    <li className="card card-sm border border-base-content/10 bg-base-100">
+      <div className="card-body gap-3">
+        <div className="flex items-center gap-2">
+          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{sub.name}</h3>
+          {signedIn ? <Badge>{count(sub.models.length, { one: "# model", other: "# models" })}</Badge> : null}
+        </div>
         {signedIn ? (
-          <>
-            <label htmlFor={switchId} className="flex flex-1 items-center gap-2 text-[13px] text-fg">
-              <input
-                id={switchId}
-                type="checkbox"
-                role="switch"
-                checked={sub.enabled}
-                disabled={toggling}
-                onChange={onToggle}
-                className="size-4 accent-accent-solid"
-              />
-              Route requests to this subscription
-            </label>
-            <Button size="sm" icon={Plus} onClick={onSignIn}>
-              Add account
+          <ul className="flex flex-col divide-y divide-base-content/10">
+            {sub.accounts.map((a) => (
+              <li key={a.user} className="flex items-center gap-2 py-1.5">
+                <span className="min-w-0 flex-1 truncate text-[13px]" title={a.user}>
+                  {a.user}
+                </span>
+                {a.needsSignIn ? (
+                  <Badge tone="warning" icon={CircleAlert}>
+                    Sign in again
+                  </Badge>
+                ) : a.plan ? (
+                  <Badge>{a.plan}</Badge>
+                ) : null}
+                <IconButton icon={Trash2} tone="danger" label={`Remove ${a.user}`} onClick={() => onRemove(a.user)} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="mt-auto flex flex-wrap items-center gap-3">
+          {signedIn ? (
+            <>
+              <label htmlFor={switchId} className="flex flex-1 items-center gap-2 text-[13px] text-base-content">
+                <input
+                  id={switchId}
+                  type="checkbox"
+                  role="switch"
+                  checked={sub.enabled}
+                  disabled={toggling}
+                  onChange={onToggle}
+                  className="toggle toggle-primary toggle-sm"
+                />
+                Route requests to this subscription
+              </label>
+              <Button size="sm" icon={Plus} onClick={onSignIn}>
+                Add account
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="primary" icon={LogIn} onClick={onSignIn}>
+              Sign in
             </Button>
-          </>
-        ) : (
-          <Button size="sm" variant="primary" icon={LogIn} onClick={onSignIn}>
-            Sign in
-          </Button>
-        )}
+          )}
+        </div>
       </div>
     </li>
   );

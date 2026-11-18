@@ -20,53 +20,55 @@ function ProviderCard({ provider, onEdit, onDelete, onToggle, toggling }: { prov
   const failing = provider.status !== "ok" && provider.status !== "";
   const switchId = `pv-enabled-${provider.id}`;
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-4">
-      <div className="flex items-start gap-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <h3 className="truncate text-sm font-semibold" title={provider.name}>
-            {provider.name}
-          </h3>
-          <span className="truncate font-mono text-xs text-fg-muted" title={provider.baseUrl || provider.kind}>
-            {provider.baseUrl || provider.kind}
-          </span>
+    <li className="card card-sm border border-base-content/10 bg-base-100">
+      <div className="card-body gap-3">
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <h3 className="truncate text-sm font-semibold" title={provider.name}>
+              {provider.name}
+            </h3>
+            <span className="truncate font-mono text-xs text-base-content/70" title={provider.baseUrl || provider.kind}>
+              {provider.baseUrl || provider.kind}
+            </span>
+          </div>
+          <IconButton icon={Pencil} label={`Edit ${provider.name}`} onClick={onEdit} />
+          <IconButton icon={Trash2} tone="danger" label={`Delete ${provider.name}`} onClick={onDelete} />
         </div>
-        <IconButton icon={Pencil} label={`Edit ${provider.name}`} onClick={onEdit} />
-        <IconButton icon={Trash2} tone="danger" label={`Delete ${provider.name}`} onClick={onDelete} />
+        <div className="flex flex-wrap gap-1.5">
+          {provider.hasKey ? (
+            <Badge tone="success" icon={KeyRound}>
+              Key saved
+            </Badge>
+          ) : (
+            <Badge tone="warning" icon={KeyRound}>
+              No key
+            </Badge>
+          )}
+          {failing ? (
+            <Badge tone="danger" icon={CircleAlert}>
+              {provider.status}
+            </Badge>
+          ) : provider.status === "ok" ? (
+            <Badge tone="success" icon={CircleCheck}>
+              Reachable
+            </Badge>
+          ) : null}
+          <Badge>{count(provider.models.length, { one: "# model", other: "# models" })}</Badge>
+        </div>
+        {provider.lastError ? <p className="text-xs break-words text-error">{provider.lastError}</p> : null}
+        <label htmlFor={switchId} className="mt-auto flex items-center gap-2 text-[13px] text-base-content">
+          <input
+            id={switchId}
+            type="checkbox"
+            role="switch"
+            checked={provider.enabled}
+            disabled={toggling}
+            onChange={onToggle}
+            className="toggle toggle-primary toggle-sm"
+          />
+          Route requests to this provider
+        </label>
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {provider.hasKey ? (
-          <Badge tone="success" icon={KeyRound}>
-            Key saved
-          </Badge>
-        ) : (
-          <Badge tone="warning" icon={KeyRound}>
-            No key
-          </Badge>
-        )}
-        {failing ? (
-          <Badge tone="danger" icon={CircleAlert}>
-            {provider.status}
-          </Badge>
-        ) : provider.status === "ok" ? (
-          <Badge tone="success" icon={CircleCheck}>
-            Reachable
-          </Badge>
-        ) : null}
-        <Badge>{count(provider.models.length, { one: "# model", other: "# models" })}</Badge>
-      </div>
-      {provider.lastError ? <p className="text-xs break-words text-danger-fg">{provider.lastError}</p> : null}
-      <label htmlFor={switchId} className="mt-auto flex items-center gap-2 text-[13px] text-fg">
-        <input
-          id={switchId}
-          type="checkbox"
-          role="switch"
-          checked={provider.enabled}
-          disabled={toggling}
-          onChange={onToggle}
-          className="size-4 accent-accent-solid"
-        />
-        Route requests to this provider
-      </label>
     </li>
   );
 }

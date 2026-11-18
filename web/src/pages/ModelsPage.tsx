@@ -29,26 +29,26 @@ function ModelsTable({ list }: { list: Model[] }) {
   }
   return (
     <div className="max-h-96 overflow-auto">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-bg-subtle">
-          <tr className="border-b border-border-subtle text-left text-xs text-fg-muted">
-            <th scope="col" className="px-4 py-2 font-medium">
+      <table className="table table-sm table-pin-rows">
+        <thead>
+          <tr className="border-base-content/10 bg-base-200 text-xs text-base-content/70">
+            <th scope="col" className="px-4 font-medium">
               Model ID
             </th>
-            <th scope="col" className="px-4 py-2 font-medium">
+            <th scope="col" className="px-4 font-medium">
               Provider
             </th>
-            <th scope="col" className="px-4 py-2 text-right font-medium">
+            <th scope="col" className="px-4 text-right font-medium">
               Context
             </th>
           </tr>
         </thead>
         <tbody>
           {list.map((m) => (
-            <tr key={m.id} className="border-b border-border-subtle last:border-b-0">
-              <td className="px-4 py-2 font-mono text-[13px] break-all">{m.id}</td>
-              <td className="px-4 py-2 text-fg-muted">{m.provider}</td>
-              <td className="px-4 py-2 text-right text-fg-muted tabular-nums">
+            <tr key={m.id} className="border-base-content/10">
+              <td className="px-4 font-mono text-[13px] break-all">{m.id}</td>
+              <td className="px-4 text-base-content/70">{m.provider}</td>
+              <td className="px-4 text-right text-base-content/70 tabular-nums">
                 {m.contextWindow > 0 ? formatCompact(m.contextWindow) : ""}
               </td>
             </tr>
@@ -94,7 +94,7 @@ export default function ModelsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Models</h1>
           {status && gateway.data ? (
-            <span className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+            <span className="flex flex-wrap items-center gap-2 text-xs text-base-content/70">
               <Badge tone={status.tone} icon={status.icon}>
                 Gateway {status.label.toLowerCase()}
               </Badge>

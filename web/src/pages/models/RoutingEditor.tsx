@@ -103,7 +103,7 @@ export function RoutingEditor({ groups, models, onSaved }: RoutingEditorProps) {
           A group sends requests to several models, in order (fallback) or in turn (round-robin).
         </StateView>
       ) : (
-        <ul className="flex flex-col divide-y divide-border-subtle">
+        <ul className="flex flex-col divide-y divide-base-content/10">
           {state.groups.map((group, index) => {
             const problem = showErrors ? errors.get(index) : undefined;
             const nameId = `route-${index}-name`;
@@ -141,15 +141,15 @@ export function RoutingEditor({ groups, models, onSaved }: RoutingEditorProps) {
                   <IconButton icon={Trash2} tone="danger" size="md" label={`Remove group ${group.name || index + 1}`} onClick={() => dispatch({ type: "remove", index })} />
                 </div>
                 {problem ? (
-                  <p id={`${nameId}-error`} role="alert" className="text-xs text-danger-fg">
+                  <p id={`${nameId}-error`} role="alert" className="text-xs text-error">
                     {problem}
                   </p>
                 ) : null}
                 {group.targets.length > 0 ? (
                   <ol className="flex flex-col gap-1">
                     {group.targets.map((target, t) => (
-                      <li key={target} className="flex items-center gap-2 rounded-md bg-surface px-2 py-1">
-                        <span className="w-5 text-right text-xs text-fg-muted tabular-nums">{t + 1}</span>
+                      <li key={target} className="rounded-field flex items-center gap-2 bg-base-100 px-2 py-1">
+                        <span className="w-5 text-right text-xs text-base-content/70 tabular-nums">{t + 1}</span>
                         <code className="min-w-0 flex-1 truncate text-[13px]" title={target}>
                           {target}
                         </code>

@@ -6,7 +6,7 @@ import { models } from "../../api/domains";
 import type { SubscriptionKind, SubscriptionLogin } from "../../api/types";
 import { CopyField } from "../../components/CopyField";
 import { Dialog } from "../../components/Dialog";
-import { Banner, Button, Field, Spinner, TextInput, describedBy } from "../../components/ui";
+import { Banner, Button, Field, Spinner, TextInput, buttonClass, describedBy } from "../../components/ui";
 import { initialSignIn, loginStep, pendingLoginId, setupTokenError, shouldPoll, signInReducer } from "./signin";
 
 const POLL_MS = 2000;
@@ -25,7 +25,7 @@ function SignInLink({ url }: { url: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex h-9 w-fit items-center gap-2 rounded-md border border-transparent bg-accent-solid px-3.5 text-sm font-medium text-on-accent hover:bg-accent-solid-hover"
+      className={buttonClass("primary", "md", "w-fit")}
     >
       <ExternalLink aria-hidden className="size-4" />
       Open sign-in page
@@ -35,8 +35,8 @@ function SignInLink({ url }: { url: string }) {
 
 function Waiting({ children }: { children: string }) {
   return (
-    <p role="status" className="flex items-center gap-2 text-sm text-fg-muted">
-      <Spinner className="size-4" />
+    <p role="status" className="flex items-center gap-2 text-sm text-base-content/70">
+      <Spinner />
       {children}
     </p>
   );
@@ -226,13 +226,13 @@ export function SignInDialog({ kind, name, onClose, onSignedIn }: SignInDialogPr
                 Anthropic can suspend a Claude account that it sees used outside its own apps.
               </Banner>
               <fieldset className="flex flex-col gap-2" disabled={state.phase === "starting"}>
-                <legend className="mb-1 text-[13px] font-medium text-fg">Method</legend>
+                <legend className="mb-1 text-[13px] font-medium">Method</legend>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="radio" name="si-method" checked={method === "browser"} onChange={() => setMethod("browser")} className="accent-accent-solid" />
+                  <input type="radio" name="si-method" checked={method === "browser"} onChange={() => setMethod("browser")} className="radio radio-primary radio-sm" />
                   Browser sign-in
                 </label>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="radio" name="si-method" checked={method === "token"} onChange={() => setMethod("token")} className="accent-accent-solid" />
+                  <input type="radio" name="si-method" checked={method === "token"} onChange={() => setMethod("token")} className="radio radio-primary radio-sm" />
                   Setup token
                 </label>
               </fieldset>
