@@ -109,9 +109,9 @@ Use a test account that you can lose. Run on a host with network access.
    copy the token, select **Add account** on the Claude card, choose
    **Setup token**, and paste it. Expect a new account named
    "Claude setup-token …".
-5. **Harness**: in Default model per harness, bind Claude Code to a
-   `claude/...` model and Codex to a `codex/...` model. Start a session of
-   each in the Studio and send one prompt. Expect an answer.
+5. **Harness**: in the Studio, start a Claude Code session with a
+   `claude/...` model and a Codex session with a `codex/...` model, and send
+   one prompt in each. Expect an answer.
 6. **No token in the guest**: in the VM, run
    `grep -rl -e sk-ant-o -e refresh_token /home/agent 2>/dev/null` and
    check `~/.claude/settings.json` and `~/.codex/config.toml`. Expect no

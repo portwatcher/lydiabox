@@ -266,7 +266,7 @@ makes these changes; the `vm.create` row above is `done` with them.
 | Studio: session list with harness and workspace filters, xterm.js | done | `web/src/pages/studio` | web tests; E2E (browser) |
 | Desktop: WebRTC video, overlay, Observer/Takeover, Chrome/Blender launch | done | `web/src/pages/desktop` | web tests; E2E (browser, signaling) |
 | Files: tree, editor, drag-and-drop upload, download, WebDAV dialog | done | `web/src/pages/files` | web tests; E2E (browser) |
-| Models: subscriptions (sign-in dialog), providers, routing groups, per-harness bindings | done | `web/src/pages/models` | web tests; browser check against a fake magpie |
+| Models: subscriptions (sign-in dialog), providers, routing groups; the model of a session is chosen in New session (preselected from the last start of the harness) and changed from the session header (`PATCH /api/v1/sessions/{id}`, `TestSetModelResumesWithNewModel`) | done | `web/src/pages/models` | web tests; browser check against a fake magpie |
 | Connectors: cards, OAuth / client / token drawers, audit log | done | `web/src/pages/connectors` | web tests |
 | Cloudflare Access login: no token prompt, email in the status bar, sign-out through `/cdn-cgi/access/logout`, notice for an email that is not allowed | done | `web/src/App.tsx`, `web/src/pages/LoginPage.tsx`, `web/src/components/StatusBar.tsx` | browser check against a mocked session route |
 

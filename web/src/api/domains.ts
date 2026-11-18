@@ -31,6 +31,7 @@ export const sessions = {
     http.get<SessionsResponse>("/api/v1/sessions", { harness: filter.harness, workspace: filter.workspace }, signal),
   create: (body: CreateSessionRequest) => http.post<Session>("/api/v1/sessions", body),
   transcript: (id: string, signal?: AbortSignal) => http.get<Transcript>(`/api/v1/sessions/${seg(id)}/transcript`, undefined, signal),
+  setModel: (id: string, body: { model: string; cols: number; rows: number }) => http.patch<Session>(`/api/v1/sessions/${seg(id)}`, body),
   remove: (id: string, purge = false) => http.delete(`/api/v1/sessions/${seg(id)}`, { purge: purge || undefined }),
   wsPath: (id: string) => `/api/v1/sessions/${seg(id)}/ws`,
 };

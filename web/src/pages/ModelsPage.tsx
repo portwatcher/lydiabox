@@ -8,7 +8,6 @@ import { Badge, Panel } from "../components/ui";
 import type { Tone } from "../components/ui";
 import { useResource } from "../hooks/useResource";
 import { formatCompact } from "../lib/format";
-import { BindingsTable } from "./models/BindingsTable";
 import { ProviderCards } from "./models/ProviderCards";
 import { RoutingEditor } from "./models/RoutingEditor";
 import { SubscriptionCards } from "./models/SubscriptionCards";
@@ -67,7 +66,6 @@ export default function ModelsPage() {
   const providers = useResource(useCallback((s: AbortSignal) => modelsApi.providers(s).then((r) => r.providers), []), { enabled });
   const list = useResource(useCallback((s: AbortSignal) => modelsApi.list(s).then((r) => r.models), []), { enabled });
   const routing = useResource(useCallback((s: AbortSignal) => modelsApi.routing(s).then((r) => r.groups), []), { enabled });
-  const bindings = useResource(useCallback((s: AbortSignal) => modelsApi.bindings(s).then((r) => r.bindings), []), { enabled });
   const subscriptions = useResource(useCallback((s: AbortSignal) => modelsApi.subscriptions(s).then((r) => r.subscriptions), []), { enabled });
   const reloadModels = list.reload;
   const { reload: reloadSubscriptions } = subscriptions;
@@ -79,7 +77,6 @@ export default function ModelsPage() {
   }, [reloadSubscriptions, reloadProviders, reloadModels]);
   const { mutate: mutateProviders } = providers;
   const { mutate: mutateRouting } = routing;
-  const { mutate: mutateBindings } = bindings;
 
   if (gateway.loading && !gateway.data && !gateway.error) {
     return <LoadingView label="Loading models…" />;
@@ -135,29 +132,6 @@ export default function ModelsPage() {
               <ErrorView error={providers.error} subsystem="The model gateway" failed="Providers not loaded" onRetry={providers.reload} />
             ) : (
               <LoadingView label="Loading providers…" />
-            )}
-          </Panel>
-        )}
-
-        {bindings.data ? (
-          <BindingsTable
-            bindings={bindings.data}
-            models={models}
-            onSaved={(saved) =>
-              mutateBindings((current) => {
-                const all = current ?? [];
-                return all.some((b) => b.harness === saved.harness)
-                  ? all.map((b) => (b.harness === saved.harness ? saved : b))
-                  : [...all, saved];
-              })
-            }
-          />
-        ) : (
-          <Panel title="Default model per harness">
-            {bindings.error ? (
-              <ErrorView error={bindings.error} subsystem="Model bindings" failed="Bindings not loaded" onRetry={bindings.reload} />
-            ) : (
-              <LoadingView label="Loading bindings…" />
             )}
           </Panel>
         )}

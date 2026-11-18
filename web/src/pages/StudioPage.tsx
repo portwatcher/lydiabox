@@ -15,6 +15,7 @@ import { harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { NoModelNotice, modelProblem } from "./studio/NoModelNotice";
 import { SessionList } from "./studio/SessionList";
+import { SessionModelMenu } from "./studio/SessionModelMenu";
 import { deleteText, deletesWithoutConfirm, listDisagrees, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
 import { TerminalView } from "./studio/TerminalView";
@@ -137,6 +138,11 @@ export default function StudioPage() {
     };
   }, []);
 
+  // A model chosen for a session that does not run: "Continue session" uses it.
+  const [modelChoice, setModelChoice] = useState<{ id: string; model: string } | null>(null);
+  const [modelBusy, setModelBusy] = useState(false);
+  const modelOf = (session: Session) => (modelChoice?.id === session.id ? modelChoice.model : session.model);
+
   const adopt = (session: Session) => {
     setKnown(session);
     setRoom({ key: Date.now(), id: session.id });
@@ -150,7 +156,7 @@ export default function StudioPage() {
       const created = await sessions.create({
         harness: session.harness,
         workspaceDir: session.workspaceDir,
-        model: session.model || undefined,
+        model: modelOf(session) || undefined,
         resumeNativeId: session.harness === "shell" ? undefined : session.nativeId,
         cols,
         rows,
@@ -158,6 +164,23 @@ export default function StudioPage() {
       adopt(created);
     } catch (err) {
       toast.error(describeError(err, "Session not resumed"));
+    }
+  };
+
+  // A running session restarts its harness with the new model and keeps the
+  // conversation; a session that does not run uses it when it continues.
+  const changeModel = async (session: Session, model: string) => {
+    if (!(showTerminal && session.live)) {
+      setModelChoice({ id: session.id, model });
+      return;
+    }
+    setModelBusy(true);
+    try {
+      adopt(await sessions.setModel(session.id, { model, ...size() }));
+    } catch (err) {
+      toast.error(describeError(err, "Model not changed"));
+    } finally {
+      setModelBusy(false);
     }
   };
 
@@ -227,7 +250,9 @@ export default function StudioPage() {
               {selected ? sessionName(selected) : selectedId}
             </h1>
             {selected ? <Badge tone="accent">{harnessLabel(selected.harness)}</Badge> : null}
-            {selected?.model ? <Badge>{selected.model}</Badge> : null}
+            {selected && selected.harness !== "shell" ? (
+              <SessionModelMenu value={modelOf(selected)} models={models} onChange={(m) => void changeModel(selected, m)} disabled={modelBusy} />
+            ) : null}
           </header>
         ) : null}
         {noModel && selected && selected.harness !== "shell" ? (

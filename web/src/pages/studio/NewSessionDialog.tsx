@@ -2,7 +2,7 @@ import { Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { describeError } from "../../api/errors";
-import { sessions } from "../../api/domains";
+import { models as modelsApi, sessions } from "../../api/domains";
 import { SESSION_HARNESSES } from "../../api/types";
 import type { HarnessID, Model, Session } from "../../api/types";
 import { Dialog } from "../../components/Dialog";
@@ -24,6 +24,26 @@ interface NewSessionDialogProps {
   defaultHarness: HarnessID | "";
 }
 
+const LAST_HARNESS = "lydiabox.newSession.harness";
+
+/** The harness of the last session started in this browser, or null. */
+function lastHarness(): HarnessID | null {
+  try {
+    const v = localStorage.getItem(LAST_HARNESS);
+    return SESSION_HARNESSES.find((h) => h === v) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberHarness(h: HarnessID) {
+  try {
+    localStorage.setItem(LAST_HARNESS, h);
+  } catch {
+    // Storage is blocked: the dialog starts with the default next time.
+  }
+}
+
 function validWorkspace(dir: string): boolean {
   const clean = dir.trim();
   const inside = (root: string) => clean === root || clean.startsWith(`${root}/`);
@@ -36,17 +56,49 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
   const workspaces = useMemo(() => listed.filter(validWorkspace), [listed]);
   const [harness, setHarness] = useState<HarnessID>("claude-code");
   const [workspace, setWorkspace] = useState("/workspace");
-  const [model, setModel] = useState("");
+  // null until the user types: the field then shows the last model of the harness.
+  const [typedModel, setModel] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  // The last model of each harness (the server keeps it at each start).
+  const [lastModels, setLastModels] = useState<Partial<Record<HarnessID, string>>>({});
+
+  const model = typedModel ?? lastModels[harness] ?? "";
+
+  const chooseHarness = (h: HarnessID) => {
+    setHarness(h);
+    setModel(null);
+  };
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const controller = new AbortController();
+    modelsApi
+      .bindings(controller.signal)
+      .then(({ bindings }) => {
+        const byHarness: Partial<Record<HarnessID, string>> = {};
+        for (const b of bindings) {
+          if (b.model) {
+            byHarness[b.harness] = b.model;
+          }
+        }
+        setLastModels(byHarness);
+      })
+      .catch(() => {
+        // Without the last models the field starts empty.
+      });
+    return () => controller.abort();
+  }, [open]);
 
   useEffect(() => {
     if (open) {
-      setHarness(defaultHarness || "claude-code");
+      setHarness(lastHarness() ?? (defaultHarness || "claude-code"));
       setWorkspace(workspaces[0] ?? "/workspace");
-      setModel("");
+      setModel(null);
       setTitle("");
       setError(null);
       setWorkspaceError(null);
@@ -72,6 +124,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
         cols,
         rows,
       });
+      rememberHarness(harness);
       onCreated(created);
       onClose();
     } catch (err) {
@@ -102,7 +155,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
           <Select
             id="ns-harness"
             value={harness}
-            onChange={(e) => setHarness(SESSION_HARNESSES.find((h) => h === e.target.value) ?? "claude-code")}
+            onChange={(e) => chooseHarness(SESSION_HARNESSES.find((h) => h === e.target.value) ?? "claude-code")}
           >
             {SESSION_HARNESSES.map((h) => (
               <option key={h} value={h}>
@@ -128,8 +181,8 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
           </datalist>
         </Field>
         {harness !== "shell" ? (
-          <Field id="ns-model" label="Model" hint="Leave empty to use the harness default.">
-            <ModelInput id="ns-model" value={model} onChange={setModel} models={models} describedBy="ns-model-hint" />
+          <Field id="ns-model" label="Model">
+            <ModelInput id="ns-model" value={model} onChange={setModel} models={models} />
           </Field>
         ) : null}
         <Field id="ns-title" label="Title">
