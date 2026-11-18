@@ -6,7 +6,7 @@ import { ApiError } from "../../api/http";
 import type { Entry, RootName } from "../../api/types";
 import { ErrorView, LoadingView, StateView } from "../../components/StateView";
 import { useToast } from "../../components/Toast";
-import { Banner, Button } from "../../components/ui";
+import { Banner, Button, buttonClass } from "../../components/ui";
 import { formatBytes, formatDateTime } from "../../lib/format";
 import { baseName, isImage } from "../../lib/paths";
 
@@ -35,7 +35,7 @@ function BinaryView({ root, path, entry, reason }: { root: RootName; path: strin
   return (
     <div className="flex h-full min-h-0 flex-col items-center justify-center gap-4 overflow-auto p-6">
       {isImage(path) ? (
-        <img src={inlineUrl} alt={name} className="max-h-[70%] max-w-full rounded-md border border-border-subtle object-contain" />
+        <img src={inlineUrl} alt={name} className="rounded-field max-h-[70%] max-w-full border border-base-content/10 object-contain" />
       ) : (
         <StateView icon={FileWarning} title={reason === "large" ? "This file is too large to edit here" : "This file is not text"}>
           {entry ? `${formatBytes(entry.size)} · modified ${formatDateTime(entry.modTime)}` : null}
@@ -45,7 +45,7 @@ function BinaryView({ root, path, entry, reason }: { root: RootName; path: strin
         <a
           href={files.downloadUrl(root, path)}
           download={name}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-transparent bg-accent-solid px-3.5 text-sm font-medium text-on-accent hover:bg-accent-solid-hover"
+          className={buttonClass("primary")}
         >
           <Download aria-hidden className="size-4" />
           Download {name}
@@ -54,7 +54,7 @@ function BinaryView({ root, path, entry, reason }: { root: RootName; path: strin
           href={inlineUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-surface px-3.5 text-sm font-medium text-fg hover:bg-surface-hover"
+          className={buttonClass("secondary")}
         >
           <ExternalLink aria-hidden className="size-4" />
           Open in new tab
@@ -160,15 +160,15 @@ export function FileView({ root, path, onDirtyChange, onSaved, blocked = null }:
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-1.5">
-        <span className="text-xs text-fg-muted tabular-nums">
+      <div className="flex min-h-11 flex-wrap items-center gap-2 border-b border-base-content/10 px-3 py-1.5">
+        <span className="text-xs text-base-content/70 tabular-nums">
           {dirty ? "Unsaved changes" : `Saved · ${formatDateTime(loaded.entry.modTime)}`}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <a
             href={files.downloadUrl(root, path)}
             download={baseName(path)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-fg-muted hover:bg-surface-hover hover:text-fg"
+            className={buttonClass("ghost", "sm")}
           >
             <Download aria-hidden className="size-4" />
             Download

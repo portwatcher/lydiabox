@@ -51,26 +51,29 @@ async function languageFor(path: string): Promise<LanguageSupport | null> {
   }
 }
 
+/** The editor reads the daisyUI theme colors, so it matches the app palette. */
+const mix = (color: string, percent: number) => `color-mix(in oklab, var(--color-${color}) ${percent}%, transparent)`;
+
 const theme = EditorView.theme(
   {
-    "&": { height: "100%", backgroundColor: "var(--color-bg)", color: "var(--color-fg)", fontSize: "13px" },
+    "&": { height: "100%", backgroundColor: "var(--color-base-300)", color: "var(--color-base-content)", fontSize: "13px" },
     ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.55" },
-    ".cm-content": { caretColor: "var(--color-fg)" },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--color-fg)" },
+    ".cm-content": { caretColor: "var(--color-base-content)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--color-base-content)" },
     "&.cm-focused": { outline: "none" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-      backgroundColor: "var(--color-accent-subtle)",
+      backgroundColor: mix("primary", 45),
     },
     ".cm-gutters": {
-      backgroundColor: "var(--color-bg)",
-      color: "var(--color-fg-muted)",
-      borderRight: "1px solid var(--color-border-subtle)",
+      backgroundColor: "var(--color-base-300)",
+      color: mix("base-content", 70),
+      borderRight: `1px solid ${mix("base-content", 10)}`,
     },
-    ".cm-activeLine": { backgroundColor: "var(--color-bg-subtle)" },
-    ".cm-activeLineGutter": { backgroundColor: "var(--color-bg-subtle)", color: "var(--color-fg)" },
-    ".cm-matchingBracket": { backgroundColor: "var(--color-surface-active)", outline: "1px solid var(--color-border)" },
-    ".cm-searchMatch": { backgroundColor: "var(--color-warning-subtle)" },
-    ".cm-panels": { backgroundColor: "var(--color-bg-subtle)", color: "var(--color-fg)" },
+    ".cm-activeLine": { backgroundColor: "var(--color-base-200)" },
+    ".cm-activeLineGutter": { backgroundColor: "var(--color-base-200)", color: "var(--color-base-content)" },
+    ".cm-matchingBracket": { backgroundColor: mix("base-content", 15), outline: `1px solid ${mix("base-content", 20)}` },
+    ".cm-searchMatch": { backgroundColor: mix("warning", 25) },
+    ".cm-panels": { backgroundColor: "var(--color-base-200)", color: "var(--color-base-content)" },
   },
   { dark: true },
 );

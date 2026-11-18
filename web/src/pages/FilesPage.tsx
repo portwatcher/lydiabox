@@ -1,4 +1,4 @@
-import { ChevronRight, FolderPlus, FolderUp, HardDriveDownload, PowerOff, Upload } from "lucide-react";
+import { FolderPlus, FolderUp, HardDriveDownload, PowerOff, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { files } from "../api/files";
@@ -25,19 +25,21 @@ function nameError(value: string): string | null {
   return validName(value) ? null : "Enter a name without slashes. It cannot be . or ..";
 }
 
+/** A breadcrumb button: a ghost button that keeps the daisyUI separator. */
+function crumb(className?: string): string {
+  return cx("btn btn-ghost btn-sm h-7 px-1.5 font-normal text-base-content/70 hover:bg-base-content/10 hover:text-base-content", className);
+}
+
 function RootSwitch({ root, onChange, className }: { root: RootName; onChange: (r: RootName) => void; className?: string }) {
   return (
-    <div role="group" aria-label="Root" className={cx("inline-flex rounded-md border border-border bg-bg p-0.5", className)}>
+    <div role="group" aria-label="Root" className={cx("tabs tabs-box tabs-sm flex-nowrap bg-base-300 p-0.5", className)}>
       {(["workspace", "home"] as const).map((r) => (
         <button
           key={r}
           type="button"
           aria-pressed={root === r}
           onClick={() => onChange(r)}
-          className={cx(
-            "h-7 flex-1 rounded px-2.5 font-mono text-xs transition-colors duration-150",
-            root === r ? "bg-surface-active text-fg" : "text-fg-muted hover:text-fg",
-          )}
+          className={cx("tab h-7 flex-1 px-2.5 font-mono text-xs", root === r ? "tab-active" : "text-base-content/70 hover:text-base-content")}
         >
           {rootLabels[r]}
         </button>
@@ -182,8 +184,8 @@ export default function FilesPage() {
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border-subtle bg-bg-subtle md:flex">
-        <div className="border-b border-border-subtle p-3">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-base-content/10 bg-base-200 md:flex">
+        <div className="border-b border-base-content/10 p-3">
           <RootSwitch root={root} onChange={(r) => navigate({ root: r, file: null })} className="w-full" />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -198,37 +200,31 @@ export default function FilesPage() {
         </div>
       </aside>
       <section className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-2">
+        <div className="flex min-h-12 flex-wrap items-center gap-2 border-b border-base-content/10 px-3 py-2">
           <RootSwitch root={root} onChange={(r) => navigate({ root: r, file: null })} className="md:hidden" />
-          <nav aria-label="Breadcrumb" className="flex min-w-0 flex-[1_1_16rem] flex-wrap items-center gap-1 text-sm">
-            <button
-              type="button"
-              onClick={() => navigate({ dir: "", file: null })}
-              className="shrink-0 rounded px-1.5 py-1 font-mono text-[13px] text-fg-muted hover:bg-surface-hover hover:text-fg"
-            >
-              {rootLabels[root]}
-            </button>
-            {trail.map((c, i) => {
-              const last = i === trail.length - 1;
-              return (
-                <span key={c.path} className="flex min-w-0 items-center gap-1">
-                  <ChevronRight aria-hidden className="size-3.5 text-fg-muted" />
-                  {last ? (
-                    <span aria-current="page" className="px-1.5 py-1 font-medium break-all text-fg">
+          <nav aria-label="Breadcrumb" className="breadcrumbs min-w-0 flex-[1_1_16rem] py-0 text-sm">
+            <ul>
+              <li>
+                <button type="button" onClick={() => navigate({ dir: "", file: null })} className={crumb("font-mono text-[13px]")}>
+                  {rootLabels[root]}
+                </button>
+              </li>
+              {trail.map((c, i) =>
+                i === trail.length - 1 ? (
+                  <li key={c.path}>
+                    <span aria-current="page" className="px-1.5 py-1 font-medium">
                       {c.name}
                     </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => navigate({ dir: c.path, file: null })}
-                      className="rounded px-1.5 py-1 break-all text-fg-muted hover:bg-surface-hover hover:text-fg"
-                    >
+                  </li>
+                ) : (
+                  <li key={c.path}>
+                    <button type="button" onClick={() => navigate({ dir: c.path, file: null })} className={crumb()}>
                       {c.name}
                     </button>
-                  )}
-                </span>
-              );
-            })}
+                  </li>
+                ),
+              )}
+            </ul>
           </nav>
           {file === null ? (
             <div className="flex flex-wrap items-center gap-1">

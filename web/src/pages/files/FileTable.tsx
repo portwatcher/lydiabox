@@ -24,7 +24,7 @@ interface FileTableProps {
 
 function EntryIcon({ entry }: { entry: Entry }) {
   const Icon = entry.type === "dir" ? Folder : entry.type === "symlink" ? FileSymlink : File;
-  return <Icon aria-hidden className={cx("size-4 shrink-0", entry.type === "dir" ? "text-accent-fg" : "text-fg-muted")} />;
+  return <Icon aria-hidden className={cx("size-4 shrink-0", entry.type === "dir" ? "text-info" : "text-base-content/70")} />;
 }
 
 /** Directory listing and drop target for files and folders. */
@@ -76,41 +76,41 @@ export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, o
           Drop files or folders here to upload them.
         </StateView>
       ) : (
-        <table className="w-full table-fixed border-collapse text-sm">
-          <thead className="sticky top-0 z-[1] bg-bg">
-            <tr className="border-b border-border-subtle text-left text-xs text-fg-muted">
-              <th scope="col" className="px-3 py-2 font-medium">
+        <table className="table table-sm table-pin-rows table-fixed">
+          <thead>
+            <tr className="border-base-content/10 bg-base-300 text-xs text-base-content/70">
+              <th scope="col" className="font-medium">
                 Name
               </th>
-              <th scope="col" className="hidden w-28 px-3 py-2 text-right font-medium sm:table-cell">
+              <th scope="col" className="hidden w-28 text-right font-medium sm:table-cell">
                 Size
               </th>
-              <th scope="col" className="hidden w-36 px-3 py-2 font-medium md:table-cell">
+              <th scope="col" className="hidden w-36 font-medium md:table-cell">
                 Modified
               </th>
-              <th scope="col" className="w-28 px-3 py-2">
+              <th scope="col" className="w-28">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
           </thead>
           <tbody>
             {entries.map((entry) => (
-              <tr key={entry.path} className="group border-b border-border-subtle hover:bg-surface-hover">
-                <td className="px-3 py-1">
+              <tr key={entry.path} className="group border-base-content/10 hover:bg-base-content/5">
+                <td className="py-1">
                   <button
                     type="button"
                     onClick={() => onOpen(entry)}
-                    className="flex h-8 w-full min-w-0 items-center gap-2 text-left text-fg"
+                    className="flex h-8 w-full min-w-0 items-center gap-2 text-left"
                     title={entry.name}
                   >
                     <EntryIcon entry={entry} />
                     <span className="truncate">{entry.name}</span>
                   </button>
                 </td>
-                <td className="hidden px-3 py-1 text-right text-fg-muted tabular-nums sm:table-cell">
+                <td className="hidden py-1 text-right text-base-content/70 tabular-nums sm:table-cell">
                   {entry.type === "dir" ? "" : formatBytes(entry.size)}
                 </td>
-                <td className="hidden px-3 py-1 text-fg-muted tabular-nums md:table-cell" title={formatDateTime(entry.modTime)}>
+                <td className="hidden py-1 text-base-content/70 tabular-nums md:table-cell" title={formatDateTime(entry.modTime)}>
                   {timeAgo(entry.modTime, now) ?? ""}
                 </td>
                 <td className="px-2 py-1">
@@ -121,7 +121,7 @@ export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, o
                         download={entry.name}
                         aria-label={`Download ${entry.name}`}
                         title={`Download ${entry.name}`}
-                        className="inline-flex size-8 items-center justify-center rounded-md text-fg-muted hover:bg-surface-active hover:text-fg"
+                        className="btn btn-ghost btn-square btn-sm text-base-content/70 hover:bg-base-content/10 hover:text-base-content"
                       >
                         <Download aria-hidden className="size-4" />
                       </a>
@@ -136,8 +136,8 @@ export function FileTable({ root, entries, onOpen, onRename, onDelete, onDrop, o
         </table>
       )}
       {dragging > 0 ? (
-        <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-lg border-2 border-dashed border-accent-solid bg-bg/90">
-          <span className="flex items-center gap-2 text-sm font-medium text-fg">
+        <div className="rounded-box pointer-events-none absolute inset-2 flex items-center justify-center border-2 border-dashed border-info bg-base-300/90">
+          <span className="flex items-center gap-2 text-sm font-medium">
             <Upload aria-hidden className="size-4" />
             Drop to upload here
           </span>

@@ -1,9 +1,9 @@
-import { ChevronRight, Folder, FolderOpen, House, LoaderCircle } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, House } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { files } from "../../api/files";
 import { useServerDown } from "../../hooks/useSystem";
 import type { RootName } from "../../api/types";
-import { cx } from "../../components/ui";
+import { Spinner, cx } from "../../components/ui";
 import { failedNode, loadedNode, loadingNode, showsLoadError } from "./folderNode";
 import type { NodeState } from "./folderNode";
 
@@ -97,7 +97,7 @@ export function FileTree({ root, rootLabel, current, onOpen, version, paused = f
     });
   }, [expanded, nodes, load, down]);
 
-  const renderNode = (dir: string, depth: number) => {
+  const renderNode = (dir: string) => {
     const node = nodes[dir];
     const open = expanded.has(dir);
     const name = dir === "" ? rootLabel : dir.slice(dir.lastIndexOf("/") + 1);
@@ -106,10 +106,7 @@ export function FileTree({ root, rootLabel, current, onOpen, version, paused = f
     const Icon = dir === "" ? House : open ? FolderOpen : Folder;
     return (
       <li key={dir}>
-        <div
-          className={cx("flex items-center rounded-md", active ? "bg-surface-active text-fg" : "text-fg-muted hover:bg-surface-hover hover:text-fg")}
-          style={{ paddingLeft: `${depth * 12}px` }}
-        >
+        <div className={cx("flex items-center gap-0 p-0", active ? "menu-active" : "text-base-content/70 hover:text-base-content")}>
           <button
             type="button"
             aria-label={`${open ? "Collapse" : "Expand"} ${name}`}
@@ -118,7 +115,7 @@ export function FileTree({ root, rootLabel, current, onOpen, version, paused = f
             className={cx("flex size-7 shrink-0 items-center justify-center rounded", !hasChildren && "invisible")}
           >
             {node?.loading && !node.children ? (
-              <LoaderCircle aria-hidden className="size-3.5 motion-safe:animate-spin" />
+              <Spinner size="xs" className="" />
             ) : (
               <ChevronRight aria-hidden className={cx("size-3.5 transition-transform duration-150", open && "rotate-90")} />
             )}
@@ -135,12 +132,14 @@ export function FileTree({ root, rootLabel, current, onOpen, version, paused = f
           </button>
         </div>
         {open && node?.children && node.children.length > 0 ? (
-          <ul>{node.children.map((child) => renderNode(child, depth + 1))}</ul>
+          <ul className="ms-3 ps-1">{node.children.map((child) => renderNode(child))}</ul>
         ) : null}
         {open && showsLoadError(node) ? (
-          <p className="py-1 text-xs text-danger-fg" style={{ paddingLeft: `${(depth + 1) * 12 + 28}px` }}>
-            Folder not loaded
-          </p>
+          <ul className="ms-3 ps-1">
+            <li className="menu-disabled">
+              <span className="py-1 text-xs text-error">Folder not loaded</span>
+            </li>
+          </ul>
         ) : null}
       </li>
     );
@@ -148,7 +147,7 @@ export function FileTree({ root, rootLabel, current, onOpen, version, paused = f
 
   return (
     <nav aria-label="Folders">
-      <ul className="flex flex-col p-2">{renderNode("", 0)}</ul>
+      <ul className="menu menu-sm w-full p-2">{renderNode("")}</ul>
     </nav>
   );
 }

@@ -97,18 +97,18 @@ export function UploadBar({ uploader }: { uploader: Uploader }) {
   if (state.kind === "running") {
     const pct = state.total > 0 ? Math.round((state.loaded / state.total) * 100) : 0;
     return (
-      <div className="flex flex-wrap items-center gap-3 border-b border-border-subtle px-3 py-2 text-sm">
-        <Upload aria-hidden className="size-4 text-fg-muted" />
-        <span className="text-fg">
+      <div className="flex flex-wrap items-center gap-3 border-b border-base-content/10 px-3 py-2 text-sm">
+        <Upload aria-hidden className="size-4 text-base-content/70" />
+        <span>
           Uploading {count(state.files, { one: "# file", other: "# files" })}…
         </span>
         <progress
           max={100}
           value={pct}
           aria-label="Upload progress"
-          className="h-1.5 min-w-24 flex-1 appearance-none overflow-hidden rounded-full [&::-moz-progress-bar]:bg-accent-solid [&::-webkit-progress-bar]:bg-surface-active [&::-webkit-progress-value]:bg-accent-solid"
+          className="progress progress-primary h-1.5 w-auto min-w-24 flex-1"
         />
-        <span className="text-xs text-fg-muted tabular-nums">
+        <span className="text-xs text-base-content/70 tabular-nums">
           {formatBytes(state.loaded)} of {formatBytes(state.total)}
         </span>
         <Button size="sm" variant="ghost" icon={X} onClick={uploader.cancel}>
