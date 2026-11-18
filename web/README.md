@@ -1,7 +1,7 @@
 # LydiaBox web workstation
 
 The browser UI embedded in `lydiabox`: Vite, React 18, TypeScript (strict),
-Tailwind CSS 4, Lucide icons, xterm.js, CodeMirror 6, and React Router. The
+Tailwind CSS 4 with daisyUI 5, Lucide icons, xterm.js, CodeMirror 6, and React Router. The
 HTTP and WebSocket contract it uses is [docs/api.md](../docs/api.md).
 
 ## Development
@@ -44,8 +44,11 @@ src/pages/models      gateway, providers, routing groups, harness bindings
 src/pages/connectors  connector cards, OAuth and token drawers, audit log
 ```
 
-Colors are semantic tokens in `src/index.css` (`bg`, `surface`, `fg`,
-`accent-*`, `danger-*`, ...); components never use the default Tailwind palette.
+Components use daisyUI classes (`btn`, `input`, `modal`, `menu`, `table`, ...)
+and the semantic colors of the dark `lydiabox` theme in `src/index.css`
+(`base-100/200/300`, `base-content`, `primary`, `error`, ...). The default
+Tailwind palette is removed. xterm.js, CodeMirror, and the desktop HUD read
+the same theme variables.
 
 Every page handles a backend that does not have its subsystem yet: `404` on a
 route or `501 not_implemented` shows "not available in this build", and

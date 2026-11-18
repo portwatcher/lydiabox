@@ -91,7 +91,7 @@ lydiabox/
 │       ├── Dockerfile              # Builds Ubuntu 24.04 desktop rootfs (Xfce4, Xvfb, Chrome, Blender, ffmpeg, Node/Python/Git, 5 Harnesses)
 │       ├── supervisord.conf        # Or lightweight Go init script starting X11, Xfce4, Chrome CDP, and lydiabox-guest
 │       └── build-artifacts.sh      # Exports vmlinux, initramfs.cpio.gz, and rootfs.squashfs into ~/.lydiabox/runtime/images/
-└── web/                            # Embedded Vite + React + TypeScript + TailwindCSS frontend
+└── web/                            # Embedded Vite + React + TypeScript + TailwindCSS + daisyUI frontend
     ├── package.json
     ├── vite.config.ts
     └── src/
@@ -305,7 +305,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 
 ## 5. Unified Web UI Specification (`web/`)
 
-Build a responsive, dark-themed workstation UI (TailwindCSS + Lucide icons + `xterm.js`) embedded into `cmd/lydiabox`:
+Build a responsive, dark-themed workstation UI (TailwindCSS + daisyUI + Lucide icons + `xterm.js`) embedded into `cmd/lydiabox`:
 
 1. **Top Global Status Bar**:
    - VM Status pill (`STOPPED`, `BOOTING`, `RUNNING`, `PAUSED`) with 1-click Start (Resume when paused) / Hibernate / Stop buttons, CPU/RAM & S3 sync indicator (`Synced Xs ago`). The sync indicator shows only when the server syncs to S3 (always in the `juicefs` storage mode; in the `provider` mode only with S3 settings for the state database backup).
