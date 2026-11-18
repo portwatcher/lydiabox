@@ -53,7 +53,7 @@ export function Dialog({ open, onClose, title, children, footer, variant = "moda
           onClose();
         }
       }}
-      className={cx("modal", variant === "drawer" ? "modal-end" : "modal-bottom sm:modal-middle")}
+      className={cx("modal open:bg-base-300/70", variant === "drawer" ? "modal-end" : "modal-bottom sm:modal-middle")}
     >
       {open ? (
         <div

@@ -50,7 +50,7 @@ function SyncIndicator() {
   }
   if (sync.kind === "failed") {
     return (
-      <span className="tooltip tooltip-bottom inline-flex items-center gap-1.5 text-xs text-error" data-tip={sync.error}>
+      <span className="tooltip tooltip-left inline-flex items-center gap-1.5 text-xs text-error" data-tip={sync.error}>
         <CloudAlert aria-hidden className="size-4" />
         Sync failed
         <span className="sr-only">: {sync.error}</span>
@@ -65,7 +65,7 @@ function SyncIndicator() {
       : `Synced ${formatAgo(serverNow - synced + (now - fetchedAt))}`;
   return (
     <span
-      className={cx("tooltip tooltip-bottom inline-flex items-center gap-1.5 text-xs tabular-nums", error ? "text-warning" : "text-base-content/70")}
+      className={cx("tooltip tooltip-left inline-flex items-center gap-1.5 text-xs tabular-nums", error ? "text-warning" : "text-base-content/70")}
       data-tip={`Last S3 sync: ${formatDateTime(storage.lastSyncAt)}. Last upload: ${formatDateTime(storage.lastUploadAt)}.`}
     >
       <CloudCheck aria-hidden className="size-4" />
@@ -103,7 +103,7 @@ function VmProblem() {
     return null;
   }
   return (
-    <span role="status" className="tooltip tooltip-bottom inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-error" data-tip={message}>
+    <span role="status" className="tooltip tooltip-left inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-error" data-tip={message}>
       <TriangleAlert aria-hidden className="size-4 shrink-0" />
       <span className="truncate">{message}</span>
     </span>
@@ -119,7 +119,7 @@ function VmSlow() {
   return (
     <span
       role="status"
-      className="tooltip tooltip-bottom inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning"
+      className="tooltip tooltip-left inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning"
       data-tip="The VM provider is slow to start or resume the VM. This can take a few minutes."
     >
       <Hourglass aria-hidden className="size-4 shrink-0" />
