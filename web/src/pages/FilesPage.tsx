@@ -1,10 +1,10 @@
-import { ChevronRight, FolderPlus, FolderUp, HardDriveDownload, PowerOff, Upload } from "lucide-react";
+import { ChevronRight, FolderPlus, FolderUp, HardDriveDownload, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { files } from "../api/files";
 import type { Entry, RootName } from "../api/types";
 import { ConfirmDialog } from "../components/Dialog";
-import { ErrorView, LoadingView, StateView } from "../components/StateView";
+import { ErrorView, LoadingView } from "../components/StateView";
 import { VmWakeButton } from "../components/VmPower";
 import { useToast } from "../components/Toast";
 import { Button, cx } from "../components/ui";
@@ -65,13 +65,11 @@ export default function FilesPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
-  // In the provider storage mode the files are on the VM. The page lists
-  // nothing by itself while the VM is not running: only an action of the
-  // user (Start, Resume, open, upload, ...) starts or resumes it.
-  // Before the first status the storage mode is not known: wait for it.
-  const vmAway = status === null || (!mountable && vmState !== "RUNNING");
+  // In the provider storage mode the files are on the VM: a list starts or
+  // resumes it. Only a stop by the user (on the Desktop page) holds it; the
+  // list then fails and offers Start.
   const loader = useCallback((signal: AbortSignal) => files.list(root, dir, signal), [root, dir]);
-  const listing = useResource(loader, { enabled: file === null && !vmAway });
+  const listing = useResource(loader, { enabled: file === null });
   const reloadListing = listing.reload;
 
   // After a change: reload the listing and every open folder in the tree.
@@ -81,7 +79,7 @@ export default function FilesPage() {
   }, [reloadListing]);
 
   // In the provider storage mode the files are on the VM: a start loads
-  // the listing and the folder tree.
+  // the listing and the folder tree again (after a list failed on a stop).
   const prevVm = useRef(vmState);
   useEffect(() => {
     const was = prevVm.current;
@@ -136,33 +134,23 @@ export default function FilesPage() {
 
   const trail = crumbs(file ?? dir);
 
-  // In the provider storage mode the files are on the VM. A stopped VM
-  // (a user stop holds it) answers no file request, so no change action
-  // looks available; a paused VM is resumed by a file action.
-  const blocked = !mountable && vmState === "STOPPED" ? "Start the VM to change files." : null;
-
   let content;
-  if (file === null && vmAway) {
-    content =
-      status === null ? (
-        <LoadingView label="Loading files…" />
-      ) : vmState === "BOOTING" ? (
-        <LoadingView label="Starting the VM…" />
-      ) : (
-        <StateView
-          icon={PowerOff}
-          title={vmState === "PAUSED" ? "The VM is hibernating" : "The VM is stopped"}
-          action={<VmWakeButton variant="primary" />}
-        >
-          {vmState === "PAUSED" ? "Resume the VM to see your files." : "Start the VM to see and change files."}
-        </StateView>
-      );
+  if (file === null && listing.loading && !listing.data && vmState === "BOOTING") {
+    content = <LoadingView label="Starting the VM…" />;
   } else if (file !== null) {
-    content = <FileView key={`${root}:${file}`} root={root} path={file} onDirtyChange={setDirty} onSaved={bump} blocked={blocked} />;
+    content = <FileView key={`${root}:${file}`} root={root} path={file} onDirtyChange={setDirty} onSaved={bump} />;
   } else if (listing.loading && !listing.data) {
     content = <LoadingView label="Loading files…" />;
   } else if (listing.error && !listing.data) {
-    content = <ErrorView error={listing.error} subsystem="Files" failed="Folder not loaded" onRetry={listing.reload} />;
+    content = (
+      <ErrorView
+        error={listing.error}
+        subsystem="Files"
+        failed="Folder not loaded"
+        onRetry={listing.reload}
+        unavailableAction={!mountable && vmState === "STOPPED" ? <VmWakeButton variant="primary" /> : undefined}
+      />
+    );
   } else {
     content = (
       <FileTable
@@ -175,7 +163,6 @@ export default function FilesPage() {
         onNewFolder={() => setMkdirOpen(true)}
         onUpload={() => fileInput.current?.click()}
         dropEnabled={uploader.state.kind !== "running"}
-        blocked={blocked}
       />
     );
   }
@@ -193,7 +180,6 @@ export default function FilesPage() {
             current={file ? parentPath(file) : dir}
             onOpen={(d) => navigate({ dir: d, file: null })}
             version={version}
-            paused={vmAway}
           />
         </div>
       </aside>
@@ -232,15 +218,14 @@ export default function FilesPage() {
           </nav>
           {file === null ? (
             <div className="flex flex-wrap items-center gap-1">
-              <Button size="sm" variant="ghost" icon={FolderPlus} disabled={blocked !== null} title={blocked ?? undefined} onClick={() => setMkdirOpen(true)}>
+              <Button size="sm" variant="ghost" icon={FolderPlus} onClick={() => setMkdirOpen(true)}>
                 New folder
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 icon={Upload}
-                disabled={uploader.state.kind === "running" || blocked !== null}
-                title={blocked ?? undefined}
+                disabled={uploader.state.kind === "running"}
                 onClick={() => fileInput.current?.click()}
               >
                 Upload files
@@ -249,8 +234,7 @@ export default function FilesPage() {
                 size="sm"
                 variant="ghost"
                 icon={FolderUp}
-                disabled={uploader.state.kind === "running" || blocked !== null}
-                title={blocked ?? undefined}
+                disabled={uploader.state.kind === "running"}
                 onClick={() => folderInput.current?.click()}
               >
                 Upload folder

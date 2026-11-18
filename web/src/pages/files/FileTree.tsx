@@ -14,8 +14,6 @@ interface FileTreeProps {
   onOpen: (dir: string) => void;
   /** Bumped by the parent after changes so loaded folders refresh. */
   version: number;
-  /** No folder loads while set (the VM that holds the files is not running). */
-  paused?: boolean;
 }
 
 /** Ancestors of `path`, from the root: "a/b/c" gives "", "a", "a/b", "a/b/c". */
@@ -25,7 +23,7 @@ function ancestors(path: string): string[] {
 }
 
 /** Folder tree: a disclosure list that loads each folder's subfolders on expand. */
-export function FileTree({ root, rootLabel, current, onOpen, version, paused = false }: FileTreeProps) {
+export function FileTree({ root, rootLabel, current, onOpen, version }: FileTreeProps) {
   const [nodes, setNodes] = useState<Record<string, NodeState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
 
@@ -85,7 +83,7 @@ export function FileTree({ root, rootLabel, current, onOpen, version, paused = f
 
   // While the server cannot answer, nothing loads; at its end the open
   // folders that did not load do.
-  const down = useServerDown() || paused;
+  const down = useServerDown();
   useEffect(() => {
     if (down) {
       return;

@@ -6,7 +6,7 @@ import type { AgentAction, DesktopMode, LaunchApp } from "../api/types";
 import { ErrorView, LoadingView, StateView } from "../components/StateView";
 import { useToast } from "../components/Toast";
 import { Banner, Button, IconButton, cx } from "../components/ui";
-import { VmWakeButton } from "../components/VmPower";
+import { VmPower, VmResources, VmWakeButton } from "../components/VmPower";
 import { useServerDown, useSystem } from "../hooks/useSystem";
 import { ActionFeed } from "./desktop/ActionFeed";
 import { DesktopOverlay } from "./desktop/DesktopOverlay";
@@ -239,6 +239,12 @@ export default function DesktopPage() {
         onModeChange={(m) => void changeMode(m)}
         onLaunch={launch}
         onToggleSidebar={() => setSidebar((s) => !s)}
+        machine={
+          <>
+            <VmResources />
+            <VmPower compact />
+          </>
+        }
       />
       {stream.error && stream.socket !== null && stage !== "videoFailed" ? (
         <div className="px-3 pt-2">

@@ -25,8 +25,6 @@ interface FileViewProps {
   path: string;
   onDirtyChange: (dirty: boolean) => void;
   onSaved: () => void;
-  /** Why the file cannot be saved now (the VM that holds the files is stopped), or null. */
-  blocked?: string | null;
 }
 
 function BinaryView({ root, path, entry, reason }: { root: RootName; path: string; entry: Entry | null; reason: "binary" | "large" }) {
@@ -64,7 +62,7 @@ function BinaryView({ root, path, entry, reason }: { root: RootName; path: strin
   );
 }
 
-export function FileView({ root, path, onDirtyChange, onSaved, blocked = null }: FileViewProps) {
+export function FileView({ root, path, onDirtyChange, onSaved }: FileViewProps) {
   const toast = useToast();
   const [loaded, setLoaded] = useState<Loaded>({ kind: "loading" });
   const [draft, setDraft] = useState("");
@@ -173,7 +171,7 @@ export function FileView({ root, path, onDirtyChange, onSaved, blocked = null }:
             <Download aria-hidden className="size-4" />
             Download
           </a>
-          <Button size="sm" variant="primary" icon={Save} busy={saving} disabled={!dirty || blocked !== null} onClick={() => void save()} title={blocked ?? "Save (Ctrl+S)"}>
+          <Button size="sm" variant="primary" icon={Save} busy={saving} disabled={!dirty} onClick={() => void save()} title="Save (Ctrl+S)">
             Save
           </Button>
         </div>

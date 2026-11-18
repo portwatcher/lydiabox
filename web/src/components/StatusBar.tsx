@@ -2,7 +2,6 @@ import {
   CloudAlert,
   CloudCheck,
   CloudOff,
-  Cpu,
   FolderTree,
   Hourglass,
   LogOut,
@@ -15,9 +14,9 @@ import {
 import { NavLink } from "react-router";
 import { useSystem } from "../hooks/useSystem";
 import { useNow } from "../hooks/useResource";
-import { formatAgo, formatDateTime, formatMemory, parseTime, vmProblem } from "../lib/format";
+import { formatAgo, formatDateTime, parseTime, vmProblem } from "../lib/format";
 import { syncState } from "../lib/sync";
-import { VmPower } from "./VmPower";
+import { VmActivity } from "./VmPower";
 import { IconButton, cx } from "./ui";
 
 const tabs = [
@@ -74,27 +73,6 @@ function SyncIndicator() {
   );
 }
 
-function VmResources() {
-  const { vmStatus, status, outage } = useSystem();
-  if (outage) {
-    // Not current while the status poll fails.
-    return null;
-  }
-  const driver = vmStatus?.driver ?? status?.vm.driver;
-  return (
-    <span className="hidden items-center gap-1.5 text-xs text-fg-muted tabular-nums xl:inline-flex">
-      <Cpu aria-hidden className="size-4" />
-      {vmStatus && vmStatus.cpus > 0 ? (
-        <span>
-          {vmStatus.cpus} vCPU · {formatMemory(vmStatus.memMb)}
-          {vmStatus.gpu ? " · GPU" : ""}
-        </span>
-      ) : null}
-      {driver ? <span className="rounded bg-surface-active px-1.5 font-mono text-[11px] text-fg-muted">{driver}</span> : null}
-    </span>
-  );
-}
-
 /** Why the VM cannot run (for example a refused provider key); hidden while it runs. */
 function VmProblem() {
   const { vmStatus, vmState, outage } = useSystem();
@@ -131,8 +109,9 @@ function VmSlow() {
 export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
   const { error, status, outage } = useSystem();
   return (
-    // The bar keeps one row while everything fits; then the VM group wraps
-    // as a whole to a second row, so every tab stays in view. Below 640 px
+    // The VM controls are on the Desktop page; pages start or resume the VM
+    // when they need it. The bar keeps one row while everything fits; then
+    // the status group wraps as a whole to a second row, so every tab stays in view. Below 640 px
     // the tabs fill the first row, each as wide as its label needs.
     <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle bg-bg-subtle px-3 py-2 sm:px-4">
       <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0 sm:gap-4">
@@ -171,8 +150,7 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
         <SyncIndicator />
         <VmProblem />
         <VmSlow />
-        <VmResources />
-        <VmPower compact />
+        <VmActivity />
         {email ? <span className="hidden text-xs text-fg-muted md:inline">{email}</span> : null}
         <IconButton icon={LogOut} label={email ? `Sign out ${email}` : "Sign out"} onClick={onLogout} />
       </div>

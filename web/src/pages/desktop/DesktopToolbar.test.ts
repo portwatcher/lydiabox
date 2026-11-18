@@ -3,9 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DesktopToolbar } from "./DesktopToolbar";
 
-function render(connected: boolean): string {
+function render(connected: boolean, machine?: string): string {
   return renderToStaticMarkup(
     createElement(DesktopToolbar, {
+      machine,
       mode: "OBSERVER",
       modeBusy: false,
       connected,
@@ -31,11 +32,10 @@ describe("DesktopToolbar", () => {
     expect(html).toContain('aria-controls="desktop-feed"');
   });
 
-  it("leaves the VM state and power actions to the status bar", () => {
-    for (const html of [render(true), render(false)]) {
-      for (const label of ["RUNNING", "STOPPED", "PAUSED", "Hibernate", "Stop", "Wake", "Resume"]) {
-        expect(text(html)).not.toContain(label);
-      }
+  it("shows the VM controls that the page passes, also while the desktop is not connected", () => {
+    for (const html of [render(true, "VM-CONTROLS"), render(false, "VM-CONTROLS")]) {
+      expect(text(html)).toContain("VM-CONTROLS");
     }
+    expect(text(render(true))).not.toContain("Hibernate");
   });
 });

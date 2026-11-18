@@ -309,10 +309,10 @@ the machine, so it shows the last answer or the defaults.
 ### `GET /api/v1/fs/{root}/list?path=<dir>[&auto=1]`
 
 Response `200`: directories first, then case-insensitive name order.
-`auto=1` marks a list that the page sends by itself: in the `provider`
+`auto=1` marks a list that must not wake the VM: in the `provider`
 storage mode it answers `503 unavailable` while the VM does not serve,
-instead of starting or resuming it (a list without the mark is a user
-action and wakes the VM).
+instead of starting or resuming it. A list without the mark starts or
+resumes the VM; the web Files page sends no mark.
 
 ```json
 { "root": "workspace", "dir": { "name": "", "path": "", "type": "dir", "size": 4096, "mode": "0755", "modTime": "..." },

@@ -4,7 +4,9 @@ import { sessions } from "../../api/domains";
 import type { Session, TranscriptEntry } from "../../api/types";
 import { ErrorView, LoadingView, StateView } from "../../components/StateView";
 import { Button } from "../../components/ui";
+import { VmWakeButton } from "../../components/VmPower";
 import { useResource } from "../../hooks/useResource";
+import { useSystem } from "../../hooks/useSystem";
 
 interface TranscriptViewProps {
   session: Session;
@@ -40,6 +42,7 @@ export function TranscriptView({ session, onResume, resumeBlocked }: TranscriptV
   const id = session.id;
   const loader = useCallback((signal: AbortSignal) => sessions.transcript(id, signal), [id]);
   const transcript = useResource(loader);
+  const { vmState } = useSystem();
   const endRef = useRef<HTMLDivElement>(null);
   const entries = transcript.data?.entries;
 
@@ -53,7 +56,16 @@ export function TranscriptView({ session, onResume, resumeBlocked }: TranscriptV
   if (transcript.loading && !transcript.data) {
     body = <LoadingView label="Loading history…" />;
   } else if (transcript.error && !transcript.data) {
-    body = <ErrorView error={transcript.error} subsystem="Sessions" failed="History not loaded" onRetry={transcript.reload} />;
+    // A stop by the user holds the VM (provider storage mode): offer Start.
+    body = (
+      <ErrorView
+        error={transcript.error}
+        subsystem="Sessions"
+        failed="History not loaded"
+        onRetry={transcript.reload}
+        unavailableAction={vmState === "STOPPED" ? <VmWakeButton variant="primary" /> : undefined}
+      />
+    );
   } else if (!entries || entries.length === 0) {
     body = <StateView title="No messages yet" />;
   } else {
