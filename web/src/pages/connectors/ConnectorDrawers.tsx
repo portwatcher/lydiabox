@@ -77,7 +77,7 @@ export function ClientDrawer({ connector, onClose, onSaved }: DrawerProps) {
       footer={
         <>
           {stored ? (
-            <Button variant="ghost" className="mr-auto text-danger-fg" disabled={busy} onClick={() => void remove()}>
+            <Button variant="ghost" className="mr-auto text-error hover:bg-error/10" disabled={busy} onClick={() => void remove()}>
               Remove stored client
             </Button>
           ) : null}

@@ -96,32 +96,53 @@ export function AuditLog({ names }: { names: Record<string, string> }) {
   } else {
     body = (
       <>
-        <ol aria-label="Audit entries" className="flex flex-col">
-          {entries.map((entry) => (
-            <li key={entry.id} className="flex flex-col gap-1.5 border-b border-border-subtle px-4 py-2.5 sm:flex-row sm:items-start sm:gap-4">
-              <div className="flex w-44 shrink-0 items-center gap-2">
-                {isFailureKind(entry.kind) ? (
-                  <Badge tone="danger" icon={CircleAlert}>
-                    {auditKindLabel(entry.kind)}
-                  </Badge>
-                ) : (
-                  <Badge>{auditKindLabel(entry.kind)}</Badge>
-                )}
-              </div>
-              <dl className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1 text-xs">
-                {auditDetail(entry.detail).map(([key, value]) => (
-                  <div key={key} className="flex min-w-0 gap-1">
-                    <dt className="text-fg-muted">{key}</dt>
-                    <dd className="font-mono break-all text-fg">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <time dateTime={entry.createdAt} title={formatDateTime(entry.createdAt)} className="shrink-0 text-xs text-fg-muted tabular-nums">
-                {timeAgo(entry.createdAt, now)}
-              </time>
-            </li>
-          ))}
-        </ol>
+        <div className="overflow-x-auto">
+          <table className="table table-sm" aria-label="Audit entries">
+            <thead>
+              <tr className="border-base-content/10 text-xs text-base-content/70">
+                <th scope="col" className="w-44 px-4 font-medium">
+                  Event
+                </th>
+                <th scope="col" className="font-medium">
+                  Details
+                </th>
+                <th scope="col" className="px-4 text-right font-medium">
+                  Time
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id} className="border-base-content/10 align-top">
+                  <td className="px-4">
+                    {isFailureKind(entry.kind) ? (
+                      <Badge tone="danger" icon={CircleAlert}>
+                        {auditKindLabel(entry.kind)}
+                      </Badge>
+                    ) : (
+                      <Badge>{auditKindLabel(entry.kind)}</Badge>
+                    )}
+                  </td>
+                  <td className="min-w-48">
+                    <dl className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs">
+                      {auditDetail(entry.detail).map(([key, value]) => (
+                        <div key={key} className="flex min-w-0 gap-1">
+                          <dt className="text-base-content/70">{key}</dt>
+                          <dd className="font-mono break-all">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </td>
+                  <td className="px-4 text-right whitespace-nowrap">
+                    <time dateTime={entry.createdAt} title={formatDateTime(entry.createdAt)} className="text-xs text-base-content/70 tabular-nums">
+                      {timeAgo(entry.createdAt, now)}
+                    </time>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {nextBefore !== undefined ? (
           <div className="flex justify-center p-3">
             <Button size="sm" icon={ChevronDown} busy={loadingMore} onClick={() => void loadOlder()}>
@@ -141,7 +162,7 @@ export function AuditLog({ names }: { names: Record<string, string> }) {
           aria-label="Filter by connector"
           value={provider}
           onChange={(e) => setProvider(CONNECTOR_PROVIDERS.find((p) => p === e.target.value) ?? "")}
-          className="h-8 w-44"
+          className="select-sm w-44"
         >
           <option value="">All connectors</option>
           {CONNECTOR_PROVIDERS.map((p) => (

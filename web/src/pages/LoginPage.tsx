@@ -47,42 +47,44 @@ export function LoginPage({ session, onSignedIn }: { session?: AuthState; onSign
 
   return (
     <main className="flex min-h-full items-center justify-center px-4 py-12">
-      <form onSubmit={(e) => void submit(e)} className="flex w-full max-w-sm flex-col gap-5" noValidate>
-        <div className="flex flex-col items-center gap-3 text-center">
-          <img src="/favicon.svg" alt="" className="size-10" />
-          <h1 className="text-xl font-semibold tracking-tight">Sign in to LydiaBox</h1>
-        </div>
-        {session?.email ? (
-          <p className="text-sm text-fg-muted">
-            Cloudflare Access signed you in as <span className="font-medium break-all text-fg">{session.email}</span>, but this email
-            is not on the allow list. Sign in with the admin token, or{" "}
-            <a href={accessLogoutPath} className="font-medium text-fg underline underline-offset-2">
-              sign out of Cloudflare Access
-            </a>
-            .
-          </p>
-        ) : null}
-        <Field
-          id="token"
-          label="Admin token"
-          hint="Printed by lydiabox up on first boot."
-          error={error}
-        >
-          <TextInput
+      <form onSubmit={(e) => void submit(e)} className="card w-full max-w-sm border border-base-content/10 bg-base-200" noValidate>
+        <div className="card-body gap-5">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <img src="/favicon.svg" alt="" className="size-10" />
+            <h1 className="text-xl font-semibold tracking-tight">Sign in to LydiaBox</h1>
+          </div>
+          {session?.email ? (
+            <p className="text-sm text-base-content/70">
+              Cloudflare Access signed you in as <span className="font-medium break-all text-base-content">{session.email}</span>, but this email
+              is not on the allow list. Sign in with the admin token, or{" "}
+              <a href={accessLogoutPath} className="link font-medium text-base-content underline-offset-2">
+                sign out of Cloudflare Access
+              </a>
+              .
+            </p>
+          ) : null}
+          <Field
             id="token"
-            type="password"
-            autoComplete="current-password"
-            autoFocus
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={describedBy("token", true, Boolean(error))}
-            spellCheck={false}
-          />
-        </Field>
-        <Button type="submit" variant="primary" icon={LogIn} busy={busy} className="w-full">
-          Sign in
-        </Button>
+            label="Admin token"
+            hint="Printed by lydiabox up on first boot."
+            error={error}
+          >
+            <TextInput
+              id="token"
+              type="password"
+              autoComplete="current-password"
+              autoFocus
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={describedBy("token", true, Boolean(error))}
+              spellCheck={false}
+            />
+          </Field>
+          <Button type="submit" variant="primary" icon={LogIn} busy={busy} className="w-full">
+            Sign in
+          </Button>
+        </div>
       </form>
     </main>
   );

@@ -4,7 +4,7 @@ import { describeError } from "../api/errors";
 import { connectors } from "../api/domains";
 import type { Connector, ConnectorAccount, ConnectorProvider } from "../api/types";
 import { ConfirmDialog } from "../components/Dialog";
-import { ErrorView, LoadingView } from "../components/StateView";
+import { ErrorView, SkeletonList } from "../components/StateView";
 import { useToast } from "../components/Toast";
 import { useResource } from "../hooks/useResource";
 import { AuditLog } from "./connectors/AuditLog";
@@ -79,7 +79,7 @@ export default function ConnectorsPage() {
 
   let cards;
   if (list.loading && !list.data) {
-    cards = <LoadingView label="Loading connectors…" />;
+    cards = <SkeletonList label="Loading connectors…" rows={2} shape="card" className="grid sm:grid-cols-2" />;
   } else if (list.error && !list.data) {
     cards = <ErrorView error={list.error} subsystem="Connectors" failed="Connectors not loaded" onRetry={list.reload} />;
   } else {
