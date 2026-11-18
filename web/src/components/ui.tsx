@@ -77,9 +77,11 @@ export function IconButton({ icon: Icon, label, size = "sm", tone = "default", c
   );
 }
 
+const spinnerSizes = { xs: "loading-xs", sm: "loading-sm" };
+
 /** A daisyUI spinner. Muted by default; `className` replaces the color (pass "" for the current color). */
-export function Spinner({ className }: { className?: string }) {
-  return <span aria-hidden className={cx("loading loading-spinner loading-sm", className ?? "text-base-content/70")} />;
+export function Spinner({ className, size = "sm" }: { className?: string; size?: keyof typeof spinnerSizes }) {
+  return <span aria-hidden className={cx("loading loading-spinner", spinnerSizes[size], className ?? "text-base-content/70")} />;
 }
 
 export type Tone = "neutral" | "accent" | "success" | "warning" | "danger";

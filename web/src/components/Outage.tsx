@@ -26,7 +26,7 @@ function outageBody(outage: Outage): { text: string; href: string | null } {
 
 function DashboardLink({ href }: { href: string }) {
   return (
-    <a href={href} className="shrink-0 text-sm font-medium underline underline-offset-2">
+    <a href={href} className="link shrink-0 text-sm font-medium underline-offset-2">
       Open the dashboard
     </a>
   );
@@ -59,7 +59,7 @@ export function PageArea({ children }: { children: ReactNode }) {
   return (
     <main className="flex min-h-0 flex-1 flex-col">
       {outage && body ? (
-        <div className="border-b border-border-subtle px-3 py-2 sm:px-4">
+        <div className="border-b border-base-content/10 px-3 py-2 sm:px-4">
           <Banner tone="warning" icon={outage.kind === "unknown" ? CloudOff : Monitor} action={body.href ? <DashboardLink href={body.href} /> : undefined}>
             <span className="font-medium">{titles[outage.kind]}.</span> {body.text}
           </Banner>

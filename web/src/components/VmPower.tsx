@@ -1,10 +1,10 @@
-import { LoaderCircle, Moon, Play, Square } from "lucide-react";
+import { Moon, Play, Square } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import type { VMState } from "../api/types";
 import { useSystem } from "../hooks/useSystem";
 import { ConfirmDialog } from "./Dialog";
-import { Button, cx } from "./ui";
+import { Button, Spinner, badgeTones, cx } from "./ui";
 import type { Tone } from "./ui";
 
 const stateTone: Record<VMState, Tone> = {
@@ -14,13 +14,15 @@ const stateTone: Record<VMState, Tone> = {
   STOPPED: "neutral",
 };
 
-const toneClass: Record<Tone, string> = {
-  success: "bg-success-subtle text-success-fg",
-  warning: "bg-warning-subtle text-warning-fg",
-  accent: "bg-accent-subtle text-accent-fg",
-  neutral: "bg-surface-active text-fg-muted",
-  danger: "bg-danger-subtle text-danger-fg",
+const statusDot: Record<Tone, string> = {
+  success: "status-success",
+  warning: "status-warning",
+  accent: "status-info",
+  neutral: "",
+  danger: "status-error",
 };
+
+const pill = "badge h-6 rounded-full px-2.5 text-xs font-semibold tracking-wide";
 
 /** The VM state as a labeled pill; the dot repeats the state, the label carries it. `unknown` shows that no status came. */
 export function VmPill({
@@ -35,8 +37,8 @@ export function VmPill({
 }) {
   if (unknown) {
     return (
-      <span className={cx("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold tracking-wide", toneClass.warning)}>
-        <span aria-hidden className="size-1.5 rounded-full bg-current" />
+      <span className={cx(pill, badgeTones.warning)}>
+        <span aria-hidden className={cx("status", statusDot.warning)} />
         <span className="sr-only">VM </span>
         NO STATUS
       </span>
@@ -44,25 +46,17 @@ export function VmPill({
   }
   if (transition) {
     return (
-      <span className={cx("inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold tracking-wide", toneClass.warning)}>
-        <LoaderCircle aria-hidden className="size-3 motion-safe:animate-spin" />
+      <span className={cx(pill, badgeTones.warning)}>
+        <Spinner size="xs" className="" />
         <span className="sr-only">VM </span>
         {transition === "pausing" ? "PAUSING" : "STOPPING"}
       </span>
     );
   }
+  const tone = stateTone[state];
   return (
-    <span
-      className={cx(
-        "inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold tracking-wide",
-        toneClass[stateTone[state]],
-      )}
-    >
-      {state === "BOOTING" ? (
-        <LoaderCircle aria-hidden className="size-3 motion-safe:animate-spin" />
-      ) : (
-        <span aria-hidden className="size-1.5 rounded-full bg-current" />
-      )}
+    <span className={cx(pill, badgeTones[tone])}>
+      {state === "BOOTING" ? <Spinner size="xs" className="" /> : <span aria-hidden className={cx("status", statusDot[tone])} />}
       <span className="sr-only">VM </span>
       {state}
     </span>

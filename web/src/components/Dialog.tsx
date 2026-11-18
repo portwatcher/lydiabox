@@ -10,7 +10,7 @@ export interface DialogProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
-  /** `modal` is centered; `drawer` slides in from the right edge. */
+  /** `modal` is centered (a bottom sheet below 640 px); `drawer` slides in from the right edge. */
   variant?: "modal" | "drawer";
   width?: "sm" | "md" | "lg" | "xl";
 }
@@ -18,8 +18,10 @@ export interface DialogProps {
 const widths = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" };
 
 /**
- * Native <dialog> opened with showModal(): the browser provides the focus
- * trap, Escape to close, inert background, and focus return.
+ * A daisyUI modal on the native <dialog>, opened with showModal(): the
+ * browser provides the focus trap, Escape to close, inert background, and
+ * focus return. The drawer is the same dialog placed at the end edge
+ * (`modal-end`), not the daisyUI `drawer` layout, which has no focus trap.
  */
 export function Dialog({ open, onClose, title, children, footer, variant = "modal", width = "md" }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -46,22 +48,21 @@ export function Dialog({ open, onClose, title, children, footer, variant = "moda
         onClose();
       }}
       onClick={(event) => {
-        // A click on the backdrop targets the dialog element itself.
+        // A click outside the box targets the dialog element itself.
         if (event.target === ref.current) {
           onClose();
         }
       }}
-      className={cx(
-        "bg-bg-subtle text-fg backdrop:bg-black/60 border border-border p-0 shadow-2xl",
-        "motion-safe:open:animate-fade-in",
-        variant === "drawer"
-          ? "my-0 mr-0 ml-auto h-dvh max-h-dvh w-full max-w-md rounded-none border-y-0 border-r-0"
-          : cx("m-auto w-[calc(100%-2rem)] rounded-xl", widths[width]),
-      )}
+      className={cx("modal", variant === "drawer" ? "modal-end" : "modal-bottom sm:modal-middle")}
     >
       {open ? (
-        <div className={cx("flex flex-col", variant === "drawer" ? "h-full" : "max-h-[calc(100dvh-4rem)]")}>
-          <header className="flex items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
+        <div
+          className={cx(
+            "modal-box flex flex-col overflow-hidden border border-base-content/20 bg-base-200 p-0",
+            variant === "drawer" ? "h-dvh w-full max-w-md" : cx("max-h-[calc(100dvh-4rem)] w-full", widths[width]),
+          )}
+        >
+          <header className="flex items-center justify-between gap-3 border-b border-base-content/10 px-5 py-3">
             <h2 id={titleId} className="text-base font-semibold text-balance">
               {title}
             </h2>
@@ -69,9 +70,7 @@ export function Dialog({ open, onClose, title, children, footer, variant = "moda
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
           {footer ? (
-            <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle px-5 py-3">
-              {footer}
-            </footer>
+            <footer className="modal-action mt-0 flex-wrap border-t border-base-content/10 px-5 py-3">{footer}</footer>
           ) : null}
         </div>
       ) : null}
@@ -133,11 +132,11 @@ export function ConfirmDialog({ open, title, body, confirmLabel, onConfirm, onCl
         </>
       }
     >
-      <div className="flex flex-col gap-3 text-sm text-fg-muted text-pretty">
+      <div className="flex flex-col gap-3 text-sm text-pretty text-base-content/70">
         {body}
         {extra}
         {error ? (
-          <p role="alert" className="text-danger-fg">
+          <p role="alert" className="text-error">
             {error}
           </p>
         ) : null}

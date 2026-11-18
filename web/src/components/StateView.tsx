@@ -18,9 +18,9 @@ interface StateViewProps {
 export function StateView({ icon: Icon, title, children, action, className }: StateViewProps) {
   return (
     <div className={cx("flex h-full min-h-48 flex-col items-center justify-center gap-3 px-6 py-10 text-center", className)}>
-      {Icon ? <Icon aria-hidden className="size-6 text-fg-muted" /> : null}
-      <p className="text-sm font-medium text-fg text-balance">{title}</p>
-      {children ? <div className="max-w-md text-sm text-fg-muted text-pretty">{children}</div> : null}
+      {Icon ? <Icon aria-hidden className="size-6 text-base-content/70" /> : null}
+      <p className="text-sm font-medium text-balance">{title}</p>
+      {children ? <div className="max-w-md text-sm text-pretty text-base-content/70">{children}</div> : null}
       {action ? <div className="mt-1 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
   );
@@ -28,9 +28,20 @@ export function StateView({ icon: Icon, title, children, action, className }: St
 
 export function LoadingView({ label, className }: { label: string; className?: string }) {
   return (
-    <div role="status" className={cx("flex h-full min-h-32 items-center justify-center gap-2 text-sm text-fg-muted", className)}>
+    <div role="status" className={cx("flex h-full min-h-32 items-center justify-center gap-2 text-sm text-base-content/70", className)}>
       <Spinner />
       {label}
+    </div>
+  );
+}
+
+/** Placeholder rows while a list loads; the label names it for screen readers. */
+export function SkeletonList({ label, rows = 4, className }: { label: string; rows?: number; className?: string }) {
+  return (
+    <div role="status" aria-label={label} className={cx("flex flex-col gap-2 p-3", className)}>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} aria-hidden className="skeleton h-16 w-full bg-base-100" />
+      ))}
     </div>
   );
 }

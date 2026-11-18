@@ -42,7 +42,7 @@ function SyncIndicator() {
   }
   if (sync.kind === "unmounted") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-warning-fg">
+      <span className="inline-flex items-center gap-1.5 text-xs text-warning">
         <CloudOff aria-hidden className="size-4" />
         Storage not mounted
       </span>
@@ -50,7 +50,7 @@ function SyncIndicator() {
   }
   if (sync.kind === "failed") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-danger-fg" title={sync.error}>
+      <span className="tooltip tooltip-bottom inline-flex items-center gap-1.5 text-xs text-error" data-tip={sync.error}>
         <CloudAlert aria-hidden className="size-4" />
         Sync failed
         <span className="sr-only">: {sync.error}</span>
@@ -65,8 +65,8 @@ function SyncIndicator() {
       : `Synced ${formatAgo(serverNow - synced + (now - fetchedAt))}`;
   return (
     <span
-      className={cx("inline-flex items-center gap-1.5 text-xs tabular-nums", error ? "text-warning-fg" : "text-fg-muted")}
-      title={`Last S3 sync: ${formatDateTime(storage.lastSyncAt)}. Last upload: ${formatDateTime(storage.lastUploadAt)}.`}
+      className={cx("tooltip tooltip-bottom inline-flex items-center gap-1.5 text-xs tabular-nums", error ? "text-warning" : "text-base-content/70")}
+      data-tip={`Last S3 sync: ${formatDateTime(storage.lastSyncAt)}. Last upload: ${formatDateTime(storage.lastUploadAt)}.`}
     >
       <CloudCheck aria-hidden className="size-4" />
       {label}
@@ -82,7 +82,7 @@ function VmResources() {
   }
   const driver = vmStatus?.driver ?? status?.vm.driver;
   return (
-    <span className="hidden items-center gap-1.5 text-xs text-fg-muted tabular-nums xl:inline-flex">
+    <span className="hidden items-center gap-1.5 text-xs text-base-content/70 tabular-nums xl:inline-flex">
       <Cpu aria-hidden className="size-4" />
       {vmStatus && vmStatus.cpus > 0 ? (
         <span>
@@ -90,7 +90,7 @@ function VmResources() {
           {vmStatus.gpu ? " · GPU" : ""}
         </span>
       ) : null}
-      {driver ? <span className="rounded bg-surface-active px-1.5 font-mono text-[11px] text-fg-muted">{driver}</span> : null}
+      {driver ? <span className="badge badge-soft badge-xs font-mono text-base-content/70">{driver}</span> : null}
     </span>
   );
 }
@@ -103,7 +103,7 @@ function VmProblem() {
     return null;
   }
   return (
-    <span role="status" className="inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-danger-fg" title={message}>
+    <span role="status" className="tooltip tooltip-bottom inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-error" data-tip={message}>
       <TriangleAlert aria-hidden className="size-4 shrink-0" />
       <span className="truncate">{message}</span>
     </span>
@@ -119,8 +119,8 @@ function VmSlow() {
   return (
     <span
       role="status"
-      className="inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning-fg"
-      title="The VM provider is slow to start or resume the VM. This can take a few minutes."
+      className="tooltip tooltip-bottom inline-flex max-w-xs min-w-0 items-center gap-1.5 text-xs text-warning"
+      data-tip="The VM provider is slow to start or resume the VM. This can take a few minutes."
     >
       <Hourglass aria-hidden className="size-4 shrink-0" />
       <span className="truncate">The VM provider is slow.</span>
@@ -134,7 +134,7 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
     // The bar keeps one row while everything fits; then the VM group wraps
     // as a whole to a second row, so every tab stays in view. Below 640 px
     // the tabs fill the first row, each as wide as its label needs.
-    <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border-subtle bg-bg-subtle px-3 py-2 sm:px-4">
+    <header className="navbar min-h-0 shrink-0 flex-wrap gap-x-4 gap-y-2 border-b border-base-content/10 bg-base-200 px-3 py-2 sm:px-4">
       <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0 sm:gap-4">
         <span className="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight">
           <img src="/favicon.svg" alt="LydiaBox" className="size-5" />
@@ -142,28 +142,31 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
             LydiaBox
           </span>
         </span>
-        <nav aria-label="Workspace" className="-my-1 flex min-w-0 flex-1 gap-0.5 sm:flex-none sm:gap-1">
-          {tabs.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                cx(
-                  "flex flex-auto flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1 text-[11px] leading-tight font-medium whitespace-nowrap transition-colors duration-150",
-                  "sm:h-8 sm:flex-none sm:flex-row sm:gap-1.5 sm:px-2.5 sm:py-0 sm:text-[13px]",
-                  isActive ? "bg-surface-active text-fg" : "text-fg-muted hover:bg-surface-hover hover:text-fg",
-                )
-              }
-            >
-              <Icon aria-hidden className="size-4 shrink-0 sm:hidden lg:block" />
-              {label}
-            </NavLink>
-          ))}
+        <nav aria-label="Workspace" className="-my-1 min-w-0 flex-1 sm:flex-none">
+          <ul className="menu menu-horizontal w-full flex-nowrap gap-0.5 p-0 sm:gap-1">
+            {tabs.map(({ to, label, icon: Icon }) => (
+              <li key={to} className="flex-auto sm:flex-none">
+                <NavLink
+                  to={to}
+                  className={({ isActive }) =>
+                    cx(
+                      "flex flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] leading-tight font-medium whitespace-nowrap",
+                      "sm:h-8 sm:flex-row sm:gap-1.5 sm:px-2.5 sm:py-0 sm:text-[13px]",
+                      !isActive && "text-base-content/70 hover:text-base-content",
+                    )
+                  }
+                >
+                  <Icon aria-hidden className="size-4 shrink-0 sm:hidden lg:block" />
+                  {label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
         </nav>
       </div>
       <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
         {error && !status && !outage ? (
-          <span role="status" className="inline-flex items-center gap-1.5 text-xs text-danger-fg">
+          <span role="status" className="inline-flex items-center gap-1.5 text-xs text-error">
             <CloudOff aria-hidden className="size-4" />
             Server unreachable
           </span>
@@ -173,7 +176,7 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
         <VmSlow />
         <VmResources />
         <VmPower compact />
-        {email ? <span className="hidden text-xs text-fg-muted md:inline">{email}</span> : null}
+        {email ? <span className="hidden text-xs text-base-content/70 md:inline">{email}</span> : null}
         <IconButton icon={LogOut} label={email ? `Sign out ${email}` : "Sign out"} onClick={onLogout} />
       </div>
     </header>
