@@ -635,6 +635,14 @@ Details:
   model that is not a `provider/model` ID is passed but not bound.
 - Before every start the harness config is pointed at the gateway again
   (`PUT /api/v1/models/bindings` rewrites the same keys).
+- Every harness starts in its full-access mode, so no command or MCP tool
+  call waits for an approval: the VM is the agent's own computer and the
+  security boundary. New sessions, resumed sessions, and the restart of
+  `PATCH` use the same flags: `claude --dangerously-skip-permissions`,
+  `codex --dangerously-bypass-approvals-and-sandbox`,
+  `agy --dangerously-skip-permissions`, `opencode --auto`, and for `dsh`
+  the environment variable `DSH_PERMISSION_MODE=danger-full-access`
+  (sandbox off, approval policy `never`).
 - `codex`, `dsh`, `opencode`, and `antigravity` pick the native ID of a new
   session at runtime. The response then has a provisional `nativeId`
   (`new-<hex>`); after the harness writes its transcript, the next list
@@ -952,10 +960,15 @@ Details:
 - Harness configs keep user keys and comments: JSON files change only the
   managed keys, `config.toml` and `.env` are edited line by line. Every
   harness gets the MCP servers `lydiabox` (`http://127.0.0.1:8910/mcp`) and
-  `lydiabox-connectors` (`http://127.0.0.1:8911/mcp`). Harnesses inside the
+  `lydiabox-connectors` (`http://127.0.0.1:8911/mcp`); for Codex both
+  tables also get `default_tools_approval_mode = "approve"`, so their tools
+  do not ask for approval in a Codex that the user starts in a terminal
+  without the full-access flag. Harnesses inside the
   VM send the placeholder token `lydiabox-local`; the host side of the
   gateway tunnel replaces it with the VM gateway key `lydiabox-vm`.
-- Claude Code starts at the prompt: `~/.claude.json` gets
+- Claude Code starts at the prompt: `~/.claude/settings.json` gets
+  `skipDangerousModePermissionPrompt` (no warning for the full-access mode
+  of section 8), `~/.claude.json` gets
   `hasCompletedOnboarding` (no theme step or security notes) and
   `hasTrustDialogAccepted` for `/workspace`, `/home/agent`, and their InstaBox
   link targets `/data/workspace` and `/data/lydiabox/home` (no folder trust

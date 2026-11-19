@@ -247,11 +247,12 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
    - Run `magpie` on the host listening on `127.0.0.1:3425` with data dir `$DATA_DIR/state/magpie`.
    - Provision a named Magpie Gateway Key for the VM. Inside the VM, `lydiabox-guest` listens on `127.0.0.1:3425`, injects the Gateway Key header on the host side of the `vsock` tunnel, and forwards requests to Host Magpie (`127.0.0.1:3425`). Thus OpenAI Chat (`/v1/chat/completions`), OpenAI Responses (`/v1/responses`), Anthropic Messages (`/v1/messages`), and Gemini endpoints all work transparently inside the VM with zero upstream secret exposure!
    - Implement **Atomic Config Wirers** operating directly on `$DATA_DIR/mnt/jfs/home/agent/` (preserving user comments/unrelated keys):
-     - **`claude-code`**: `~/.claude/settings.json` -> `env.ANTHROPIC_BASE_URL = "http://127.0.0.1:3425"`, `env.ANTHROPIC_AUTH_TOKEN = "lydiabox-local"`, `model` field, plus MCP server entries in `~/.claude.json`.
-     - **`codex`**: `~/.codex/config.toml` -> custom provider pointing `base_url = "http://127.0.0.1:3425/v1"`, `model` field, and `[mcp_servers.lydiabox]`.
+     - **`claude-code`**: `~/.claude/settings.json` -> `env.ANTHROPIC_BASE_URL = "http://127.0.0.1:3425"`, `env.ANTHROPIC_AUTH_TOKEN = "lydiabox-local"`, `model` field, `skipDangerousModePermissionPrompt`, plus MCP server entries in `~/.claude.json`.
+     - **`codex`**: `~/.codex/config.toml` -> custom provider pointing `base_url = "http://127.0.0.1:3425/v1"`, `model` field, and `[mcp_servers.lydiabox]` with `default_tools_approval_mode = "approve"`.
      - **`dsh`**: `~/.dsh/.env` / config -> `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` / `DEEPSEEK_BASE_URL` pointing to `http://127.0.0.1:3425` and selected model mapping.
      - **`antigravity`**: `~/.antigravity/settings.json` -> gateway endpoint `http://127.0.0.1:3425`, selected model, and `~/.gemini/antigravity/mcp_config.json`.
      - **`opencode`**: `~/.config/opencode/opencode.json` -> custom provider pointing to `http://127.0.0.1:3425/v1`, selected `model`, and `mcp` section.
+   - Launch every harness in its full-access mode (new, resumed, and model-change restarts): the VM is the agent's own computer and the security boundary, so no command or MCP tool call waits for an approval. `claude --dangerously-skip-permissions`, `codex --dangerously-bypass-approvals-and-sandbox`, `agy --dangerously-skip-permissions`, `opencode --auto`, and `DSH_PERMISSION_MODE=danger-full-access` for `dsh` (`docs/harness-formats.md`).
 
 2. **Cross-Harness Session Discovery (`internal/harness`)**:
    - Define `HarnessAdapter`:

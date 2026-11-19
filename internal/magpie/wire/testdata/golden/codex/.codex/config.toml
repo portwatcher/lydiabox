@@ -19,6 +19,7 @@ args = [
 [mcp_servers.lydiabox]
 url = "http://127.0.0.1:8910/mcp" # stale port
 startup_timeout_sec = 20
+default_tools_approval_mode = "approve"
 
 [tui]
 notifications = true
@@ -31,3 +32,4 @@ wire_api = "responses"
 
 [mcp_servers.lydiabox-connectors]
 url = "http://127.0.0.1:8911/mcp"
+default_tools_approval_mode = "approve"

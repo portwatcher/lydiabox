@@ -163,13 +163,15 @@ func TestLaunchCommands(t *testing.T) {
 		want    string
 		fixedID bool
 	}{
-		{adapters.Claude{}, harness.LaunchOptions{Model: "kimi/kimi-k3"}, "claude --session-id", true},
-		{adapters.Claude{}, harness.LaunchOptions{ResumeNativeID: "abc"}, "claude --resume abc", true},
-		{adapters.Codex{}, harness.LaunchOptions{ResumeNativeID: "abc", Model: "m/x"}, "codex resume abc --model m/x", true},
-		{adapters.Codex{}, harness.LaunchOptions{}, "codex", false},
-		{adapters.DSH{}, harness.LaunchOptions{Model: "deepseek/x"}, "env DSH_MODEL=deepseek/x dsh tui", false},
-		{adapters.Antigravity{}, harness.LaunchOptions{ResumeNativeID: "c1"}, "agy --conversation c1", true},
-		{adapters.OpenCode{}, harness.LaunchOptions{Model: "kimi/kimi-k3"}, "opencode --model lydiabox/kimi/kimi-k3", false},
+		{adapters.Claude{}, harness.LaunchOptions{Model: "kimi/kimi-k3"}, "claude --dangerously-skip-permissions --session-id", true},
+		{adapters.Claude{}, harness.LaunchOptions{ResumeNativeID: "abc"}, "claude --dangerously-skip-permissions --resume abc", true},
+		{adapters.Codex{}, harness.LaunchOptions{ResumeNativeID: "abc", Model: "m/x"}, "codex resume abc --dangerously-bypass-approvals-and-sandbox --model m/x", true},
+		{adapters.Codex{}, harness.LaunchOptions{}, "codex --dangerously-bypass-approvals-and-sandbox", false},
+		{adapters.DSH{}, harness.LaunchOptions{Model: "deepseek/x"}, "env DSH_PERMISSION_MODE=danger-full-access DSH_MODEL=deepseek/x dsh tui", false},
+		{adapters.DSH{}, harness.LaunchOptions{ResumeNativeID: "s1"}, "env DSH_PERMISSION_MODE=danger-full-access dsh tui --resume s1", true},
+		{adapters.Antigravity{}, harness.LaunchOptions{ResumeNativeID: "c1"}, "agy --dangerously-skip-permissions --conversation c1", true},
+		{adapters.OpenCode{}, harness.LaunchOptions{Model: "kimi/kimi-k3"}, "opencode --auto --model lydiabox/kimi/kimi-k3", false},
+		{adapters.OpenCode{}, harness.LaunchOptions{ResumeNativeID: "ses_1"}, "opencode --auto --session ses_1", true},
 	}
 	for _, tc := range cases {
 		cmd, id := tc.a.LaunchCommand(tc.opts)

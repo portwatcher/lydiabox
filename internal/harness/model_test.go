@@ -57,7 +57,7 @@ func TestSetModelResumesWithNewModel(t *testing.T) {
 		t.Fatalf("old process signals = %v", sig)
 	}
 	second := e.runner.Last()
-	want := "claude --resume " + s.NativeID + " --model claude/claude-opus-4-5"
+	want := "claude --dangerously-skip-permissions --resume " + s.NativeID + " --model claude/claude-opus-4-5"
 	if second == first || strings.Join(second.Spec.Command, " ") != want || second.Spec.Cols != 100 || second.Spec.Rows != 30 {
 		t.Fatalf("new command = %q (%dx%d), want %q", strings.Join(second.Spec.Command, " "), second.Spec.Cols, second.Spec.Rows, want)
 	}

@@ -146,7 +146,7 @@ func TestCreateDeleteAndLeases(t *testing.T) {
 		t.Fatalf("created %+v", s)
 	}
 	p := e.runner.Last()
-	if got := strings.Join(p.Spec.Command, " "); got != "codex --model deepseek/deepseek-v4-pro" {
+	if got := strings.Join(p.Spec.Command, " "); got != "codex --dangerously-bypass-approvals-and-sandbox --model deepseek/deepseek-v4-pro" {
 		t.Fatalf("command = %q", got)
 	}
 	if p.Spec.Dir != "/workspace/lydiabox/sub" || p.Spec.Cols != 120 || p.Spec.Env["LYDIABOX_GATEWAY_TOKEN"] != "lydiabox-local" ||

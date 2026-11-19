@@ -268,6 +268,12 @@ func (c Codex) find(home, id string) (string, error) {
 	return "", fmt.Errorf("%w: codex session %s", harness.ErrNotFound, id)
 }
 
+// codexFullAccess runs commands without the Codex sandbox and never asks
+// for approval; MCP tool calls are approved too (Codex 0.169.0
+// mcp_permission_prompt_is_auto_approved: approval "never" with the sandbox
+// off). The VM is the agent's own computer and its security boundary.
+const codexFullAccess = "--dangerously-bypass-approvals-and-sandbox"
+
 // LaunchCommand implements harness.Launcher. Codex picks the ID of a new
 // session itself.
 func (c Codex) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
@@ -275,6 +281,7 @@ func (c Codex) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
 	if o.ResumeNativeID != "" {
 		cmd = append(cmd, "resume", o.ResumeNativeID)
 	}
+	cmd = append(cmd, codexFullAccess)
 	if o.Model != "" {
 		cmd = append(cmd, "--model", o.Model)
 	}

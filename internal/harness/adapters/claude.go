@@ -200,9 +200,13 @@ func (c Claude) find(home, id string) (string, error) {
 }
 
 // LaunchCommand implements harness.Launcher. New sessions get an ID chosen
-// up front with --session-id.
+// up front with --session-id. --dangerously-skip-permissions turns off all
+// permission prompts (the VM is the agent's own computer); Claude Code
+// refuses it as root, and the guest runs harnesses as UID 1000. The magpie
+// wirer sets skipDangerousModePermissionPrompt, so the mode's first-start
+// warning does not stop the session.
 func (c Claude) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
-	cmd := []string{"claude"}
+	cmd := []string{"claude", "--dangerously-skip-permissions"}
 	id := o.ResumeNativeID
 	if id != "" {
 		cmd = append(cmd, "--resume", id)

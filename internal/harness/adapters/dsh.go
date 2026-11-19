@@ -32,10 +32,15 @@ const dshEnvWrapper = `set -a; [ -f "$HOME/.dsh/.env" ] && . "$HOME/.dsh/.env"; 
 
 // dshCommand builds the wrapped command. A model given here wins over
 // DSH_MODEL from ~/.dsh/.env because it is set after the file is sourced.
+//
+// dsh has no permission flag. Its base profile (@deepseek-ai/dsh-base)
+// reads DSH_PERMISSION_MODE: "danger-full-access" turns off the command
+// sandbox and sets the approval policy to "never", so no tool waits for an
+// approval.
 func dshCommand(model string, args ...string) []string {
-	cmd := []string{"sh", "-c", dshEnvWrapper, "dsh"}
+	cmd := []string{"sh", "-c", dshEnvWrapper, "dsh", "env", "DSH_PERMISSION_MODE=danger-full-access"}
 	if model != "" {
-		cmd = append(cmd, "env", "DSH_MODEL="+model)
+		cmd = append(cmd, "DSH_MODEL="+model)
 	}
 	return append(append(cmd, "dsh"), args...)
 }

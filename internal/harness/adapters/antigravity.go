@@ -305,8 +305,9 @@ func (a Antigravity) DiscoverSessions(home string) ([]harness.SessionMeta, error
 }
 
 // LaunchCommand implements harness.Launcher.
+// --dangerously-skip-permissions approves every tool permission request.
 func (a Antigravity) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
-	cmd := []string{"agy"}
+	cmd := []string{"agy", "--dangerously-skip-permissions"}
 	if o.ResumeNativeID != "" {
 		cmd = append(cmd, "--conversation", o.ResumeNativeID)
 	}

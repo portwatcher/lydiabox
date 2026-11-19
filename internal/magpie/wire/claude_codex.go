@@ -5,10 +5,14 @@ import (
 	"strings"
 )
 
-// claudeWirer edits ~/.claude/settings.json (env, model) and registers the
-// MCP servers at user scope in ~/.claude.json. It also marks the first-start
-// steps (theme, security notes) as done and trusts the persistent trees, so a
-// session starts at the prompt; values that the user set stay.
+// claudeWirer edits ~/.claude/settings.json (env, model,
+// skipDangerousModePermissionPrompt) and registers the MCP servers at user
+// scope in ~/.claude.json. It also marks the first-start steps (theme,
+// security notes) as done and trusts the persistent trees, so a session
+// starts at the prompt; values that the user set stay. The harness adapter
+// starts Claude Code with --dangerously-skip-permissions;
+// skipDangerousModePermissionPrompt accepts that mode's warning, which
+// otherwise stops each session at a "No, exit / Yes, I accept" question.
 type claudeWirer struct{}
 
 const (
@@ -72,6 +76,9 @@ func (claudeWirer) Apply(h Home, b Binding) error {
 		if err := o.setChild("env", env); err != nil {
 			return err
 		}
+		if err := o.set("skipDangerousModePermissionPrompt", true); err != nil {
+			return err
+		}
 		if b.Model != "" {
 			return o.set("model", b.Model)
 		}
@@ -109,7 +116,10 @@ func (claudeWirer) Env(Binding) map[string]string { return nil }
 
 // codexWirer edits ~/.codex/config.toml line by line: the root model and
 // model_provider, a [model_providers.lydiabox] table, and one
-// [mcp_servers.<name>] table per MCP server.
+// [mcp_servers.<name>] table per MCP server. The MCP server tables set
+// default_tools_approval_mode = "approve", so LydiaBox's own tools do not
+// ask for approval also in a Codex that the user starts without the
+// harness adapter's --dangerously-bypass-approvals-and-sandbox.
 type codexWirer struct{}
 
 const codexConfig = ".codex/config.toml"
@@ -138,6 +148,7 @@ func (codexWirer) Apply(h Home, b Binding) error {
 	doc.set(table, "wire_api", tomlString("responses"))
 	for _, s := range b.MCPServers {
 		doc.set("mcp_servers."+s.Name, "url", tomlString(s.URL))
+		doc.set("mcp_servers."+s.Name, "default_tools_approval_mode", tomlString("approve"))
 	}
 	return writeIfChanged(h, codexConfig, old, doc.bytes(), 0o644)
 }

@@ -110,9 +110,10 @@ func (o OpenCode) load(home, id string) (ocSession, []ocMessage, error) {
 	return ocSession{}, nil, fmt.Errorf("%w: opencode session %s", harness.ErrNotFound, id)
 }
 
-// LaunchCommand implements harness.Launcher.
+// LaunchCommand implements harness.Launcher. --auto approves every
+// permission request that the configuration does not deny.
 func (o OpenCode) LaunchCommand(opts harness.LaunchOptions) ([]string, string) {
-	cmd := []string{"opencode"}
+	cmd := []string{"opencode", "--auto"}
 	if opts.ResumeNativeID != "" {
 		cmd = append(cmd, "--session", opts.ResumeNativeID)
 	}
