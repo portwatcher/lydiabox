@@ -1,7 +1,8 @@
 # Subscription sign-in: findings and real-account checklist
 
-LydiaBox lets a user sign in to a Claude subscription (for Claude Code) or a
-ChatGPT subscription (for Codex) on the Models page. The sign-in runs in
+LydiaBox lets a user sign in to a Claude subscription (for Claude Code), a
+ChatGPT subscription (for Codex), or a Google account with Antigravity (for
+Antigravity) on the Models page. The sign-in runs in
 magpie on the host. This file records what the pinned magpie supports, where
 the tokens live, the provider terms that limit this use, and the checklist
 for a check with real accounts. The routes are in
@@ -9,14 +10,17 @@ for a check with real accounts. The routes are in
 
 The automated tests use a fake magpie (`internal/magpie/magpietest`) and
 response bodies recorded from magpie v0.1.3531 (offline, with fake
-accounts). Nobody has signed in to a real Claude or ChatGPT account through
-LydiaBox yet.
+accounts). Nobody has signed in to a real Claude, ChatGPT, or Antigravity
+account through LydiaBox yet. The Antigravity flow is from the magpie
+v0.1.3531 source (`internal/provider/signin.go`, `google.go`); its fake
+responses are not recorded from magpie.
 
 ## What magpie v0.1.3531 supports
 
 magpie (`internal/bootstrap/manifest.json`, `magpie-cli` v0.1.3531) signs in
 to Claude, ChatGPT, Google (Gemini CLI, Antigravity), Copilot, and other
-subscriptions, and serves each one as a provider (`claude`, `codex`, ...)
+subscriptions, and serves each one as a provider (`claude`, `codex`,
+`antigravity`, ...)
 with the models `<provider>/<model>`. LydiaBox uses these routes of its web
 API (`magpie serve --web`, loopback only, random key):
 
@@ -44,6 +48,14 @@ Flows:
   sign-in. When the page shows a code to copy, magpie sets `pasteCode` and
   LydiaBox asks for it. The other way is a token from `claude setup-token`
   (made on any computer with a browser), pasted into the dialog.
+
+- **Antigravity**: Google sign-in under Antigravity's own OAuth client
+  (agent `antigravity`). magpie listens for the callback on a `localhost`
+  port of the host and sets `pasteCallback`. The browser of the user is not
+  on the host, so the last page (`http://localhost:<port>/oauth-callback?...`)
+  does not load; the user pastes its address into the dialog and LydiaBox
+  sends it to `POST /api/signin/{id}/callback`. LydiaBox does not offer the
+  Gemini CLI sign-in (agent `gemini`).
 
 Storage and refresh (all on the host, below `$LYDIABOX_DATA_DIR/state/magpie`,
 which is outside the JuiceFS mount that holds `/home/agent`):
@@ -81,6 +93,10 @@ file below the guest home.
   Sources: <https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites>,
   <https://developers.openai.com/siwc/token-sharing-open-source>.
 
+- **Google**: the terms for Antigravity accounts were not checked for this
+  use. magpie itself warns that Google can suspend an Antigravity account
+  that it sees used outside Antigravity. The dialog shows this warning.
+
 For the self-hosted version, one user signs in with an own account on an own
 host. A cloud version that holds the sign-ins of its users and routes their
 requests through a shared gateway is the use that both providers forbid.
@@ -91,7 +107,7 @@ Decide this before the cloud work starts.
 Use a test account that you can lose. Run on a host with network access.
 
 1. `lydiabox up`, open the Models page. The Subscriptions panel shows
-   Claude and ChatGPT with **Sign in**.
+   Claude, ChatGPT, and Antigravity with **Sign in**.
 2. **ChatGPT**: select **Sign in** on the ChatGPT card, then **Sign in**.
    The dialog shows a code and **Open sign-in page**. Open the page in any
    browser, sign in, and enter the code.
@@ -109,6 +125,13 @@ Use a test account that you can lose. Run on a host with network access.
    copy the token, select **Add account** on the Claude card, choose
    **Setup token**, and paste it. Expect a new account named
    "Claude setup-token …".
+   **Antigravity**: select **Sign in** on the Antigravity card, then
+   **Sign in**, then **Open sign-in page**. Sign in to Google. The browser
+   then opens a `localhost` page that does not load. Copy its address,
+   paste it into **Address**, and select **Finish sign-in**.
+   - Expect: the card lists the Google account and `antigravity/...`
+     models. Start an Antigravity session with one of these models and send
+     one prompt. This path is not verified.
 5. **Harness**: in the Studio, start a Claude Code session with a
    `claude/...` model and a Codex session with a `codex/...` model, and send
    one prompt in each. Expect an answer.

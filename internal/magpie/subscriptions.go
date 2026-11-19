@@ -13,19 +13,24 @@ import (
 // directory on the host and serves the subscription as a provider; the
 // harness in the VM keeps the gateway URL and the placeholder token.
 const (
-	SubscriptionClaude = "claude"
-	SubscriptionCodex  = "codex"
+	SubscriptionClaude      = "claude"
+	SubscriptionCodex       = "codex"
+	SubscriptionAntigravity = "antigravity"
 )
 
 // subscriptionKinds lists the kinds in display order with their magpie
 // sign-in flow. Codex always uses the ChatGPT device code: the browser
 // that signs in is not on the host, so the localhost callback of the
-// browser flow cannot reach magpie.
+// browser flow cannot reach magpie. Antigravity uses the Google sign-in
+// under Antigravity's own OAuth client: its callback is also on the
+// localhost of the host, so the user sends the address of the last page
+// (magpie "pasteCallback").
 var subscriptionKinds = []struct {
 	kind, name, site string
 }{
 	{SubscriptionClaude, "Claude", ""},
 	{SubscriptionCodex, "ChatGPT", "device"},
+	{SubscriptionAntigravity, "Antigravity", ""},
 }
 
 // SubscriptionAccount is one signed-in account of a subscription.
@@ -85,7 +90,7 @@ func subscriptionKind(kind string) (name, site string, ok bool) {
 
 func checkKind(kind string) error {
 	if _, _, ok := subscriptionKind(kind); !ok {
-		return fmt.Errorf("%w: kind must be %q or %q", ErrBadRequest, SubscriptionClaude, SubscriptionCodex)
+		return fmt.Errorf("%w: kind must be %q, %q, or %q", ErrBadRequest, SubscriptionClaude, SubscriptionCodex, SubscriptionAntigravity)
 	}
 	return nil
 }

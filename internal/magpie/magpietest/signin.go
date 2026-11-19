@@ -14,16 +14,22 @@ import (
 // pasted code; the tokens are what the fake "receives" from the vendor
 // and keeps in memory only, as magpie keeps them on the host.
 const (
-	GoodCode          = "fake-code#fake-state"
-	FakeAccessToken   = "sk-ant-oat01-fake-access-token"
-	FakeRefreshToken  = "sk-ant-ort01-fake-refresh-token"
-	FakeCodexRefresh  = "rt_fake-codex-refresh-token"
-	ClaudeProviderID  = "claude"
-	CodexProviderID   = "codex"
-	claudeSignInURL   = "https://claude.ai/oauth/authorize?code=true&client_id=fake"
-	codexDeviceURL    = "https://auth.openai.com/codex/device"
-	codexDeviceCode   = "ABCD-1234"
-	setupTokenAccount = "Claude setup-token "
+	GoodCode         = "fake-code#fake-state"
+	FakeAccessToken  = "sk-ant-oat01-fake-access-token"
+	FakeRefreshToken = "sk-ant-ort01-fake-refresh-token"
+	FakeCodexRefresh = "rt_fake-codex-refresh-token"
+	ClaudeProviderID = "claude"
+	CodexProviderID  = "codex"
+	// GoodCallback completes an Antigravity sign-in: the address of the
+	// localhost page that the browser of the user cannot load.
+	GoodCallback          = "http://localhost:51234/oauth-callback?code=fake-google-code&state=fake-state"
+	FakeGoogleRefresh     = "1//fake-google-refresh-token"
+	AntigravityProviderID = "antigravity"
+	antigravitySignInURL  = "https://accounts.google.com/o/oauth2/v2/auth?client_id=fake"
+	claudeSignInURL       = "https://claude.ai/oauth/authorize?code=true&client_id=fake"
+	codexDeviceURL        = "https://auth.openai.com/codex/device"
+	codexDeviceCode       = "ABCD-1234"
+	setupTokenAccount     = "Claude setup-token "
 )
 
 type fakeSignIn struct {
@@ -40,9 +46,13 @@ func (f *FakeAdmin) subscriptionProvider(agent string) *magpie.RemoteProvider {
 	}
 	p := magpie.RemoteProvider{ID: CodexProviderID, Name: "Codex", Responses: "https://chatgpt.com/backend-api/codex",
 		Ready: true, Models: []string{"gpt-5-codex"}, Account: &magpie.RemoteAccount{Agent: agent}}
-	if agent == "claude" {
+	switch agent {
+	case "claude":
 		p = magpie.RemoteProvider{ID: ClaudeProviderID, Name: "Claude Code", Anthropic: "https://api.anthropic.com",
 			Ready: true, Models: []string{"claude-sonnet-4-5", "claude-opus-4-1"}, Account: &magpie.RemoteAccount{Agent: agent}}
+	case "antigravity":
+		p = magpie.RemoteProvider{ID: AntigravityProviderID, Name: "Antigravity", Gemini: "https://daily-cloudcode-pa.googleapis.com",
+			Ready: true, Models: []string{"gemini-3-pro"}, Account: &magpie.RemoteAccount{Agent: agent}}
 	}
 	f.Providers = append(f.Providers, p)
 	return &f.Providers[len(f.Providers)-1]
@@ -76,6 +86,8 @@ func (f *FakeAdmin) StartSignIn(_ context.Context, agent, site string) (magpie.S
 			return magpie.SignIn{}, fmt.Errorf("%w: the fake only has the ChatGPT device code", magpie.ErrBadRequest)
 		}
 		si.URL, si.Code = codexDeviceURL, codexDeviceCode
+	case "antigravity":
+		si.URL, si.PasteCallback = antigravitySignInURL, true
 	default:
 		return magpie.SignIn{}, fmt.Errorf("%w: unknown agent %q", magpie.ErrBadRequest, agent)
 	}
@@ -119,8 +131,16 @@ func (f *FakeAdmin) SubmitSignInCode(_ context.Context, id, code string) error {
 	if err != nil {
 		return err
 	}
-	if !si.PasteCode || si.State != magpie.SignInWaiting {
+	if (!si.PasteCode && !si.PasteCallback) || si.State != magpie.SignInWaiting {
 		return fmt.Errorf("%w: this sign-in can't be finished from a pasted address", magpie.ErrBadRequest)
+	}
+	if si.PasteCallback {
+		if code != GoodCallback {
+			return fmt.Errorf("%w: the address is not of this sign-in", magpie.ErrBadRequest)
+		}
+		si.State, si.User = magpie.SignInDone, "google-user@example.com"
+		f.addLogin(si.Agent, si.User, "pro", FakeGoogleRefresh)
+		return nil
 	}
 	if code != GoodCode {
 		return fmt.Errorf("%w: the code was refused", magpie.ErrBadRequest)

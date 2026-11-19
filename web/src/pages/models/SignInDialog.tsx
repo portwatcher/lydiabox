@@ -44,6 +44,7 @@ function Waiting({ children }: { children: string }) {
 
 function OpenLogin({ login, name, code, setCode, codeError }: { login: SubscriptionLogin; name: string; code: string; setCode: (v: string) => void; codeError: string | null }) {
   const step = loginStep(login);
+  const paste = step === "code" || step === "address";
   if (step === "installing") {
     return <Waiting>{login.installing ? `Installing ${login.installing} on the host…` : "Starting the sign-in…"}</Waiting>;
   }
@@ -56,12 +57,16 @@ function OpenLogin({ login, name, code, setCode, codeError }: { login: Subscript
         </>
       ) : step === "code" ? (
         <p className="text-sm">Open the sign-in page. When it shows a code, paste the code here.</p>
+      ) : step === "address" ? (
+        <p className="text-sm">
+          Open the sign-in page and sign in. The browser then opens a localhost page that does not load. Paste the address of that page here.
+        </p>
       ) : (
         <p className="text-sm">Finish the sign-in to {name} in your browser.</p>
       )}
       {login.url ? <SignInLink url={login.url} /> : null}
-      {step === "code" ? (
-        <Field id="si-code" label="Code" error={codeError}>
+      {paste ? (
+        <Field id="si-code" label={step === "address" ? "Address" : "Code"} error={codeError}>
           <TextInput
             id="si-code"
             value={code}
@@ -165,7 +170,8 @@ export function SignInDialog({ kind, name, onClose, onSignedIn }: SignInDialogPr
       return;
     }
     if (!code.trim()) {
-      dispatch({ type: "codeRefused", error: "Paste the code that the sign-in page shows." });
+      const address = loginStep(state.login) === "address";
+      dispatch({ type: "codeRefused", error: address ? "Paste the address of the page that did not load." : "Paste the code that the sign-in page shows." });
       return;
     }
     dispatch({ type: "submit" });
@@ -174,7 +180,7 @@ export function SignInDialog({ kind, name, onClose, onSignedIn }: SignInDialogPr
       setCode("");
       dispatch({ type: "update", login });
     } catch (err) {
-      dispatch({ type: "codeRefused", error: describeError(err, "Code not accepted") });
+      dispatch({ type: "codeRefused", error: describeError(err, loginStep(state.login) === "address" ? "Address not accepted" : "Code not accepted") });
     }
   };
 
@@ -189,7 +195,8 @@ export function SignInDialog({ kind, name, onClose, onSignedIn }: SignInDialogPr
     }
   };
 
-  const needsCode = state.phase === "open" && loginStep(state.login) === "code";
+  const openStep = state.phase === "open" ? loginStep(state.login) : null;
+  const needsCode = openStep === "code" || openStep === "address";
   const primary =
     state.phase === "failed"
       ? { label: "Try again", busy: false }
@@ -251,6 +258,10 @@ export function SignInDialog({ kind, name, onClose, onSignedIn }: SignInDialogPr
                 </Field>
               ) : null}
             </>
+          ) : kind === "antigravity" ? (
+            <Banner tone="warning" icon={TriangleAlert}>
+              Google can suspend an account that it sees used outside Antigravity.
+            </Banner>
           ) : (
             <p className="text-sm">You get a code to enter on the ChatGPT sign-in page.</p>
           )

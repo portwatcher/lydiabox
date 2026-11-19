@@ -325,7 +325,7 @@ export interface Provider {
   subscription?: SubscriptionKind;
 }
 
-export const SUBSCRIPTION_KINDS = ["claude", "codex"] as const;
+export const SUBSCRIPTION_KINDS = ["claude", "codex", "antigravity"] as const;
 export type SubscriptionKind = (typeof SUBSCRIPTION_KINDS)[number];
 
 export interface SubscriptionAccount {

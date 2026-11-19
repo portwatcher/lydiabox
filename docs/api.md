@@ -963,19 +963,20 @@ Details:
 
 ### 10.1 Subscriptions
 
-A user can sign in to a Claude subscription (for Claude Code) or a ChatGPT
-subscription (for Codex) instead of adding an API key. magpie does the
+A user can sign in to a Claude subscription (for Claude Code), a ChatGPT
+subscription (for Codex), or a Google account with Antigravity (for
+Antigravity) instead of adding an API key. magpie does the
 sign-in on the host and keeps the access and refresh tokens in
 `$LYDIABOX_DATA_DIR/state/magpie` (`logins.json`, and the vendor CLI files
 in its private `home`). magpie refreshes them. No route returns a token, and
 no token is written to `/home/agent`: harnesses keep the gateway URL and the
 placeholder token, and bind to the subscription models (`claude/...`,
-`codex/...`) like any other model.
+`codex/...`, `antigravity/...`) like any other model.
 
 | Route | Request | Response |
 | :--- | :--- | :--- |
-| `GET /api/v1/models/subscriptions` | | `200 { "subscriptions": [Subscription] }` (always `claude` and `codex`) |
-| `POST /api/v1/models/subscriptions/logins` | `{ "kind": "codex" }`, `{ "kind": "claude" }`, or `{ "kind": "claude", "setupToken": "sk-ant-oat01-..." }` | `201 Login` |
+| `GET /api/v1/models/subscriptions` | | `200 { "subscriptions": [Subscription] }` (always `claude`, `codex`, and `antigravity`) |
+| `POST /api/v1/models/subscriptions/logins` | `{ "kind": "codex" }`, `{ "kind": "antigravity" }`, `{ "kind": "claude" }`, or `{ "kind": "claude", "setupToken": "sk-ant-oat01-..." }` | `201 Login` |
 | `GET /api/v1/models/subscriptions/logins/{id}` | | `200 Login` |
 | `POST /api/v1/models/subscriptions/logins/{id}/code` | `{ "code": "..." }` | `200 Login` |
 | `DELETE /api/v1/models/subscriptions/logins/{id}` | | `204` (cancels the sign-in) |
@@ -997,6 +998,10 @@ Details:
   through Anthropic's own Claude Code. When `needsCode` is true, send the
   code (or the address) that the vendor page shows at the end to
   `.../code`.
+- `kind` `antigravity` uses the Google sign-in under Antigravity's own
+  OAuth client. `needsCode` is true: after the sign-in, Google sends the
+  browser to a `localhost` address of the host, which the browser of the
+  user cannot load. Send that full address to `.../code`.
 - Login `state`: `starting`, `installing`, `waiting`, `done` (`account` is
   set), `failed` (see `error`), or `canceled`. Poll `GET .../logins/{id}`
   while the state is `starting`, `installing`, or `waiting`.
@@ -1004,7 +1009,7 @@ Details:
   directly; the response has `state` `done` and no `id`.
 - `providerId` is empty until an account is signed in. The subscription
   provider is also in `GET /api/v1/models/providers` with `"subscription":
-  "claude"` or `"codex"`. Its `PATCH` takes only `enabled`; `DELETE` on it
+  "claude"`, `"codex"`, or `"antigravity"`. Its `PATCH` takes only `enabled`; `DELETE` on it
   answers `400` (remove its accounts instead).
 - Removing the only Claude account that magpie's own Claude Code copy is
   signed in to answers `409 conflict`: magpie does not sign Claude Code

@@ -79,7 +79,7 @@ function SubscriptionCard({ sub, onSignIn, onRemove, onToggle, toggling }: { sub
   );
 }
 
-/** Claude and ChatGPT subscriptions that magpie signs in on the host. */
+/** Claude, ChatGPT, and Antigravity subscriptions that magpie signs in on the host. */
 export function SubscriptionCards({ subscriptions, onChanged }: SubscriptionCardsProps) {
   const toast = useToast();
   const [signingIn, setSigningIn] = useState<Subscription | null>(null);
@@ -110,7 +110,7 @@ export function SubscriptionCards({ subscriptions, onChanged }: SubscriptionCard
 
   return (
     <Panel title="Subscriptions">
-      <ul className="grid gap-3 p-4 sm:grid-cols-2">
+      <ul className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
         {subscriptions.map((s) => (
           <SubscriptionCard
             key={s.kind}

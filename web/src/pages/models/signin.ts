@@ -66,9 +66,13 @@ export function pendingLoginId(state: SignInState): string | null {
   return state.phase === "open" && OPEN_STATES.has(state.login.state) ? state.login.id : null;
 }
 
-export type LoginStep = "installing" | "device" | "code" | "browser";
+export type LoginStep = "installing" | "device" | "code" | "address" | "browser";
 
-/** What the user does next for an open sign-in. */
+/**
+ * What the user does next for an open sign-in. The Google sign-in of
+ * Antigravity ends on a localhost page of the host, which the browser of
+ * the user cannot load: the user sends the address of that page.
+ */
 export function loginStep(login: SubscriptionLogin): LoginStep {
   if (login.state !== "waiting") {
     return "installing";
@@ -76,7 +80,10 @@ export function loginStep(login: SubscriptionLogin): LoginStep {
   if (login.userCode) {
     return "device";
   }
-  return login.needsCode ? "code" : "browser";
+  if (!login.needsCode) {
+    return "browser";
+  }
+  return login.kind === "antigravity" ? "address" : "code";
 }
 
 /** Setup tokens are one line of non-space characters. */

@@ -208,6 +208,7 @@ describe("signInReducer", () => {
     expect(loginStep(login({ state: "installing", url: "", userCode: "" }))).toBe("installing");
     expect(loginStep(login({}))).toBe("device");
     expect(loginStep(login({ userCode: "", needsCode: true }))).toBe("code");
+    expect(loginStep(login({ kind: "antigravity", userCode: "", needsCode: true }))).toBe("address");
     expect(loginStep(login({ userCode: "" }))).toBe("browser");
   });
 

@@ -25,7 +25,7 @@ type Provider struct {
 	Models    []string `json:"models"`
 	Status    string   `json:"status"`
 	LastError string   `json:"lastError"`
-	// Subscription is the subscription kind ("claude", "codex") of a
+	// Subscription is the subscription kind ("claude", "codex", "antigravity") of a
 	// provider that serves signed-in accounts instead of an API key.
 	Subscription string `json:"subscription,omitempty"`
 }
