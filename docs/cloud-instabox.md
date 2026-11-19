@@ -118,8 +118,8 @@ binary of the image path, the `lbx` links) with `sudo -n` when the marker
 `/etc/lydiabox/system.sha256` names another bundle
 ([instabox.md](instabox.md#system-upgrade)). On a machine of an
 Ubuntu-based snapshot `apt-get` does not run, so a package cannot be added
-in place. On a machine of a Debian 13-based snapshot `apt-get` is expected
-to work (container test; to be confirmed on a real machine). For a larger
+in place. On a machine of a Debian 13-based snapshot `apt-get`
+works (seen on a real machine on 2026-11-19). For a larger
 change (Chrome,
 Xfce, the harness CLIs, a new package), add files to the bundle, or make a new machine
 from the new snapshot and move the data with the backup of

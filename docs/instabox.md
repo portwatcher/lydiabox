@@ -163,8 +163,10 @@ such a snapshot the image's Ubuntu programs run with the machine's Debian
 4.18 runs with the 4.20 library, the dbus tools fail;
 [System upgrade](#system-upgrade), Limits, and
 [Panel dialog, home, and environment](#panel-dialog-home-and-environment)).
-That a Debian 13 image removes these faults is a container test result
-([Container test](#container-test)), to be confirmed on a real machine.
+A machine of the Debian 13 snapshot `lydiabox-desktop-dc4f989` confirmed
+on 2026-11-19 that `apt-get` works and that the panel is 4.20
+([System upgrade](#system-upgrade), Limits); the dbus tools were not
+checked there.
 The other backends (`chv`, `docker`) keep the default `ubuntu:24.04`
 of `DESKTOP_IMAGE`: one package list serves both releases, and the steps
 that differ check `ID` in `/etc/os-release`:
@@ -616,8 +618,8 @@ that the core of the cell expects, with no new snapshot.
      program is missing. A failure stops the script with an `ERROR:` line.
      On a machine of an Ubuntu-based snapshot `apt-get` does not run (see
      Limits), so there this step can only find that nothing is missing. On
-     a machine of a Debian 13-based snapshot it is expected to install
-     the package (container test; to be confirmed on a real machine).
+     a machine of a Debian 13-based snapshot `apt-get` works (see
+     Limits), so the step can install the package.
 - When it takes effect. The script never restarts supervisord, the
   desktop, or the guest daemon, and it changes nothing below `/data`
   except its own temporary files. A new entry point, a new wrapper, or a
@@ -670,11 +672,21 @@ that the core of the cell expects, with no new snapshot.
   - Debian 13-based snapshot: the image's `apt-get` and `/etc/apt` are
     Debian 13's, the release of the template's library and package
     database. `sudo apt-get update` and `sudo apt-get install -y PACKAGE`
-    are expected to work, for the system upgrade and for the agent
-    (container test with the template's libraries and dpkg database; to
-    be confirmed on a real machine). The package database still lists only
-    the template's packages: `apt-get` sees the image's packages as not
-    installed and can install a package of the image again.
+    work, for the system upgrade and for the agent. Seen on 2026-11-19 on
+    a machine of the snapshot `lydiabox-desktop-dc4f989` (core `dc4f989`,
+    template `agent-browser` 2026-11-14.2815): `sudo -n apt-get update`
+    ends with status 0, `sudo -n apt-get install -y hello` installs
+    `hello` 2.10-5, and `hello` runs. `apt-get --version` is the
+    template's 3.0.3 and `dpkg --version` is 1.22.22.
+    `/etc/apt/sources.list.d` has `debian.sources`, `docker.sources`, and
+    `github-cli.sources`: these are the template's sources, and the
+    image's NodeSource and Google Chrome sources are not there. So
+    `apt-get` does not upgrade Node.js or Chrome on a machine. The
+    package database still lists only the template's packages
+    (`dpkg-query -W bubblewrap` finds no package although `/usr/bin/bwrap`
+    is there): `apt-get` sees the image's packages as not installed and
+    can install a package of the image again. `xfce4-panel --version` is
+    `4.20.4 (Xfce 4.20)` there, with no version mismatch.
 - Tests: `internal/vmm/instabox/system_test.go` (fake API: a current
   marker costs one probe, a new bundle is installed and recorded, a
   failure is logged once for each process, the order after the guest

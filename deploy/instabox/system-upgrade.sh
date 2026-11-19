@@ -117,8 +117,8 @@ fi
 # template's Debian 13 libapt, which the image's Ubuntu apt-get cannot
 # use), so a missing program is an error there: the machine needs a new
 # snapshot. On a machine of a Debian 13-based snapshot the image's apt-get
-# and the machine's libapt are of the same release, so apt-get is expected
-# to work there (to be confirmed on a real machine).
+# and the machine's libapt are of the same release, so apt-get works
+# there (seen on a real machine, docs/instabox.md).
 programs="bwrap:bubblewrap"
 missing=""
 for e in $programs; do
