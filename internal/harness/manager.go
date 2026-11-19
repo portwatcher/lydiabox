@@ -93,6 +93,10 @@ type ManagerOptions struct {
 	// TermGrace is the wait after SIGTERM before detaching (default 2s).
 	TermGrace   time.Duration
 	WakeTimeout time.Duration // default 120s
+	// EventPoll is how often the event stream of a live session reads its
+	// transcript and terminal state (default 1s; four times as long for a
+	// session without a terminal).
+	EventPoll time.Duration
 }
 
 // extra is the JSON stored in sessions_meta.extra_json.
@@ -136,6 +140,9 @@ type Manager struct {
 
 	reconcileMu sync.Mutex
 	closed      bool // guarded by reconcileMu; set by Close
+
+	hubsMu sync.Mutex
+	hubs   map[string]*eventHub // by liveKey of the requested session ID
 }
 
 // NewManager validates opts.

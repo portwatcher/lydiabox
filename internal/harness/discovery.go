@@ -42,6 +42,8 @@ func wanted(harnesses []string, name string) bool {
 type LocalDiscovery struct {
 	Dirs     Dirs
 	Adapters []Adapter
+	// EventReader reads session events (adapters.EventReader).
+	EventReader EventReader
 }
 
 // Discover implements Discovery.
@@ -97,4 +99,32 @@ func (l LocalDiscovery) Transcript(_ context.Context, tenantID, harness, nativeI
 		return tr.Transcript(home, nativeID)
 	}
 	return Transcript{}, fmt.Errorf("%w: unknown harness %q", ErrNotFound, harness)
+}
+
+// Events implements EventSource.
+func (l LocalDiscovery) Events(_ context.Context, tenantID, harness, nativeID string, after int, _ bool) (EventPage, error) {
+	if l.EventReader == nil {
+		return EventPage{}, fmt.Errorf("%w: no event reader", ErrUnavailable)
+	}
+	if _, ok := l.adapter(harness); !ok {
+		return EventPage{}, fmt.Errorf("%w: unknown harness %q", ErrNotFound, harness)
+	}
+	home, err := l.Dirs.HomeDir(tenantID)
+	if err != nil {
+		return EventPage{}, err
+	}
+	evs, err := l.EventReader.Events(home, harness, nativeID)
+	if err != nil {
+		return EventPage{}, err
+	}
+	return EventPageOf(evs, after), nil
+}
+
+func (l LocalDiscovery) adapter(name string) (Adapter, bool) {
+	for _, a := range l.Adapters {
+		if a.Name() == name {
+			return a, true
+		}
+	}
+	return nil, false
 }

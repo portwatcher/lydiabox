@@ -73,6 +73,8 @@ type Room struct {
 	vm      roomVM
 	onEnd   roomEnd
 	writeMu sync.Mutex
+	// act is the recent output of the terminal (room_activity.go).
+	act activity
 }
 
 // roomVM tells a room the state of its VM. A nil func reports false.
@@ -93,7 +95,9 @@ type roomEnd struct {
 
 func newRoom(sessionID string, p PTY, cols, rows uint16, vm roomVM, onEnd roomEnd) *Room {
 	r := &Room{sessionID: sessionID, pty: p, subs: map[*Subscriber]struct{}{}, cols: cols, rows: rows, vm: vm, onEnd: onEnd}
-	r.appendRing(p.Replay())
+	replay := p.Replay()
+	r.appendRing(replay)
+	r.act.note(replay, time.Time{})
 	go r.pump(p)
 	return r
 }
@@ -113,6 +117,7 @@ func (r *Room) pump(p PTY) {
 			chunk := append([]byte(nil), buf[:n]...)
 			r.mu.Lock()
 			r.appendRing(chunk)
+			r.act.note(chunk, time.Now())
 			r.broadcastLocked(Frame{Data: chunk})
 			r.mu.Unlock()
 		}

@@ -353,5 +353,5 @@ func localFiles(home, ws string) agentfs.FS {
 }
 
 func localDiscovery(home, ws string) harness.Discovery {
-	return harness.LocalDiscovery{Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Adapters: adapters.All()}
+	return harness.LocalDiscovery{Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Adapters: adapters.All(), EventReader: adapters.NewEventReader()}
 }

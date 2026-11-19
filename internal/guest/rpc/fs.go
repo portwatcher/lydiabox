@@ -52,6 +52,10 @@ const (
 	// MethodHarnessTranscript (unary): HarnessSessionParams ->
 	// harness.Transcript.
 	MethodHarnessTranscript = "harness.transcript"
+	// MethodHarnessEvents (unary): HarnessEventsParams -> harness.EventPage.
+	// The guest keeps the parse state of recently read sessions, so a
+	// poll of a growing transcript parses only the new lines.
+	MethodHarnessEvents = "harness.events"
 )
 
 // Guest daemon environment of the file methods.
@@ -190,6 +194,13 @@ type HarnessDiscoverResult struct {
 type HarnessSessionParams struct {
 	Harness string `json:"harness"`
 	ID      string `json:"id"`
+}
+
+// HarnessEventsParams asks for the events of one session from index After.
+type HarnessEventsParams struct {
+	Harness string `json:"harness"`
+	ID      string `json:"id"`
+	After   int    `json:"after,omitempty"`
 }
 
 // HarnessPurgeParams deletes the native transcript of one session.

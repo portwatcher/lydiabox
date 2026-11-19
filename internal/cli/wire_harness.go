@@ -142,7 +142,7 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 // the last result for a paused or stopped machine.
 func sessionDiscovery(d *deps, log *slog.Logger) harness.Discovery {
 	if !d.Config.ProviderStorage() {
-		return harness.LocalDiscovery{Dirs: d.Storage, Adapters: adapters.All()}
+		return harness.LocalDiscovery{Dirs: d.Storage, Adapters: adapters.All(), EventReader: adapters.NewEventReader()}
 	}
 	g := &harness.GuestDiscovery{Cache: d.Store, Logger: log}
 	if d.Guest != nil {

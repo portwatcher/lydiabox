@@ -13,6 +13,7 @@ import (
 	"github.com/lydiabox/lydiabox/internal/agentfs"
 	"github.com/lydiabox/lydiabox/internal/guest/guestfs"
 	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/lydiabox/lydiabox/internal/harness/adapters"
 )
 
 // readChunk is the size of the FrameData chunks of fs.read.
@@ -21,8 +22,9 @@ const readChunk = 256 << 10
 // fsService serves the fs.* and harness.* methods. err is set when the file
 // service could not be configured; every method then answers with it.
 type fsService struct {
-	files *guestfs.Service
-	err   error
+	files  *guestfs.Service
+	err    error
+	events *adapters.EventReader
 }
 
 // filesFromEnv builds the file service from the guest environment.
@@ -35,7 +37,7 @@ func filesFromEnv() (*guestfs.Service, error) {
 }
 
 func registerFS(srv *rpc.Server, files *guestfs.Service) {
-	f := &fsService{files: files}
+	f := &fsService{files: files, events: adapters.NewEventReader()}
 	if files == nil {
 		f.files, f.err = filesFromEnv()
 	}
@@ -53,6 +55,7 @@ func registerFS(srv *rpc.Server, files *guestfs.Service) {
 	srv.HandleUnary(rpc.MethodHarnessDiscover, f.discover)
 	srv.HandleUnary(rpc.MethodHarnessPurge, f.purge)
 	srv.HandleUnary(rpc.MethodHarnessTranscript, f.transcript)
+	srv.HandleUnary(rpc.MethodHarnessEvents, f.sessionEvents)
 }
 
 // fsErr converts an FS error to an rpc.Error with its agentfs code.

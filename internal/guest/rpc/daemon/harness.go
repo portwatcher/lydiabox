@@ -108,3 +108,29 @@ func (f *fsService) transcript(_ context.Context, params json.RawMessage) (any, 
 	}
 	return nil, rpc.Errorf(rpc.CodeNotFound, "unknown harness %q", p.Harness)
 }
+
+// sessionEvents reads a page of the typed events of one session.
+func (f *fsService) sessionEvents(_ context.Context, params json.RawMessage) (any, error) {
+	var p rpc.HarnessEventsParams
+	if err := f.decode(params, &p); err != nil {
+		return nil, err
+	}
+	home, err := f.files.Dir(agentfs.RootHome)
+	if err != nil {
+		return nil, fsErr(err)
+	}
+	var evs []harness.Event
+	err = f.files.Do(func() (err error) {
+		evs, err = f.events.Events(home, p.Harness, p.ID)
+		return err
+	})
+	switch {
+	case errors.Is(err, harness.ErrBadRequest):
+		return nil, rpc.Errorf(rpc.CodeBadRequest, "%v", err)
+	case errors.Is(err, harness.ErrNotFound):
+		return nil, rpc.Errorf(rpc.CodeNotFound, "%v", err)
+	case err != nil:
+		return nil, fsErr(err)
+	}
+	return harness.EventPageOf(evs, p.After), nil
+}
