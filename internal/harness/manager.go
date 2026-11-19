@@ -26,17 +26,20 @@ const (
 
 // Session is the API view of one harness session.
 type Session struct {
-	ID           string    `json:"id"`
-	Harness      string    `json:"harness"`
-	NativeID     string    `json:"nativeId"`
-	Title        string    `json:"title"`
-	WorkspaceDir string    `json:"workspaceDir"`
-	Model        string    `json:"model"`
-	Status       string    `json:"status"`
-	Live         bool      `json:"live"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
-	Usage        *Usage    `json:"usage,omitempty"`
+	ID           string `json:"id"`
+	Harness      string `json:"harness"`
+	NativeID     string `json:"nativeId"`
+	Title        string `json:"title"`
+	WorkspaceDir string `json:"workspaceDir"`
+	Model        string `json:"model"`
+	Status       string `json:"status"`
+	Live         bool   `json:"live"`
+	// Engine is how the session runs or last ran: EnginePTY (the harness
+	// TUI in a terminal) or EngineACP (the chat view through the bridge).
+	Engine    string    `json:"engine,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Usage     *Usage    `json:"usage,omitempty"`
 }
 
 // SessionID joins a harness and a native ID.
@@ -97,6 +100,8 @@ type ManagerOptions struct {
 	// transcript and terminal state (default 1s; four times as long for a
 	// session without a terminal).
 	EventPoll time.Duration
+	// MCPServers are passed to the ACP agents (wire.DefaultMCPServers).
+	MCPServers []MCPServer
 }
 
 // extra is the JSON stored in sessions_meta.extra_json.
@@ -106,6 +111,8 @@ type extra struct {
 	StartedAt   time.Time `json:"startedAt,omitempty"`
 	// EndedAt is when the terminal ended (exited sessions).
 	EndedAt time.Time `json:"endedAt,omitzero"`
+	// Engine is EngineACP for a session that runs through the bridge.
+	Engine string `json:"engine,omitempty"`
 }
 
 type liveSession struct {
@@ -116,6 +123,7 @@ type liveSession struct {
 	model       string
 	title       string
 	provisional bool
+	engine      string
 	ptyID       string
 	startedAt   time.Time
 	endedAt     time.Time
@@ -199,8 +207,10 @@ type CreateRequest struct {
 	Model          string `json:"model"`
 	ResumeNativeID string `json:"resumeNativeId"`
 	Title          string `json:"title"`
-	Cols           uint16 `json:"cols"`
-	Rows           uint16 `json:"rows"`
+	// Engine is EnginePTY (default) or EngineACP.
+	Engine string `json:"engine"`
+	Cols   uint16 `json:"cols"`
+	Rows   uint16 `json:"rows"`
 }
 
 // Create starts a harness terminal in the guest. It starts the VM, also
@@ -212,6 +222,10 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	}
 	var cmd []string
 	var nativeID string
+	engine, err := checkEngine(req.Harness, req.Engine)
+	if err != nil {
+		return Session{}, err
+	}
 	switch a, ok := m.adapters[req.Harness]; {
 	case req.Harness == Shell:
 		cmd, nativeID = []string{"bash", "-l"}, randomID("pty-")
@@ -222,7 +236,11 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 		if req.ResumeNativeID != "" && strings.ContainsAny(req.ResumeNativeID, "/\\\x00") {
 			return Session{}, fmt.Errorf("%w: invalid resumeNativeId", ErrBadRequest)
 		}
-		cmd, nativeID = a.LaunchCommand(LaunchOptions{WorkspaceDir: ws, Model: req.Model, ResumeNativeID: req.ResumeNativeID})
+		if engine == EngineACP {
+			cmd, nativeID = m.acpCommand(req.Harness, ws, req.Model, req.ResumeNativeID), req.ResumeNativeID
+		} else {
+			cmd, nativeID = a.LaunchCommand(LaunchOptions{WorkspaceDir: ws, Model: req.Model, ResumeNativeID: req.ResumeNativeID})
+		}
 	default:
 		return Session{}, fmt.Errorf("%w: unknown harness %q", ErrBadRequest, req.Harness)
 	}
@@ -237,7 +255,7 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 		return Session{}, err
 	}
 	ls := &liveSession{tenantID: tenantID, harness: req.Harness, nativeID: nativeID, workspace: ws, model: req.Model,
-		title: req.Title, provisional: provisional}
+		title: req.Title, provisional: provisional, engine: engine}
 	if err := m.start(ctx, ls, cmd, req.Cols, req.Rows); err != nil {
 		return Session{}, err
 	}
@@ -339,7 +357,7 @@ func (m *Manager) start(ctx context.Context, ls *liveSession, cmd []string, cols
 }
 
 func (m *Manager) persist(ctx context.Context, ls *liveSession, status string) {
-	x, _ := json.Marshal(extra{PTYID: ls.ptyID, Provisional: ls.provisional, StartedAt: ls.startedAt, EndedAt: ls.endedAt})
+	x, _ := json.Marshal(extra{PTYID: ls.ptyID, Provisional: ls.provisional, StartedAt: ls.startedAt, EndedAt: ls.endedAt, Engine: ls.engine})
 	err := m.opts.Store.UpsertSessionMeta(ctx, ls.tenantID, store.SessionMeta{Harness: ls.harness, SessionID: ls.nativeID,
 		WorkspaceDir: ls.workspace, Title: ls.title, Model: ls.model, Status: status, Extra: x})
 	if err != nil {
@@ -557,5 +575,5 @@ func (m *Manager) roomEnd(ls *liveSession) roomEnd {
 func (m *Manager) sessionOf(ls *liveSession) Session {
 	now := ls.startedAt
 	return Session{ID: SessionID(ls.harness, ls.nativeID), Harness: ls.harness, NativeID: ls.nativeID, Title: ls.title,
-		WorkspaceDir: ls.workspace, Model: ls.model, Status: StatusRunning, Live: true, CreatedAt: now, UpdatedAt: now}
+		WorkspaceDir: ls.workspace, Model: ls.model, Status: StatusRunning, Live: true, Engine: engineName(ls.engine), CreatedAt: now, UpdatedAt: now}
 }

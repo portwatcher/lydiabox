@@ -29,6 +29,9 @@ func (m *Manager) SendInput(ctx context.Context, tenantID, id, text string) erro
 	if len(text) > MaxInputBytes {
 		return fmt.Errorf("%w: the text is longer than %d bytes", ErrBadRequest, MaxInputBytes)
 	}
+	if lv, ok := m.liveInfo(tenantID, id); ok && lv.engine == EngineACP {
+		return m.bridgeCommand(ctx, tenantID, id, BridgeCommand{Type: BridgePrompt, Text: text})
+	}
 	room, err := m.Room(ctx, tenantID, id)
 	if err != nil {
 		return err
@@ -53,12 +56,16 @@ func (m *Manager) SendInput(ctx context.Context, tenantID, id, text string) erro
 // harnesses (twice for opencode, which asks for a second press), Ctrl-C for
 // a shell.
 func (m *Manager) Interrupt(ctx context.Context, tenantID, id string) error {
-	name, _, _, _, _, ok := m.liveInfo(tenantID, id)
+	lv, ok := m.liveInfo(tenantID, id)
+	name := lv.harness
 	if !ok {
 		var err error
 		if name, _, err = SplitSessionID(id); err != nil {
 			return err
 		}
+	}
+	if lv.engine == EngineACP {
+		return m.bridgeCommand(ctx, tenantID, id, BridgeCommand{Type: BridgeCancel})
 	}
 	room, err := m.Room(ctx, tenantID, id)
 	if err != nil {

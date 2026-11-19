@@ -45,7 +45,8 @@ func newSessionsEnv(t *testing.T) *sessionsEnv {
 		Files:     agentfs.NewLocal(harnesstest.Dirs{Home: home, Workspace: ws}, agentfs.LocalOptions{}),
 		Discovery: harness.LocalDiscovery{Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Adapters: adapters.All(), EventReader: adapters.NewEventReader()},
 		Store:     &harnesstest.Store{}, Runner: runner, Waker: &harnesstest.Waker{}, Logger: log,
-		KillGrace: 100 * time.Millisecond, TermGrace: 100 * time.Millisecond, EventPoll: 20 * time.Millisecond})
+		KillGrace: 100 * time.Millisecond, TermGrace: 100 * time.Millisecond, EventPoll: 20 * time.Millisecond,
+		MCPServers: []harness.MCPServer{{Name: "lydiabox", URL: "http://127.0.0.1:8910/mcp"}, {Name: "lydiabox-connectors", URL: "http://127.0.0.1:8911/mcp"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

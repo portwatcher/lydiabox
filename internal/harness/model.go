@@ -77,5 +77,5 @@ func (m *Manager) SetModel(ctx context.Context, tenantID, id string, req ModelRe
 		cols, rows = ls.room.Size()
 	}
 	return m.Create(ctx, tenantID, CreateRequest{Harness: ls.harness, WorkspaceDir: ls.workspace, Model: model,
-		ResumeNativeID: ls.nativeID, Title: ls.title, Cols: cols, Rows: rows})
+		ResumeNativeID: ls.nativeID, Title: ls.title, Engine: ls.engine, Cols: cols, Rows: rows})
 }

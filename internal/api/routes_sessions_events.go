@@ -124,6 +124,26 @@ func (s SessionsRoutes) input(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// permissionRequest answers a permission request of an ACP agent.
+type permissionRequest struct {
+	RequestID string `json:"requestId"`
+	OptionID  string `json:"optionId"`
+}
+
+// permission answers a permission request of the chat agent of a session.
+func (s SessionsRoutes) permission(w http.ResponseWriter, r *http.Request) {
+	var req permissionRequest
+	if err := httpx.DecodeJSON(w, r, 0, &req); err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
+		return
+	}
+	if err := s.Manager.AnswerPermission(r.Context(), tenant.FromContext(r.Context()), r.PathValue("id"), req.RequestID, req.OptionID); err != nil {
+		writeHarnessError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // interrupt stops the current turn of a live session.
 func (s SessionsRoutes) interrupt(w http.ResponseWriter, r *http.Request) {
 	if err := s.Manager.Interrupt(r.Context(), tenant.FromContext(r.Context()), r.PathValue("id")); err != nil {

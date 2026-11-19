@@ -13,6 +13,7 @@ import (
 	"github.com/lydiabox/lydiabox/internal/harness"
 	"github.com/lydiabox/lydiabox/internal/harness/adapters"
 	"github.com/lydiabox/lydiabox/internal/magpie"
+	"github.com/lydiabox/lydiabox/internal/magpie/wire"
 	"github.com/lydiabox/lydiabox/internal/vmm"
 	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
 )
@@ -53,6 +54,7 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	mgr, err := harness.NewManager(harness.ManagerOptions{
 		Adapters: adapters.All(), Files: d.Files, Discovery: sessionDiscovery(d, log), Store: d.Store,
 		Runner: runner, Waker: waker, Wiring: bindings, Logger: d.Logger, // the manager adds component=harness
+		MCPServers: acpMCPServers(),
 	})
 	if err != nil {
 		return nil, err
@@ -247,3 +249,13 @@ var (
 
 // reconcileTimeout bounds one reconcile of the guest terminals.
 const reconcileTimeout = time.Minute
+
+// acpMCPServers are the MCP servers that the ACP bridge passes to every
+// agent: the same servers that the wirers register in the harness configs.
+func acpMCPServers() []harness.MCPServer {
+	out := make([]harness.MCPServer, 0, len(wire.DefaultMCPServers))
+	for _, s := range wire.DefaultMCPServers {
+		out = append(out, harness.MCPServer{Name: s.Name, URL: s.URL})
+	}
+	return out
+}

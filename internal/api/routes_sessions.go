@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/lydiabox/lydiabox/internal/harness"
@@ -26,6 +27,7 @@ func (s SessionsRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("GET /api/v1/sessions/{id}/events", s.events)
 	r.HandleFunc("POST /api/v1/sessions/{id}/input", s.input)
 	r.HandleFunc("POST /api/v1/sessions/{id}/interrupt", s.interrupt)
+	r.HandleFunc("POST /api/v1/sessions/{id}/permission", s.permission)
 }
 
 // CodeNotInstalled answers a session start whose harness program is not
@@ -92,15 +94,33 @@ func (s SessionsRoutes) create(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, sess)
 }
 
-// patch changes the model of a live session (the only field that can
-// change: a session keeps its harness).
+// patchRequest changes the model or the engine of a live session (a
+// session keeps its harness).
+type patchRequest struct {
+	Model  string `json:"model"`
+	Engine string `json:"engine"`
+	Cols   uint16 `json:"cols"`
+	Rows   uint16 `json:"rows"`
+}
+
+// patch changes the model or the engine of a live session.
 func (s SessionsRoutes) patch(w http.ResponseWriter, r *http.Request) {
-	var req harness.ModelRequest
+	var req patchRequest
 	if err := httpx.DecodeJSON(w, r, 0, &req); err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, httpx.CodeBadRequest, err.Error())
 		return
 	}
-	sess, err := s.Manager.SetModel(r.Context(), tenant.FromContext(r.Context()), r.PathValue("id"), req)
+	ctx, tid, id := r.Context(), tenant.FromContext(r.Context()), r.PathValue("id")
+	var sess harness.Session
+	var err error
+	switch {
+	case req.Engine != "" && req.Model != "":
+		err = fmt.Errorf("%w: change the model or the engine, not both", harness.ErrBadRequest)
+	case req.Engine != "":
+		sess, err = s.Manager.SetEngine(ctx, tid, id, harness.EngineRequest{Engine: req.Engine, Cols: req.Cols, Rows: req.Rows})
+	default:
+		sess, err = s.Manager.SetModel(ctx, tid, id, harness.ModelRequest{Model: req.Model, Cols: req.Cols, Rows: req.Rows})
+	}
 	if err != nil {
 		writeHarnessError(w, err)
 		return

@@ -59,7 +59,7 @@ func (m *Manager) attachStored(ctx context.Context, tenantID string, sm store.Se
 		return nil, err
 	}
 	ls := &liveSession{tenantID: tenantID, harness: sm.Harness, nativeID: sm.SessionID, workspace: sm.WorkspaceDir,
-		model: sm.Model, title: sm.Title, provisional: x.Provisional, ptyID: x.PTYID, startedAt: x.StartedAt, pty: pty}
+		model: sm.Model, title: sm.Title, provisional: x.Provisional, ptyID: x.PTYID, startedAt: x.StartedAt, pty: pty, engine: x.Engine}
 	m.mu.Lock()
 	if cur := m.live[liveKey(tenantID, id)]; cur != nil {
 		// Another attach won the race; keep it.

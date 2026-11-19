@@ -121,6 +121,9 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 		}
 		s := put(Session{ID: id, Harness: sm.Harness, NativeID: sm.SessionID, WorkspaceDir: sm.WorkspaceDir,
 			Status: StatusIdle, CreatedAt: sm.CreatedAt, UpdatedAt: sm.UpdatedAt})
+		if sm.Harness != Shell {
+			s.Engine = engineName(x.Engine)
+		}
 		if sm.Title != "" {
 			s.Title = sm.Title
 		}
@@ -230,7 +233,8 @@ func (m *Manager) adoptProvisional(tenantID string, discovered map[string][]Sess
 		claimed[SessionID(ls.harness, ls.nativeID)] = true
 	}
 	for key, ls := range m.live {
-		if ls.tenantID != tenantID || !ls.provisional {
+		// The bridge reports the native ID of an ACP session itself.
+		if ls.tenantID != tenantID || !ls.provisional || ls.engine == EngineACP {
 			continue
 		}
 		var best *SessionMeta
@@ -247,25 +251,33 @@ func (m *Manager) adoptProvisional(tenantID string, discovered map[string][]Sess
 		if best == nil {
 			continue
 		}
-		oldID, oldNative := SessionID(ls.harness, ls.nativeID), ls.nativeID
-		ls.nativeID, ls.provisional = best.NativeID, false
-		newID := SessionID(ls.harness, ls.nativeID)
-		delete(m.live, key)
-		newKey := liveKey(tenantID, newID)
-		m.live[newKey] = ls
-		m.aliases[key] = newKey
-		claimed[newID] = true
-		ls.room.mu.Lock()
-		if ls.room.sessionID == oldID {
-			ls.room.sessionID = newID
-		}
-		ls.room.mu.Unlock()
-		out = append(out, adoption{harness: ls.harness, oldNative: oldNative, snapshot: liveSession{tenantID: ls.tenantID,
-			harness: ls.harness, nativeID: ls.nativeID, workspace: ls.workspace, model: ls.model, title: ls.title,
-			ptyID: ls.ptyID, startedAt: ls.startedAt}})
-		m.log.Info("provisional session adopted its native ID", "from", oldID, "to", newID)
+		a := m.renameLocked(key, ls, best.NativeID)
+		claimed[SessionID(ls.harness, ls.nativeID)] = true
+		out = append(out, a)
 	}
 	return out
+}
+
+// renameLocked gives the live session at key the native ID nativeID; the
+// old API ID becomes an alias. The caller holds m.mu and persists the
+// returned snapshot.
+func (m *Manager) renameLocked(key string, ls *liveSession, nativeID string) adoption {
+	oldID, oldNative := SessionID(ls.harness, ls.nativeID), ls.nativeID
+	ls.nativeID, ls.provisional = nativeID, false
+	newID := SessionID(ls.harness, ls.nativeID)
+	delete(m.live, key)
+	newKey := liveKey(ls.tenantID, newID)
+	m.live[newKey] = ls
+	m.aliases[key] = newKey
+	ls.room.mu.Lock()
+	if ls.room.sessionID == oldID {
+		ls.room.sessionID = newID
+	}
+	ls.room.mu.Unlock()
+	m.log.Info("provisional session adopted its native ID", "from", oldID, "to", newID)
+	return adoption{harness: ls.harness, oldNative: oldNative, snapshot: liveSession{tenantID: ls.tenantID,
+		harness: ls.harness, nativeID: ls.nativeID, workspace: ls.workspace, model: ls.model, title: ls.title,
+		ptyID: ls.ptyID, startedAt: ls.startedAt, engine: ls.engine}}
 }
 
 // dismissals maps SessionID(harness, native ID) to the time of the delete.

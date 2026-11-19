@@ -32,8 +32,14 @@ type EventStatus struct {
 	Synced bool `json:"synced"`
 	// Prompt is the approval prompt line that the terminal shows.
 	Prompt string `json:"prompt,omitempty"`
-	// Error is the last read error.
+	// Error is the last read error, or why the ACP agent ended.
 	Error string `json:"error,omitempty"`
+	// Engine is EngineACP while the bridge runs the session.
+	Engine string `json:"engine,omitempty"`
+	// Agent, Mode, and Queued describe the ACP agent.
+	Agent  string `json:"agent,omitempty"`
+	Mode   string `json:"mode,omitempty"`
+	Queued int    `json:"queued,omitempty"`
 }
 
 // EventUpdate is one message to an event stream client. Reset replaces
@@ -86,6 +92,9 @@ type eventHub struct {
 	source string
 	status EventStatus
 	subs   map[*EventSub]struct{}
+	// ended is the last status of an ACP bridge that ended, so that its
+	// error stays visible after the session is offline.
+	ended EventStatus
 }
 
 // SubscribeEvents attaches a client to the event stream of a session. The
@@ -139,9 +148,16 @@ func (m *Manager) unsubscribeEvents(key string, hub *eventHub, sub *EventSub) {
 	}
 }
 
+// liveView is a copy of the fields of a live session.
+type liveView struct {
+	harness, nativeID, current, engine string
+	provisional                        bool
+	room                               *Room
+}
+
 // liveInfo reads the fields of the live session of id under the manager
 // lock.
-func (m *Manager) liveInfo(tenantID, id string) (h, nativeID, current string, provisional bool, room *Room, ok bool) {
+func (m *Manager) liveInfo(tenantID, id string) (liveView, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k := liveKey(tenantID, id)
@@ -150,13 +166,23 @@ func (m *Manager) liveInfo(tenantID, id string) (h, nativeID, current string, pr
 	}
 	ls := m.live[k]
 	if ls == nil {
-		return "", "", "", false, nil, false
+		return liveView{}, false
 	}
-	return ls.harness, ls.nativeID, SessionID(ls.harness, ls.nativeID), ls.provisional, ls.room, true
+	return liveView{harness: ls.harness, nativeID: ls.nativeID, current: SessionID(ls.harness, ls.nativeID),
+		engine: ls.engine, provisional: ls.provisional, room: ls.room}, true
 }
 
 func (h *eventHub) run(ctx context.Context) {
 	for tick := 0; ; tick++ {
+		if lv, ok := h.m.liveInfo(h.tenantID, h.id); ok && lv.engine == EngineACP && lv.room != nil {
+			// The bridge streams the events; the transcript is read again
+			// after it ends.
+			h.followACP(ctx, lv)
+			if ctx.Err() != nil {
+				return
+			}
+			tick = 0
+		}
 		live := h.poll(ctx, tick)
 		wait := 4 * h.m.eventPoll()
 		if live {
@@ -174,12 +200,13 @@ func (h *eventHub) run(ctx context.Context) {
 // It reports whether the session has a live terminal.
 func (h *eventHub) poll(ctx context.Context, tick int) bool {
 	m := h.m
-	name, nativeID, current, provisional, room, live := m.liveInfo(h.tenantID, h.id)
-	if live && provisional && tick%3 == 0 {
+	lv, live := m.liveInfo(h.tenantID, h.id)
+	if live && lv.provisional && tick%3 == 0 {
 		// The session list adopts the native ID that the harness wrote.
-		_, _ = m.ListSessions(ctx, h.tenantID, Filter{Harness: name})
-		name, nativeID, current, provisional, room, live = m.liveInfo(h.tenantID, h.id)
+		_, _ = m.ListSessions(ctx, h.tenantID, Filter{Harness: lv.harness})
+		lv, live = m.liveInfo(h.tenantID, h.id)
 	}
+	name, nativeID, current, provisional, room := lv.harness, lv.nativeID, lv.current, lv.provisional, lv.room
 	if !live {
 		name, nativeID, _ = SplitSessionID(h.id)
 		current = h.id
@@ -214,6 +241,12 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 		default:
 			status.Error = err.Error()
 		}
+	}
+	switch {
+	case live:
+		h.ended = EventStatus{}
+	case h.ended.Error != "":
+		status.Engine, status.Error = EngineACP, h.ended.Error
 	}
 	if live && room != nil {
 		act := room.Activity()
