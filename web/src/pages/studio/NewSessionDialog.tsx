@@ -7,7 +7,7 @@ import { SESSION_HARNESSES } from "../../api/types";
 import type { HarnessID, Model, Session } from "../../api/types";
 import { Dialog } from "../../components/Dialog";
 import { Combobox } from "../../components/Combobox";
-import { ModelInput } from "../../components/ModelInput";
+import { ModelInput, listedModel } from "../../components/ModelInput";
 import { Banner, Button, Field, Select, TextInput } from "../../components/ui";
 import { harnessLabels } from "../../lib/harness";
 import { NoModelNotice } from "./NoModelNotice";
@@ -66,7 +66,8 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
   // The last model of each harness (the server keeps it at each start).
   const [lastModels, setLastModels] = useState<Partial<Record<HarnessID, string>>>({});
 
-  const model = typedModel ?? lastModels[harness] ?? "";
+  // The last model shows only while the gateway lists it.
+  const model = typedModel ?? listedModel(lastModels[harness], models);
   const workspaceOptions = useMemo(() => workspaces.map((w) => ({ value: w })), [workspaces]);
 
   const chooseHarness = (h: HarnessID) => {
