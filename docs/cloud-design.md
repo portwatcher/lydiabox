@@ -286,7 +286,7 @@ and a configured issuer, audience, and key set.
 
 | Reason | Steps |
 | :--- | :--- |
-| Upgrade or move of a cell | `lbx-cellhost` sends `SIGTERM`. The cell closes the guest link, releases its InstaBox activity lease, and exits. The machine continues; its idle pause applies. The new cell attaches to the same machine (implemented and tested against the fake API). |
+| Upgrade or move of a cell | `lbx-cellhost` sends `SIGTERM`. The cell closes the guest link, releases its InstaBox activity lease, and exits. The machine continues; its idle pause applies. The new cell attaches to the same machine (implemented and tested against the fake API) and installs its guest binary there ([instabox.md](instabox.md#guest-binary-upgrade)). |
 | Suspend a tenant | `lbx-control` calls `POST /api/v1/vm/stop` on the cell, which stops the machine with a clean shutdown. Then `SIGTERM`. The data stays. |
 | Delete a tenant | Suspend. Revoke connector tokens. `lbx-control` deletes the machine and its snapshots through the InstaBox API (or runs `lydiabox instabox destroy -confirm <machine ID>` with the cell environment), then the backups, the cell data directory, and the registry entry. It destroys the wrapped master key last. |
 
@@ -295,29 +295,27 @@ sends `SIGKILL`.
 
 ### 4.6 Gaps in the core
 
-The core implements the contract above. These parts are not in the core
-yet; the control plane or a later task must add them:
+The core implements the contract above. The driver also upgrades the
+guest binary of each machine to the cell's own at attach, and restarts
+the guest daemon only when no terminal or harness session runs
+([instabox.md](instabox.md#guest-binary-upgrade)). These parts are not in
+the core yet; the control plane or a later task must add them:
 
-1. Guest binary upgrade. The driver does not compare the guest version
-   with `LYDIABOX_GUEST_BINARY` or upload a new binary to
-   `/data/.lydiabox/bin/` ([cloud-instabox.md §2](cloud-instabox.md#2-guest-image)).
-   A new guest needs a new snapshot for new machines and a manual upload
-   for existing ones.
-2. State changes from webhooks. The cell reads the machine state itself
+1. State changes from webhooks. The cell reads the machine state itself
    (every 30 seconds, and at once when the guest link drops). It has no
    route for InstaBox webhooks; `lbx-control` must take them.
-3. Task leases (`POST /api/v1/tasks`) and the InstaBox activity lease of a
+2. Task leases (`POST /api/v1/tasks`) and the InstaBox activity lease of a
    task (§6) are not implemented. The cell holds one activity lease while
    it is attached to a running machine.
-4. A key broker (decision 17). `LYDIABOX_INSTABOX_API_URL` can point at
+3. A key broker (decision 17). `LYDIABOX_INSTABOX_API_URL` can point at
    it, but the cell sends the workspace key in `X-API-Key`; the broker
    must accept a per-cell credential in its place.
-5. A cell host protocol. Health, readiness, and stop are the routes and
+4. A cell host protocol. Health, readiness, and stop are the routes and
    signals above; there is no route that reports the cell's own version
    or configuration to `lbx-cellhost` other than `GET /api/v1/status`.
-6. Backups outside InstaBox (decision 19) and metering are not in the
+5. Backups outside InstaBox (decision 19) and metering are not in the
    core.
-7. The cell makes the machine on the first use, not at start, so that a
+6. The cell makes the machine on the first use, not at start, so that a
    cell of an inactive tenant costs nothing. A control plane that wants
    the machine at once calls `POST /api/v1/vm/wake`.
 

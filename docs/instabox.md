@@ -231,9 +231,10 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
   `LYDIABOX_GUEST_WORKSPACE_ROOT=/data/workspace`; a root in the file
   gets an `ignoring ...` line in the guest log), and starts
   `lydiabox-guest serve -workdir $LYDIABOX_GUEST_WORKSPACE_ROOT -display $LYDIABOX_DISPLAY`.
-  When `/data/.lydiabox/bin/lydiabox-guest` exists, it runs that binary
-  instead of the image's: the driver upgrades the guest with a file upload
-  and a restart, with no sudo and no new snapshot.
+  When `/data/.lydiabox/bin/lydiabox-guest` exists and is executable, it
+  runs that binary instead of the image's: the driver upgrades the guest
+  with a file upload and a restart, with no sudo and no new snapshot
+  ([Guest binary upgrade](#guest-binary-upgrade)).
 - `/run/lydiabox` belongs to UID 1000, so that the daemon can create the
   link-mode sockets `host-9001.sock` (broker) and `host-9002.sock` (LLM
   gateway) there.
@@ -450,6 +451,51 @@ that is not an InstaBox size, a GPU, and a UDP port.
   does not answer; machine status` with the unit state, `supervisorctl
   status`, and the last 5 journal lines of `instabox-image.service`.
 
+### Guest binary upgrade
+
+The machine runs the guest binary of the cell, so one release of the
+cell upgrades the guest of every machine. A new snapshot is necessary
+only for changes outside the guest binary.
+
+- The cell finds its linux guest binary as the other drivers do
+  (`LYDIABOX_GUEST_BINARY`, next to `lydiabox`, the runtime `bin`
+  directory, or `PATH`) and reads its SHA-256 once. When there is no
+  binary, the driver does no upgrade. When the binary is not an x86-64
+  ELF file (for example a cell built on arm64), the driver logs one line
+  `the guest binary is not a linux/amd64 executable` and does no
+  upgrade: InstaBox machines are `linux/amd64`.
+- At each attach (boot, start, resume, wake, or the first use after a
+  start of the cell) the driver runs one `exec` that reports the SHA-256
+  of the binary that the wrapper starts next, whether `guest.env` exists,
+  the SHA-256 of the running daemon's binary (`/proc/PID/exe`), and the
+  number of its PTYs. The record of the tenant keeps a hash of the machine
+  ID and the cell's binary when the machine runs that binary. Then a later
+  attach makes no API call for the upgrade.
+- When the machine has another binary, the driver uploads the cell's
+  binary to `/data/.lydiabox/bin/.lydiabox-guest.upload` (mode `0755`,
+  owner UID 1000) and, in a second `exec`, checks its SHA-256 and moves it
+  to `/data/.lydiabox/bin/lydiabox-guest` with `mv`. The wrapper never
+  sees a part of a file. The binary is installed before `guest.env` is
+  written, so the first daemon of a new machine is the new binary.
+- Restart rule. A restart of the guest daemon ends its PTYs: the
+  terminals and the harness sessions. The desktop programs (Terminal,
+  Chrome, Blender) have their own sessions and continue. So the driver
+  restarts the daemon only when the daemon has no PTY, for example after
+  a start from stopped, or when no terminal and no harness session runs.
+  The probe counts the children of the daemon that have a controlling
+  terminal. When a PTY runs, the driver does not restart: it logs one
+  line `the new guest binary is staged`, and the new binary runs from the
+  next start of the daemon (a stop and start of the machine). The next
+  attach looks again and restarts the daemon when it has no PTY. A resume
+  keeps the memory and the old daemon, so the same rule applies.
+- A failure of the upgrade (probe, upload, install, or restart) does not
+  stop the attach: the driver logs a `WARN` line with the cause, the
+  machine keeps the guest that runs, and the next attach tries again.
+  Only an account error (key, payment, quota) stops the attach, as for
+  the other API calls.
+- Only the guest binary goes to the machine on this path. It holds no
+  secret.
+
 ### Operator command
 
 ```bash
@@ -469,8 +515,12 @@ key, API key).
   the real guest daemon in the test process
   (`internal/instabox/instaboxtest/fakeguest`): an idempotent create across
   a crash and a restart, adoption by metadata, `409 operation_conflict`,
-  account errors, a deleted machine, a self-pause, and a guest restart
-  after changed settings.
+  account errors, a deleted machine, a self-pause, a guest restart after
+  changed settings, and the guest binary upgrade (`upgrade_test.go`: the
+  same binary, a new machine, a started machine, live PTYs, a failed
+  upload or install, and an arm64 binary). The shell commands of the
+  upgrade are played by the test; they were run once by hand in a Debian
+  container, not on a real machine.
 - `internal/cli` (`TestInstaboxCellEndToEnd`): `lydiabox up` as a cell on a
   UNIX socket, the driver selected by `auto`, and the fake port proxy
   (token check, wake of a self-paused machine, refusal of a paused one):

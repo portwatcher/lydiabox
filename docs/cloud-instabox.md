@@ -95,11 +95,15 @@ state. InstaBox changes often: read the pages again before each phase.
    ([instabox.md](instabox.md#supplier-files-and-environment)).
 5. The guest needs no `/dev/kvm`: the InstaBox machine is the agent VM.
 
-Guest binary upgrades: the driver compares the version of the running
-guest with `LYDIABOX_GUEST_BINARY`. If they differ, it uploads the binary
-to `/data/.lydiabox/bin/lydiabox-guest` (`PUT /v1/machines/{id}/files`),
-which the image runs instead of its own binary, and restarts the program
-through `exec` ([instabox.md](instabox.md#run-time-layout)). The machine user has
+Guest binary upgrades: at each attach the driver compares the SHA-256 of
+the cell's guest binary (`LYDIABOX_GUEST_BINARY` or the binary next to
+`lydiabox`) with the binary of the machine in one `exec`. If they differ,
+it uploads the binary (`PUT /v1/machines/{id}/files`) and moves it to
+`/data/.lydiabox/bin/lydiabox-guest`, which the image runs instead of its
+own binary. It restarts the program through `exec` only when the guest
+daemon has no terminal or harness session; otherwise the new binary runs
+from the next start of the daemon
+([instabox.md](instabox.md#guest-binary-upgrade)). The machine user has
 passwordless `sudo` (limits).
 
 Root filesystem upgrades: **not stated** how to replace the root disk of
