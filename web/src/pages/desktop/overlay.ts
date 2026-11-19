@@ -7,6 +7,9 @@ export const RIPPLE_MS = 700;
 export const PILL_MS = 2500;
 export const FEED_MAX = 100;
 export const PILLS_MAX = 4;
+/** The cursor trail keeps the points of this long a time, at most TRAIL_MAX of them. */
+export const TRAIL_MS = 1200;
+export const TRAIL_MAX = 8;
 
 export interface Point {
   x: number;
@@ -33,6 +36,8 @@ export interface FeedItem {
 
 export interface OverlayState {
   cursor: Point | null;
+  /** Earlier cursor points, oldest first, drawn as a fading trail to the cursor. */
+  trail: (Point & { at: number })[];
   /** Start point of the last drag, drawn as a line to the cursor while it is fresh. */
   drag: (Point & { at: number }) | null;
   ripples: Ripple[];
@@ -46,7 +51,7 @@ export type OverlayEvent =
   | { type: "expire"; now: number }
   | { type: "reset" };
 
-export const initialOverlay: OverlayState = { cursor: null, drag: null, ripples: [], pills: [], feed: [], nextId: 1 };
+export const initialOverlay: OverlayState = { cursor: null, trail: [], drag: null, ripples: [], pills: [], feed: [], nextId: 1 };
 
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -119,16 +124,20 @@ export function overlayReducer(state: OverlayState, event: OverlayEvent): Overla
       const ripples = state.ripples.filter((r) => event.now - r.at < RIPPLE_MS);
       const pills = state.pills.filter((p) => event.now - p.at < PILL_MS);
       const drag = state.drag && event.now - state.drag.at < PILL_MS ? state.drag : null;
-      if (ripples.length === state.ripples.length && pills.length === state.pills.length && drag === state.drag) {
+      const trail = state.trail.filter((t) => event.now - t.at < TRAIL_MS);
+      if (ripples.length === state.ripples.length && pills.length === state.pills.length && drag === state.drag && trail.length === state.trail.length) {
         return state;
       }
-      return { ...state, ripples, pills, drag };
+      return { ...state, ripples, pills, drag, trail };
     }
     case "action": {
       const { action, now } = event;
       let id = state.nextId;
       const next: OverlayState = { ...state };
       if (pointerActions.has(action.action) && !(action.action === "scroll" && action.x === 0 && action.y === 0)) {
+        if (state.cursor && (state.cursor.x !== action.x || state.cursor.y !== action.y)) {
+          next.trail = [...state.trail, { ...state.cursor, at: now }].slice(-TRAIL_MAX);
+        }
         next.cursor = { x: action.x, y: action.y };
       }
       if (action.action === "click") {

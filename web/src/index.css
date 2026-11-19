@@ -70,10 +70,17 @@
 
   --animate-ripple: ripple 700ms cubic-bezier(0.2, 0, 0, 1) forwards;
   --animate-fade-in: fade-in 150ms cubic-bezier(0.2, 0, 0, 1);
+  --animate-handoff: handoff 900ms ease-in-out infinite;
 
   @keyframes ripple {
     from { transform: scale(0.2); opacity: 0.9; }
     to { transform: scale(1); opacity: 0; }
+  }
+  @keyframes handoff {
+    from { left: 0; opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    to { left: calc(100% - 5px); opacity: 0; }
   }
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(4px); }
