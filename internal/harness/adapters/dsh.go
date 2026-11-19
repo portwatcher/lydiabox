@@ -26,12 +26,14 @@ type DSH struct{}
 // Name implements harness.HarnessAdapter.
 func (DSH) Name() string { return harness.DSH }
 
-// dshEnvWrapper exports ~/.dsh/.env (written by the magpie wirer) into the
-// dsh process, then runs the dsh command line passed as arguments.
-const dshEnvWrapper = `set -a; [ -f "$HOME/.dsh/.env" ] && . "$HOME/.dsh/.env"; set +a; exec "$@"`
+// dshEnvWrapper exports ~/.dsh/lydiabox.env (written by the magpie wirer)
+// into the dsh process, then runs the dsh command line passed as
+// arguments. dsh reads ~/.dsh/.env itself (and refuses base URLs there).
+const dshEnvWrapper = `set -a; [ -f "$HOME/.dsh/lydiabox.env" ] && . "$HOME/.dsh/lydiabox.env"; set +a; exec "$@"`
 
 // dshCommand builds the wrapped command. A model given here wins over
-// DSH_MODEL from ~/.dsh/.env because it is set after the file is sourced.
+// DSH_MODEL from ~/.dsh/lydiabox.env because it is set after the file is
+// sourced.
 //
 // dsh has no permission flag. Its base profile (@deepseek-ai/dsh-base)
 // reads DSH_PERMISSION_MODE: "danger-full-access" turns off the command
@@ -239,7 +241,7 @@ func (d DSH) find(home, id string) (string, error) {
 }
 
 // LaunchCommand implements harness.Launcher. dsh reads its model from the
-// profile and ~/.dsh/.env (DSH_MODEL), so a per-session model is exported.
+// profile and ~/.dsh/lydiabox.env (DSH_MODEL), so a per-session model is exported.
 func (d DSH) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
 	args := []string{"tui"}
 	if o.ResumeNativeID != "" {

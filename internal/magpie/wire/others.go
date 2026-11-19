@@ -5,11 +5,19 @@ import (
 	"strings"
 )
 
-// dshWirer edits ~/.dsh/.env. The dsh launcher exports this file into the
-// harness process, so the base URLs apply whatever profile dsh boots.
+// dshWirer writes ~/.dsh/lydiabox.env. The dsh launcher of LydiaBox
+// exports this file into the harness process, so the base URLs apply
+// whatever profile dsh boots. dsh 0.2.2 refuses base URLs in its own
+// ~/.dsh/.env ("only the launching environment may set" them), so the
+// wirer also removes the managed keys from that file.
 type dshWirer struct{}
 
-const dshEnv = ".dsh/.env"
+const (
+	dshEnv     = ".dsh/lydiabox.env"
+	dshUserEnv = ".dsh/.env"
+)
+
+const dshEnvHeader = "# Managed by LydiaBox: the dsh launcher exports these variables.\n"
 
 func (dshWirer) Harness() string    { return "dsh" }
 func (dshWirer) ConfigPath() string { return guestPath(dshEnv) }
@@ -20,12 +28,43 @@ func (dshWirer) Apply(h Home, b Binding) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", guestPath(dshEnv), err)
 	}
+	user, err := readOptional(h, dshUserEnv)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", guestPath(dshUserEnv), err)
+	}
+	if len(old) == 0 {
+		old = nil
+	}
 	doc := parseEnv(old)
+	if len(doc.lines) == 0 {
+		doc = parseEnv([]byte(dshEnvHeader))
+	}
+	userDoc := parseEnv(user)
+	model := b.Model
+	if model == "" {
+		// Keep a model bound before the move to lydiabox.env.
+		if m, ok := doc.get("DSH_MODEL"); ok {
+			model = m
+		} else if m, ok := userDoc.get("DSH_MODEL"); ok {
+			model = m
+		}
+	}
 	for _, kv := range dshValues(b) {
 		doc.set(kv[0], kv[1])
 	}
-	if b.Model != "" {
-		doc.set("DSH_MODEL", b.Model)
+	if model != "" {
+		doc.set("DSH_MODEL", model)
+	}
+	moved := false
+	for _, kv := range append(dshValues(b), [2]string{"DSH_MODEL", ""}) {
+		if userDoc.del(kv[0]) {
+			moved = true
+		}
+	}
+	if moved {
+		if err := writeIfChanged(h, dshUserEnv, user, userDoc.bytes(), 0o600); err != nil {
+			return err
+		}
 	}
 	return writeIfChanged(h, dshEnv, old, doc.bytes(), 0o600)
 }
@@ -49,7 +88,15 @@ func (dshWirer) CurrentModel(h Home) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	m, _ := parseEnv(old).get("DSH_MODEL")
+	if m, ok := parseEnv(old).get("DSH_MODEL"); ok {
+		return m, nil
+	}
+	// A home wired before the move to lydiabox.env.
+	user, err := readOptional(h, dshUserEnv)
+	if err != nil {
+		return "", err
+	}
+	m, _ := parseEnv(user).get("DSH_MODEL")
 	return m, nil
 }
 

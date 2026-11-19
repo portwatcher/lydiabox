@@ -46,6 +46,21 @@ func (d *envDoc) get(key string) (string, bool) {
 	return val, found
 }
 
+// del removes every assignment of key and reports whether there was one.
+func (d *envDoc) del(key string) bool {
+	kept := d.lines[:0]
+	found := false
+	for _, l := range d.lines {
+		if m := envLine.FindStringSubmatch(l); m != nil && m[2] == key {
+			found = true
+			continue
+		}
+		kept = append(kept, l)
+	}
+	d.lines = kept
+	return found
+}
+
 // set assigns key, rewriting every existing assignment line (so the last
 // one wins with the managed value) or appending a new line.
 func (d *envDoc) set(key, value string) {
