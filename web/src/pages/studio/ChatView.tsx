@@ -135,6 +135,17 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
     }
   };
 
+  const answerPermission = useCallback(
+    async (requestId: string, optionId: string) => {
+      try {
+        await sessions.permission(session.id, requestId, optionId);
+      } catch (err) {
+        toast.error(describeError(err, "Answer not sent"));
+      }
+    },
+    [session.id, toast],
+  );
+
   const pick = (prompt: string) => {
     setDraft(prompt);
     composer.current?.focus();
@@ -163,7 +174,7 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   } else {
     body = (
       <div className="mx-auto w-full max-w-3xl px-4 py-6">
-        <AgentTimeline turns={timeline.turns} working={working} />
+        <AgentTimeline turns={timeline.turns} working={working} onPermission={answerPermission} />
       </div>
     );
   }
@@ -185,7 +196,8 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
       </div>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 pt-2 pb-4">
         {socket === "reconnecting" || socket === "failed" ? <Banner tone="warning">{socket === "failed" ? "Connection lost. Reload the page." : "Reconnecting…"}</Banner> : null}
-        {state === "attention" ? <TerminalHandoff prompt={status?.prompt ?? ""} onOpenTerminal={onOpenTerminal} /> : null}
+        {state === "attention" && status?.engine !== "acp" ? <TerminalHandoff prompt={status?.prompt ?? ""} onOpenTerminal={onOpenTerminal} /> : null}
+        {status?.engine === "acp" && !live && status.error ? <Banner tone="danger">{status.error}</Banner> : null}
         {live && working && lastDesktop ? <DesktopHandoff /> : null}
         {working && timeline.plan && timeline.plan.some((s) => s.status !== "completed") ? <PlanCard steps={timeline.plan} compact /> : null}
         <div className="flex min-h-7 items-center gap-3">

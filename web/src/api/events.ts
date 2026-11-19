@@ -7,7 +7,7 @@ import type { SocketState, WebSocketFactory } from "./socket";
 /** WebSocket subprotocol of the session event stream (docs/api.md section 8). */
 export const EVENTS_PROTOCOL = "lydiabox.events.v1";
 
-export const EVENT_KINDS = ["user", "assistant", "reasoning", "tool_call", "tool_result", "plan", "usage", "turn_end", "error"] as const;
+export const EVENT_KINDS = ["user", "assistant", "reasoning", "tool_call", "tool_result", "plan", "usage", "turn_end", "error", "permission"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export const TOOL_KINDS = ["shell", "read", "edit", "search", "web", "mcp", "computer", "browser", "plan", "agent", "other"] as const;
@@ -51,6 +51,23 @@ export interface TurnUsage {
   costUsd: number;
 }
 
+export interface PermissionOption {
+  id: string;
+  name: string;
+  /** allow_once, allow_always, reject_once, or reject_always. */
+  kind: string;
+}
+
+/** A request of a chat (ACP) agent to run a tool. */
+export interface Permission {
+  id: string;
+  title: string;
+  toolCallId: string;
+  options: PermissionOption[];
+  /** The chosen option ID, "cancelled", or "" while it waits. */
+  outcome: string;
+}
+
 export interface AgentEvent {
   key: string;
   kind: EventKind;
@@ -61,6 +78,7 @@ export interface AgentEvent {
   result?: ToolResult;
   plan?: PlanStep[];
   usage?: TurnUsage;
+  permission?: Permission;
 }
 
 export interface EventStatus {
@@ -70,6 +88,11 @@ export interface EventStatus {
   synced: boolean;
   prompt: string;
   error: string;
+  /** "acp" while a chat agent runs the session. */
+  engine: string;
+  agent: string;
+  mode: string;
+  queued: number;
 }
 
 export type EventsMessage =
@@ -126,6 +149,16 @@ function decodeUsage(value: unknown): TurnUsage | undefined {
   };
 }
 
+function decodePermission(value: unknown): Permission | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const options = Array.isArray(value.options)
+    ? value.options.map((o) => record(o)).map((o) => ({ id: str(o, "id"), name: str(o, "name"), kind: str(o, "kind") }))
+    : [];
+  return { id: str(value, "id"), title: str(value, "title"), toolCallId: str(value, "toolCallId"), options, outcome: str(value, "outcome") };
+}
+
 /** Decodes one event; events with an unknown kind or no key give null. */
 export function decodeEvent(value: unknown): AgentEvent | null {
   if (!isRecord(value)) {
@@ -149,6 +182,7 @@ export function decodeEvent(value: unknown): AgentEvent | null {
     result: decodeResult(value.result),
     plan,
     usage: decodeUsage(value.usage),
+    permission: decodePermission(value.permission),
   };
 }
 
@@ -172,6 +206,10 @@ export function parseEventsMessage(message: unknown): EventsMessage | null {
         synced: bool(message, "synced"),
         prompt: str(message, "prompt"),
         error: str(message, "error"),
+        engine: str(message, "engine"),
+        agent: str(message, "agent"),
+        mode: str(message, "mode"),
+        queued: num(message, "queued"),
       };
     case "error":
       return { type: "error", code: str(message, "code"), message: str(message, "message") };
@@ -240,6 +278,10 @@ export class EventsClient {
           synced: msg.synced,
           prompt: msg.prompt,
           error: msg.error,
+          engine: msg.engine,
+          agent: msg.agent,
+          mode: msg.mode,
+          queued: msg.queued,
         });
         return;
       case "error":

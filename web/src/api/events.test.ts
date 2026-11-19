@@ -55,7 +55,7 @@ describe("EventsClient", () => {
     sockets[0].receiveJson({ type: "events", reset: true, events: [{ key: "a", kind: "assistant", text: "x" }] });
     sockets[0].receiveJson({ type: "status", sessionId: "codex:abc", state: "working", live: true, synced: true });
     expect(got).toEqual([{ reset: true, events: [expect.objectContaining({ key: "a", text: "x" })] }]);
-    expect(statuses[0]).toEqual({ sessionId: "codex:abc", state: "working", live: true, synced: true, prompt: "", error: "" });
+    expect(statuses[0]).toEqual({ sessionId: "codex:abc", state: "working", live: true, synced: true, prompt: "", error: "", engine: "", agent: "", mode: "", queued: 0 });
     sockets[0].receiveJson({ type: "error", code: "not_found", message: "gone" });
     sockets[0].serverClose(1008);
     expect(errors).toEqual(["not_found"]);

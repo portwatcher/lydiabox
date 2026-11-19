@@ -1,4 +1,4 @@
-import type { AgentEvent, EventStatus, PlanStep, ToolCall, ToolResult, TurnUsage } from "../../api/events";
+import type { AgentEvent, EventStatus, Permission, PlanStep, ToolCall, ToolResult, TurnUsage } from "../../api/events";
 
 /** The events of one session in order, and the stream status. */
 export interface ChatState {
@@ -49,7 +49,8 @@ export type TurnItem =
   | { type: "reasoning"; key: string; text: string }
   | { type: "tools"; key: string; tools: ToolItem[] }
   | { type: "plan"; key: string; steps: PlanStep[] }
-  | { type: "error"; key: string; text: string };
+  | { type: "error"; key: string; text: string }
+  | { type: "permission"; key: string; permission: Permission };
 
 /** Totals of one turn. */
 export interface TurnStats {
@@ -226,6 +227,11 @@ export function buildTimeline(state: ChatState): Timeline {
           if (e.usage.contextTokens > 0) {
             context = { tokens: e.usage.contextTokens, window: e.usage.contextWindow };
           }
+        }
+        break;
+      case "permission":
+        if (e.permission) {
+          t.items.push({ type: "permission", key: e.key, permission: e.permission });
         }
         break;
       case "turn_end":

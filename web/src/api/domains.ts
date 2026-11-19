@@ -1,29 +1,5 @@
 import { http, seg } from "./http";
-import type {
-  AgentHarness,
-  AuditPage,
-  AuthorizeResponse,
-  Binding,
-  Connector,
-  ConnectorProvider,
-  CreateProviderRequest,
-  CreateSessionRequest,
-  DesktopMode,
-  DesktopModeState,
-  GatewayStatus,
-  HarnessID,
-  Model,
-  Provider,
-  RoutingGroup,
-  Session,
-  Subscription,
-  SubscriptionKind,
-  SubscriptionLogin,
-  SessionsResponse,
-  TokenRequest,
-  Transcript,
-  UpdateProviderRequest,
-} from "./types";
+import type { AgentHarness, AuditPage, AuthorizeResponse, Binding, Connector, ConnectorProvider, CreateProviderRequest, CreateSessionRequest, DesktopMode, DesktopModeState, GatewayStatus, HarnessID, Model, Provider, RoutingGroup, Session, SessionEngine, SessionsResponse, Subscription, SubscriptionKind, SubscriptionLogin, TokenRequest, Transcript, UpdateProviderRequest } from "./types";
 
 // Section 8: sessions.
 export const sessions = {
@@ -37,6 +13,9 @@ export const sessions = {
   eventsPath: (id: string) => `/api/v1/sessions/${seg(id)}/events`,
   input: (id: string, text: string) => http.post<undefined>(`/api/v1/sessions/${seg(id)}/input`, { text }),
   interrupt: (id: string) => http.post<undefined>(`/api/v1/sessions/${seg(id)}/interrupt`, {}),
+  permission: (id: string, requestId: string, optionId: string) =>
+    http.post<undefined>(`/api/v1/sessions/${seg(id)}/permission`, { requestId, optionId }),
+  setEngine: (id: string, body: { engine: SessionEngine; cols: number; rows: number }) => http.patch<Session>(`/api/v1/sessions/${seg(id)}`, body),
 };
 
 // Section 9: desktop.

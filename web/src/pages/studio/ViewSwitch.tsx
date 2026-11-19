@@ -9,7 +9,7 @@ const modes: { id: SessionViewMode; label: string; icon: typeof MessageSquare }[
 ];
 
 /** The switch between the chat view and the terminal of a harness session. */
-export function ViewSwitch({ value, onChange }: { value: SessionViewMode; onChange: (mode: SessionViewMode) => void }) {
+export function ViewSwitch({ value, onChange, disabled = false }: { value: SessionViewMode; onChange: (mode: SessionViewMode) => void; disabled?: boolean }) {
   return (
     <div role="group" aria-label="View" className="join">
       {modes.map((m) => (
@@ -17,6 +17,7 @@ export function ViewSwitch({ value, onChange }: { value: SessionViewMode; onChan
           key={m.id}
           type="button"
           aria-pressed={value === m.id}
+          disabled={disabled}
           onClick={() => onChange(m.id)}
           className={cx("btn join-item btn-sm gap-1.5 text-[13px] font-medium", value === m.id ? "btn-active btn-neutral" : "btn-ghost hover:bg-base-content/10")}
         >

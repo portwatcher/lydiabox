@@ -2,12 +2,16 @@ import { CircleAlert } from "lucide-react";
 import type { Turn, TurnItem } from "./chatState";
 import { GenerationStats } from "./GenerationStats";
 import { Markdown } from "./Markdown";
+import { PermissionCard } from "./PermissionCard";
 import { PlanCard } from "./PlanCard";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { SourceCards } from "./SourceCards";
 import { ToolGroup } from "./ToolCallCard";
 
-function Item({ item, active }: { item: TurnItem; active: boolean }) {
+/** Answers a permission request of the agent. */
+export type AnswerPermission = (requestId: string, optionId: string) => Promise<void>;
+
+function Item({ item, active, onPermission }: { item: TurnItem; active: boolean; onPermission?: AnswerPermission }) {
   switch (item.type) {
     case "text":
       return <Markdown text={item.text} />;
@@ -17,6 +21,8 @@ function Item({ item, active }: { item: TurnItem; active: boolean }) {
       return <ToolGroup tools={item.tools} active={active} />;
     case "plan":
       return <PlanCard steps={item.steps} />;
+    case "permission":
+      return <PermissionCard permission={item.permission} onAnswer={onPermission} />;
     case "error":
       return (
         <div role="note" className="flex items-start gap-2 rounded-box bg-error/10 px-3 py-2 text-sm text-error">
@@ -28,7 +34,7 @@ function Item({ item, active }: { item: TurnItem; active: boolean }) {
 }
 
 /** One turn: the prompt of the user, then what the agent did on a rail, then the files it touched and its totals. */
-export function TurnView({ turn, active }: { turn: Turn; active: boolean }) {
+export function TurnView({ turn, active, onPermission }: { turn: Turn; active: boolean; onPermission?: AnswerPermission }) {
   // Only the newest plan of a turn is shown inline; while the turn works,
   // the chat view pins it above the prompt field instead.
   const lastPlan = active ? -1 : turn.items.map((it) => it.type).lastIndexOf("plan");
@@ -44,7 +50,7 @@ export function TurnView({ turn, active }: { turn: Turn; active: boolean }) {
       {items.length > 0 ? (
         <div className="flex min-w-0 flex-col gap-3 border-l border-base-content/10 pl-4">
           {items.map((item, i) => (
-            <Item key={item.key} item={item} active={active && (item.type === "tools" || i === items.length - 1)} />
+            <Item key={item.key} item={item} active={active && (item.type === "tools" || i === items.length - 1)} onPermission={onPermission} />
           ))}
         </div>
       ) : null}
@@ -59,12 +65,12 @@ export function TurnView({ turn, active }: { turn: Turn; active: boolean }) {
 }
 
 /** The turns of a session in order. */
-export function AgentTimeline({ turns, working }: { turns: Turn[]; working: boolean }) {
+export function AgentTimeline({ turns, working, onPermission }: { turns: Turn[]; working: boolean; onPermission?: AnswerPermission }) {
   return (
     <ol aria-label="Conversation" className="flex min-w-0 flex-col gap-8">
       {turns.map((t, i) => (
         <li key={t.key} className="min-w-0">
-          <TurnView turn={t} active={working && i === turns.length - 1} />
+          <TurnView turn={t} active={working && i === turns.length - 1} onPermission={onPermission} />
         </li>
       ))}
     </ol>

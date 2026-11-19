@@ -200,6 +200,8 @@ export interface Session {
   model: string;
   status: SessionStatus;
   live: boolean;
+  /** How the session runs or last ran: "acp" (chat agent) or "pty" (terminal). */
+  engine?: SessionEngine;
   createdAt: string;
   updatedAt: string;
   usage?: Usage;
@@ -226,10 +228,13 @@ export interface Transcript {
   truncated?: boolean;
 }
 
+export type SessionEngine = "acp" | "pty";
+
 export interface CreateSessionRequest {
   harness: HarnessID;
   workspaceDir: string;
   model?: string;
+  engine?: SessionEngine;
   resumeNativeId?: string;
   title?: string;
   cols: number;

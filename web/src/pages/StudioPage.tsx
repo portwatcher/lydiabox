@@ -11,7 +11,7 @@ import { Badge, Button, cx } from "../components/ui";
 import { useModelOptions } from "../hooks/useModelOptions";
 import { useResource } from "../hooks/useResource";
 import { useSystem } from "../hooks/useSystem";
-import { harnessLabel, sessionName } from "../lib/harness";
+import { acpHarnesses, engineFor, harnessLabel, sessionName } from "../lib/harness";
 import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { NoModelNotice, modelProblem } from "./studio/NoModelNotice";
 import { SessionList } from "./studio/SessionList";
@@ -162,6 +162,13 @@ export default function StudioPage() {
   const attachedId = room?.id ?? null;
   const showTerminal = room !== null && attachedId === selectedId;
 
+  // A live session of an ACP harness shows the view of its engine; the
+  // switch moves it to the other engine (one front end at a time).
+  const [engineBusy, setEngineBusy] = useState(false);
+  const harnessSelected = selected !== null && selected.harness !== "shell";
+  const engineSwitch = harnessSelected && selected.live && acpHarnesses.includes(selected.harness);
+  const shownMode: SessionViewMode = engineSwitch ? (selected.engine === "acp" ? "chat" : "terminal") : viewMode;
+
   const size = useCallback(() => {
     if (termSize.current) {
       return termSize.current;
@@ -196,6 +203,7 @@ export default function StudioPage() {
         workspaceDir: session.workspaceDir,
         model: modelOf(session) || undefined,
         resumeNativeId: session.harness === "shell" ? undefined : session.nativeId,
+        engine: session.harness === "shell" ? undefined : engineFor(session.harness, viewMode),
         cols,
         rows,
       });
@@ -219,6 +227,23 @@ export default function StudioPage() {
       toast.error(describeError(err, "Model not changed"));
     } finally {
       setModelBusy(false);
+    }
+  };
+
+  // The switch of a live ACP-harness session ends its harness process and
+  // continues the same native session in the other engine.
+  const changeView = async (mode: SessionViewMode) => {
+    setViewMode(mode);
+    if (!selected || !engineSwitch || mode === shownMode) {
+      return;
+    }
+    setEngineBusy(true);
+    try {
+      adopt(await sessions.setEngine(selected.id, { engine: engineFor(selected.harness, mode), ...size() }));
+    } catch (err) {
+      toast.error(describeError(err, mode === "chat" ? "Chat not opened" : "Terminal not opened"));
+    } finally {
+      setEngineBusy(false);
     }
   };
 
@@ -288,7 +313,9 @@ export default function StudioPage() {
               {selected ? sessionName(selected) : selectedId}
             </h1>
             {selected ? <Badge tone="accent">{harnessLabel(selected.harness)}</Badge> : null}
-            {selected && selected.harness !== "shell" && showTerminal ? <ViewSwitch value={viewMode} onChange={setViewMode} /> : null}
+            {harnessSelected && (showTerminal || !selected.live) ? (
+              <ViewSwitch value={shownMode} onChange={(mode) => void changeView(mode)} disabled={engineBusy || modelBusy} />
+            ) : null}
             {selected && selected.harness !== "shell" ? (
               <SessionModelMenu value={modelOf(selected)} models={models} onChange={(m) => void changeModel(selected, m)} disabled={modelBusy} />
             ) : null}
@@ -300,7 +327,7 @@ export default function StudioPage() {
           </div>
         ) : null}
         <div className="min-h-0 flex-1">
-          {selected && selected.harness !== "shell" && !(viewMode === "terminal" && showTerminal) ? (
+          {harnessSelected && (shownMode === "chat" || !showTerminal) ? (
             <ChatView
               key={selected.id}
               session={selected}

@@ -9,7 +9,7 @@ import { Dialog } from "../../components/Dialog";
 import { Combobox } from "../../components/Combobox";
 import { ModelInput, listedModel } from "../../components/ModelInput";
 import { Banner, Button, Field, Select, TextInput } from "../../components/ui";
-import { harnessLabels } from "../../lib/harness";
+import { engineFor, harnessLabels } from "../../lib/harness";
 import { NoModelNotice } from "./NoModelNotice";
 import type { ModelProblem } from "./NoModelNotice";
 
@@ -124,6 +124,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
         workspaceDir: workspace.trim().replace(/\/+$/, ""),
         model: model.trim() || undefined,
         title: title.trim() || undefined,
+        engine: engineFor(harness, "chat"),
         cols,
         rows,
       });
