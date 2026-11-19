@@ -183,3 +183,48 @@ func TestLaunchCommands(t *testing.T) {
 		}
 	}
 }
+
+// TestLaunchFullAccess checks that every launch of every harness (new,
+// resumed, with a model) turns off the harness's approval prompts and its
+// own command sandbox, and never adds a flag that turns them on again. The
+// harness sandboxes block network connections, also to 127.0.0.1 (Chrome
+// CDP 9222, gateway 3425, MCP 8910/8911); the VM is the security boundary.
+func TestLaunchFullAccess(t *testing.T) {
+	cases := []struct {
+		a         harness.Adapter
+		want      []string
+		forbidden []string
+	}{
+		{adapters.Claude{}, []string{"--dangerously-skip-permissions"}, []string{"--permission-mode", "--allow-dangerously-skip-permissions"}},
+		{adapters.Codex{}, []string{"--dangerously-bypass-approvals-and-sandbox"},
+			[]string{"-s", "--sandbox", "-a", "--ask-for-approval", "--full-auto", "--approve-for-me"}},
+		{adapters.DSH{}, []string{"DSH_PERMISSION_MODE=danger-full-access"}, nil},
+		{adapters.Antigravity{}, []string{"--dangerously-skip-permissions"}, []string{"--sandbox", "--mode"}},
+		{adapters.OpenCode{}, []string{"--auto"}, nil},
+	}
+	variants := []harness.LaunchOptions{
+		{},
+		{Model: "m/x"},
+		{ResumeNativeID: "abc"},
+		{ResumeNativeID: "abc", Model: "m/x"},
+	}
+	for _, tc := range cases {
+		for _, opts := range variants {
+			cmd, _ := tc.a.LaunchCommand(opts)
+			args := map[string]bool{}
+			for _, arg := range cmd {
+				args[arg] = true
+			}
+			for _, w := range tc.want {
+				if !args[w] {
+					t.Errorf("%s %+v: %q lacks %q", tc.a.Name(), opts, cmd, w)
+				}
+			}
+			for _, f := range tc.forbidden {
+				if args[f] {
+					t.Errorf("%s %+v: %q has %q", tc.a.Name(), opts, cmd, f)
+				}
+			}
+		}
+	}
+}

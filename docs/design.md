@@ -252,7 +252,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      - **`dsh`**: `~/.dsh/.env` / config -> `OPENAI_BASE_URL` / `ANTHROPIC_BASE_URL` / `DEEPSEEK_BASE_URL` pointing to `http://127.0.0.1:3425` and selected model mapping.
      - **`antigravity`**: `~/.antigravity/settings.json` -> gateway endpoint `http://127.0.0.1:3425`, selected model, and `~/.gemini/antigravity/mcp_config.json`.
      - **`opencode`**: `~/.config/opencode/opencode.json` -> custom provider pointing to `http://127.0.0.1:3425/v1`, selected `model`, and `mcp` section.
-   - Launch every harness in its full-access mode (new, resumed, and model-change restarts): the VM is the agent's own computer and the security boundary, so no command or MCP tool call waits for an approval. `claude --dangerously-skip-permissions`, `codex --dangerously-bypass-approvals-and-sandbox`, `agy --dangerously-skip-permissions`, `opencode --auto`, and `DSH_PERMISSION_MODE=danger-full-access` for `dsh` (`docs/harness-formats.md`).
+   - Launch every harness in its full-access mode (new, resumed, and model-change restarts): the VM is the agent's own computer and the security boundary, so no command or MCP tool call waits for an approval, and shell commands run outside the harness sandbox (they reach `127.0.0.1` services such as Chrome CDP `9222` and the internet). `claude --dangerously-skip-permissions`, `codex --dangerously-bypass-approvals-and-sandbox`, `agy --dangerously-skip-permissions`, `opencode --auto`, and `DSH_PERMISSION_MODE=danger-full-access` for `dsh` (`docs/harness-formats.md`).
 
 2. **Cross-Harness Session Discovery (`internal/harness`)**:
    - Define `HarnessAdapter`:

@@ -642,7 +642,10 @@ Details:
   `codex --dangerously-bypass-approvals-and-sandbox`,
   `agy --dangerously-skip-permissions`, `opencode --auto`, and for `dsh`
   the environment variable `DSH_PERMISSION_MODE=danger-full-access`
-  (sandbox off, approval policy `never`).
+  (sandbox off, approval policy `never`). The mode also turns off the
+  command sandbox of the harness, so shell commands reach `127.0.0.1`
+  (Chrome CDP `9222`, gateway `3425`, MCP `8910` and `8911`) and the
+  internet. In its default mode the Codex sandbox blocks these connections.
 - `codex`, `dsh`, `opencode`, and `antigravity` pick the native ID of a new
   session at runtime. The response then has a provisional `nativeId`
   (`new-<hex>`); after the harness writes its transcript, the next list
