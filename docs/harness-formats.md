@@ -139,6 +139,31 @@ Antigravity entry is a separate `agy_acp_server` binary; the installed
 permission requests of a real agent (the fake model replies with text
 only), MCP tool calls through ACP, and a real model through magpie.
 
+The bridge maps `tool_call` and `tool_call_update` to one tool event
+(`internal/acp/events.go`). Tool call formats that the live check on
+2026-11-19 (Codex, Claude Code, opencode with a real model) showed, and the
+codex-acp 2.7.0 source:
+
+- Output: `content` text, then `rawOutput` text. codex-acp sends the output
+  of a command only in `_meta.terminal_output_delta.data` (Zed:
+  `_meta.terminal_output`), as chunks while the command runs or once with its
+  end, because the bridge declares no terminal capability. The bridge appends
+  the chunks, up to the output limit. The content item `terminal` and the
+  `terminal_exit` metadata have no output.
+- Codex MCP call: title `mcp.<server>.<tool>`, `rawInput`
+  `{"server","tool","arguments"}`, `rawOutput` `{"result","error"}`. The
+  bridge sets the name to `mcp__<server>__<tool>` (the form of Claude Code),
+  the summary to the tool and the summary of the arguments (`browser_open
+  https://www.iana.org`), and the input to the arguments.
+- Kind: a computer, browser, plan, agent, or MCP tool name sets the kind. A
+  name with spaces is a title (codex-acp uses the command line), so a known
+  ACP kind sets the kind for it.
+- Images: an image content block and the images of `rawOutput` (Claude Code
+  and opencode send a screenshot in both). Each data URL is added once.
+- Duration: from the first report of the call to its end. A call that the
+  agent replays (`session/load`), or whose first report is its end, has no
+  duration.
+
 ## Session events
 
 `internal/harness/adapters` (`EventReader`) turns each native transcript
