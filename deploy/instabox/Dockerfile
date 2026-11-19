@@ -52,6 +52,9 @@ RUN set -eux; \
 #   DISABLE_AUTOUPDATER=1; the image keeps that one setting as its own.
 # - /etc/xdg/xfce4/panel/default.xml: a panel with only the plugins that
 #   load in the panel's process (xfce4-panel.xml has the reason).
+# The system upgrade installs the same files on existing machines: keep
+# the table Files in deploy/instabox/system.go equal to these COPY lines
+# (a test compares them; docs/instabox.md, "System upgrade").
 COPY deploy/instabox/codex-config.toml /usr/local/share/lydiabox/etc/codex-config.toml
 COPY deploy/instabox/claude-managed-settings.json /usr/local/share/lydiabox/etc/claude-managed-settings.json
 COPY deploy/instabox/xfce4-panel.xml /usr/local/share/lydiabox/etc/xfce4-panel.xml
