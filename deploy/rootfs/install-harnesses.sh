@@ -5,6 +5,12 @@
 #   CLAUDE_CODE_PACKAGE  @anthropic-ai/claude-code
 #   CODEX_PACKAGE        @openai/codex
 #   OPENCODE_PACKAGE     opencode-ai
+# ACP agents for the chat view (internal/acp; pinned, override likewise):
+#   CLAUDE_ACP_PACKAGE   @agentclientprotocol/claude-agent-acp@0.108.1 (claude-agent-acp)
+#   CODEX_ACP_PACKAGE    @agentclientprotocol/codex-acp@2.7.0 (codex-acp; drives the
+#                        installed `codex app-server`)
+# opencode (`opencode acp`), dsh (`dsh acp`), and agy (`agy acp`) have ACP in
+# their own CLI.
 # dsh and antigravity (agy) use shell installers; override them with build
 # arguments of the same name (an empty value skips that harness with a
 # warning):
@@ -17,13 +23,18 @@ set -eu
 : "${CLAUDE_CODE_PACKAGE:=@anthropic-ai/claude-code}"
 : "${CODEX_PACKAGE:=@openai/codex}"
 : "${OPENCODE_PACKAGE:=opencode-ai}"
+: "${CLAUDE_ACP_PACKAGE:=@agentclientprotocol/claude-agent-acp@0.108.1}"
+: "${CODEX_ACP_PACKAGE:=@agentclientprotocol/codex-acp@2.7.0}"
 : "${DSH_INSTALL=npm install -g --no-fund --no-audit @deepseek-ai/dsh}"
 : "${ANTIGRAVITY_INSTALL=curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin}"
 
-npm install -g --no-fund --no-audit "$CLAUDE_CODE_PACKAGE" "$CODEX_PACKAGE" "$OPENCODE_PACKAGE"
+npm install -g --no-fund --no-audit "$CLAUDE_CODE_PACKAGE" "$CODEX_PACKAGE" "$OPENCODE_PACKAGE" \
+	"$CLAUDE_ACP_PACKAGE" "$CODEX_ACP_PACKAGE"
 command -v claude >/dev/null
 command -v codex >/dev/null
 command -v opencode >/dev/null
+command -v claude-agent-acp >/dev/null
+command -v codex-acp >/dev/null
 
 run_installer() {
 	name=$1
