@@ -58,9 +58,13 @@ type ocMessage struct {
 	Cost       float64   `json:"cost"`
 	Tokens     *ocTokens `json:"tokens"`
 	Time       struct {
-		Created int64 `json:"created"`
+		Created   int64 `json:"created"`
+		Completed int64 `json:"completed"`
 	} `json:"time"`
-	Model *struct {
+	// Finish and Error are set on assistant messages.
+	Finish string          `json:"finish"`
+	Error  json.RawMessage `json:"error"`
+	Model  *struct {
 		ProviderID string `json:"providerID"`
 		ModelID    string `json:"modelID"`
 	} `json:"model"`
@@ -73,11 +77,23 @@ type ocPart struct {
 	Type      string `json:"type"`
 	Text      string `json:"text"`
 	Synthetic bool   `json:"synthetic"`
-	// Tool and State are set on parts of type "tool".
-	Tool  string `json:"tool"`
-	State struct {
-		Input json.RawMessage `json:"input"`
+	// Tool, CallID, and State are set on parts of type "tool".
+	Tool   string `json:"tool"`
+	CallID string `json:"callID"`
+	State  struct {
+		Status      string          `json:"status"`
+		Input       json.RawMessage `json:"input"`
+		Output      json.RawMessage `json:"output"`
+		Error       string          `json:"error"`
+		Attachments json.RawMessage `json:"attachments"`
+		Time        struct {
+			Start int64 `json:"start"`
+			End   int64 `json:"end"`
+		} `json:"time"`
 	} `json:"state"`
+	// Tokens and Cost are set on parts of type "step-finish".
+	Tokens *ocTokens `json:"tokens"`
+	Cost   float64   `json:"cost"`
 }
 
 // openOCDB opens the opencode database read-only, or returns nil when it
