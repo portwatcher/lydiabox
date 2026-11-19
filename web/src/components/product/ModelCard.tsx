@@ -1,5 +1,4 @@
 import { Link2, Route } from "lucide-react";
-import type { ReactNode } from "react";
 import { formatCompact } from "../../lib/format";
 import { Badge, cx } from "../ui";
 import { CopyButton } from "./Snippet";
@@ -12,17 +11,15 @@ export interface ModelCardProps {
   contextWindow: number;
   /** The largest context in the list, for the meter scale. */
   maxContext: number;
-  /** Labels of the harnesses that use this model. */
+  /** Labels of the harnesses that used this model last. */
   boundTo: string[];
   /** Routing groups that send to this model. */
   groups: string[];
-  /** A control at the end of the footer, for example a "Use in" menu. */
-  action?: ReactNode;
   className?: string;
 }
 
 /** One model: name, ID to copy, context window, and where it is in use. */
-export function ModelCard({ id, name, contextWindow, maxContext, boundTo, groups, action, className }: ModelCardProps) {
+export function ModelCard({ id, name, contextWindow, maxContext, boundTo, groups, className }: ModelCardProps) {
   const inUse = boundTo.length > 0;
   return (
     <li
@@ -50,7 +47,7 @@ export function ModelCard({ id, name, contextWindow, maxContext, boundTo, groups
             <span className="shrink-0 tabular-nums">{formatCompact(contextWindow)} context</span>
           </div>
         ) : null}
-        <div className="mt-auto flex flex-wrap items-center gap-1.5">
+        <div className="mt-auto flex min-h-5 flex-wrap items-center gap-1.5">
           {boundTo.map((h) => (
             <Badge key={h} tone="accent" icon={Link2}>
               {h}
@@ -61,7 +58,6 @@ export function ModelCard({ id, name, contextWindow, maxContext, boundTo, groups
               {g}
             </Badge>
           ))}
-          {action ? <span className="ms-auto">{action}</span> : null}
         </div>
       </div>
     </li>

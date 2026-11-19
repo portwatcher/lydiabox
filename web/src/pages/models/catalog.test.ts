@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Binding, Model, Provider, Session, Subscription } from "../../api/types";
-import { bindingsByModel, groupModels, groupsByModel, modelName, usageByModel, usageTotal, withBinding } from "./catalog";
+import { bindingsByModel, groupModels, groupsByModel, modelName, usageByModel, usageTotal } from "./catalog";
 import { statusRows } from "./ProviderStatus";
 
 const m = (id: string, contextWindow = 0, name = ""): Model => ({ id, provider: id.split("/")[0], name, contextWindow });
@@ -40,12 +40,6 @@ describe("catalog", () => {
     ]);
     expect(groups.get("a/x")).toEqual(["budget", "fast"]);
     expect(groups.get("b/y")).toEqual(["budget"]);
-  });
-
-  it("replaces or adds one binding", () => {
-    const one: Binding = { harness: "codex", model: "a/x", configPath: "", updatedAt: "" };
-    expect(withBinding([one], { ...one, model: "b/y" })).toEqual([{ ...one, model: "b/y" }]);
-    expect(withBinding([one], { ...one, harness: "dsh" })).toHaveLength(2);
   });
 
   it("sums session usage by model, most expensive first", () => {

@@ -69,13 +69,6 @@ export function groupsByModel(groups: RoutingGroup[]): Map<string, string[]> {
   return out;
 }
 
-/** Replaces the binding of one harness in a binding list. */
-export function withBinding(bindings: Binding[], saved: Binding): Binding[] {
-  return bindings.some((b) => b.harness === saved.harness)
-    ? bindings.map((b) => (b.harness === saved.harness ? saved : b))
-    : [...bindings, saved];
-}
-
 export interface ModelUsage {
   model: string;
   sessions: number;

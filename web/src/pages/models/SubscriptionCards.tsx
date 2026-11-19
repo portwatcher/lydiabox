@@ -41,8 +41,8 @@ function SubscriptionCard({ sub, onSignIn, onRemove, onToggle, toggling }: { sub
           <ul className="flex flex-col divide-y divide-base-content/10">
             {sub.accounts.map((a) => (
               <li key={a.user} className="flex items-center gap-2 py-1.5">
-                <span aria-hidden className="avatar avatar-placeholder">
-                  <span className="size-6 rounded-full bg-base-300 text-[11px] font-semibold text-base-content/80">{initials(a.user)}</span>
+                <span aria-hidden className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-base-300 text-[10px] font-semibold text-base-content/80">
+                  {initials(a.user)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[13px]" title={a.user}>
                   {a.user}

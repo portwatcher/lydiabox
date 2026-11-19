@@ -34,7 +34,6 @@ export default function ModelsPage() {
   const { reload: reloadProviders, mutate: mutateProviders } = providers;
   const { reload: reloadGateway } = gateway;
   const { mutate: mutateRouting } = routing;
-  const { mutate: mutateBindings } = bindings;
   const subscriptionsChanged = useCallback(() => {
     reloadSubscriptions();
     reloadProviders();
@@ -115,8 +114,7 @@ export default function ModelsPage() {
             names={names}
             order={order}
             routing={routing.data ?? []}
-            bindings={bindings.data ?? null}
-            onBindings={(next) => mutateBindings(next)}
+            bindings={bindings.data ?? []}
           />
         ) : (
           <Pending title="Models" error={list.error} failed="Models not loaded" onRetry={list.reload} label="Loading models…" />
