@@ -150,6 +150,45 @@ make instabox-image INSTABOX_IMAGE_FLAGS=--slim      # small base, for tests
 make instabox-image-test                             # container test
 ```
 
+Distribution. The base is Debian 13: `build.sh` passes
+`DESKTOP_IMAGE=debian:trixie-slim` (`--distro IMAGE` selects another; the
+slim image has no manuals, documentation, or translations, which keeps
+the image within the import disk, [below](#what-the-documentation-does-not-state)). The
+template `agent-browser` of the import machine is Debian 13, and the
+import keeps the machine's shared libraries and dpkg database under the
+image's programs, so the programs must be of the same release. The images
+of core `cdb5021` and earlier had an Ubuntu 24.04 base; on a machine of
+such a snapshot the image's Ubuntu programs run with the machine's Debian
+13 libraries (`apt-get` stops with a segmentation fault, the Xfce panel
+4.18 runs with the 4.20 library, the dbus tools fail;
+[System upgrade](#system-upgrade), Limits, and
+[Panel dialog, home, and environment](#panel-dialog-home-and-environment)).
+That a Debian 13 image removes these faults is a container test result
+([Container test](#container-test)), to be confirmed on a real machine.
+The other backends (`chv`, `docker`) keep the default `ubuntu:24.04`
+of `DESKTOP_IMAGE`: one package list serves both releases, and the steps
+that differ check `ID` in `/etc/os-release`:
+
+| Step | Ubuntu 24.04 | Debian 13 |
+| :--- | :--- | :--- |
+| dpkg path rules (no manuals, translations, documentation) | `/etc/dpkg/dpkg.cfg.d/excludes` of the container image (keeps copyright files and changelogs) | `/etc/dpkg/dpkg.cfg.d/docker` of `debian:trixie-slim`, and `deploy/rootfs/dpkg-excludes` as `lydiabox-excludes` for a base without such rules (both keep copyright files only) |
+| `software-properties-common` (`add-apt-repository`) | installed | not in Debian 13; not needed |
+| Chromium on `arm64` | deb of the `xtradeb/apps` PPA (Ubuntu's is a snap) | `chromium` of Debian main |
+| Google Chrome on `amd64`, NodeSource Node.js, `gh`, `blender`, `bubblewrap`, fonts | same packages and sources | same |
+| default user with UID 1000 | `ubuntu`, removed (`setup-guest.sh`) | none |
+
+The image's `/etc/apt` replaces the machine's files of the same name. On
+Debian 13 it has `debian.sources` (`trixie`, `trixie-updates`,
+`trixie-security`, main), `nodesource.sources`, and
+`google-chrome.sources`, with no Ubuntu source or key (the InstaBox
+Dockerfile stops the build otherwise), and `/var/lib/apt/lists` is empty.
+The InstaBox Dockerfile also removes `docker-apt-speedup` (dpkg's unsafe
+I/O) of the Debian container image. Files of the template's `/etc/apt`
+that the image does not have stay on the machine. The dpkg path rules
+(`docker`, `lydiabox-excludes`) go to the machine too, so a package that
+`apt-get` installs there gets no manuals or documentation, as with the
+Ubuntu-based image.
+
 To import, push the image to a registry that InstaBox can pull from, then
 run the command that `build.sh` prints:
 
@@ -167,7 +206,7 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
 | Only `linux/amd64` images can be imported. | `build.sh` builds `--platform linux/amd64`, checks the base architecture, and writes a single-platform image (`--provenance=false --sbom=false`). |
 | The import pulls from a registry; a local image cannot be imported. | `build.sh --push`, or `docker tag` and `docker push`; the printed command uses the pushed digest. |
 | `ENTRYPOINT` and `CMD` run as the systemd unit `instabox-image.service`, in `WORKDIR`, as `USER` (root when unset), restarted on failure; output goes to the journal. | `ENTRYPOINT ["/usr/local/sbin/lydiabox-instabox-entry"]`, no `USER`, `WORKDIR /`. The entry point runs supervisord in the foreground, so the unit stays active. |
-| The image's own init (tini, s6) is not run. systemd, sshd, sudo, the UID 1000 user, `/data`, and the machine's shared libraries stay. | Verified: the shared libraries (`*.so`) and some programs (`dbus-daemon` 1.16.2) stay the machine's, while other files are the image's (`xfce4-panel` 4.18, `wrapper-2.0`, `/etc/xdg/xfce4/panel/default.xml`). The entry point therefore sets the files that matter to LydiaBox at each start. It mounts nothing (the `lydiabox-init` of the VM and docker drivers mounts `/run` and `/tmp` and is not used). It starts the system D-Bus only when `/run/dbus/system_bus_socket` is missing. The machine keeps its own `libdbus`, so the image's `dbus-run-session` cannot run: the Xfce wrapper runs `dbus-daemon --session` itself (`/run/user/1000/lydiabox-session-bus`), not the bus of the machine's user manager (`/run/user/1000/bus`), whose services get `HOME=/data/home`. |
+| The image's own init (tini, s6) is not run. systemd, sshd, sudo, the UID 1000 user, `/data`, and the machine's shared libraries stay. | Verified with the Ubuntu-based image: the shared libraries (`*.so`), the dpkg database, and some programs (`dbus-daemon` 1.16.2) stay the machine's, while other files are the image's (`xfce4-panel` 4.18, `wrapper-2.0`, `/etc/xdg/xfce4/panel/default.xml`). So the base is Debian 13, the template's release ([Image](#image)). The entry point sets the files that matter to LydiaBox at each start. It mounts nothing (the `lydiabox-init` of the VM and docker drivers mounts `/run` and `/tmp` and is not used). It starts the system D-Bus only when `/run/dbus/system_bus_socket` is missing. The machine keeps its own `libdbus`, so the image's `dbus-run-session` of an Ubuntu-based image cannot run: the Xfce wrapper runs `dbus-daemon --session` itself (`/run/user/1000/lydiabox-session-bus`), not the bus of the machine's user manager (`/run/user/1000/bus`), whose services get `HOME=/data/home`. |
 | The image's user with UID 1000 is the machine user. | The import keeps the machine's user database: UID 1000 has the account's name (for example `alice`), not `agent`, and the home `/data/home`. The image uses UID 1000 by number (supervisord `user=1000`); the entry point reads the name with `getent passwd 1000`. `HOME` is `/home/agent`, a link to `/data/lydiabox/home`, not to InstaBox's `/data/home`. |
 | `ENV` reaches every session (exec, SSH, login shells). | `ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data`. InstaBox leaves out `HOME` and `PATH`: sessions get `HOME=/data/home`, and the unit gets no `HOME`. The entry point starts supervisord with a defined environment (`env -i`), not the unit's. |
 | `EXPOSE` is not published. | The driver publishes the link port with `PublishPrivatePort`. |
@@ -323,7 +362,14 @@ desktop, and harness checks:
   `CODEX_HOME`, `XDG_CONFIG_HOME`, test values) in the unit's
   environment, and a socket as the standard output of the entry point
   (as the journal). The image of core `23fbf68` fails it with the error
-  of the real machine.
+  of the real machine. The model also puts the template's shared
+  libraries and dpkg database over the image's files: its stage
+  `template` installs `dbus-bin`, `libdbus-1-3`, and `xfce4-panel` on
+  `debian:trixie` (`TEMPLATE_IMAGE`) and copies every `*.so` file of the
+  installed packages and `/var/lib/dpkg`. An image of another release then
+  fails as on the machine: the model of the Ubuntu-based image of core
+  `cdb5021` gives `libapt-private.so.0.0: no version information
+  available` and a segmentation fault (exit 139) at `apt-get update`.
 - `migrate`: `machine` on a disk of the old layout: `/home/agent` links
   to `/data/home`, the old seed marker exists, a harness transcript of
   LydiaBox is in `/data/home`, and `guest.env` has the old
@@ -376,14 +422,21 @@ In `plain`, `machine`, and `migrate` it checks that:
   leaves `/data/home` unchanged (the layout check after the restart);
 - after `docker restart`, the desktop and the guest start again from the
   kept `guest.env`, the probe passes again, and the layout and desktop
-  checks pass again.
+  checks pass again;
+- in `machine`, last: `/etc/apt` names no Ubuntu source or key,
+  `/etc/os-release` is Debian 13, `debian.sources` has `trixie`, and
+  `/var/lib/apt/lists` is empty; then, as root, `apt-get update` gives no
+  `W:` or `E:` line and `apt-get install hello` installs a program that
+  runs (this part prints `SKIP` when `deb.debian.org` cannot be reached).
 
 Without Docker it prints `SKIP` and exits 0; without Go it skips only the
 probe. Docker is not systemd: the `machine` scenario copies the facts of
 the real machine, but not `instabox-image.service` or the overlay itself.
-So it cannot show the panel defect (the machine's Xfce 4.20 libraries
-under the image's 4.18 panel); it checks the rule that prevents it: no
-plugin outside the panel's process.
+The model has only a part of the template's packages, and it keeps the
+image's programs where the machine keeps some of its own (`dbus-daemon`).
+It does not show the panel defect of the Ubuntu-based image (the
+machine's Xfce 4.20 libraries under the image's 4.18 panel); it checks the
+rule that prevents it: no plugin outside the panel's process.
 
 ## Driver
 
@@ -561,8 +614,10 @@ that the core of the cell expects, with no new snapshot.
      (`DEBIAN_FRONTEND=noninteractive`). The check is the program on
      `PATH`, not the package database. `apt-get update` runs only when a
      program is missing. A failure stops the script with an `ERROR:` line.
-     On an InstaBox machine `apt-get` does not run (see Limits), so there
-     this step can only find that nothing is missing.
+     On a machine of an Ubuntu-based snapshot `apt-get` does not run (see
+     Limits), so there this step can only find that nothing is missing. On
+     a machine of a Debian 13-based snapshot it is expected to install
+     the package (container test; to be confirmed on a real machine).
 - When it takes effect. The script never restarts supervisord, the
   desktop, or the guest daemon, and it changes nothing below `/data`
   except its own temporary files. A new entry point, a new wrapper, or a
@@ -598,25 +653,36 @@ that the core of the cell expects, with no new snapshot.
   after a release that changes the bundle or the guest binary.
 - Limits. The bundle does not upgrade Chrome, Xfce, the harness CLIs
   (`claude`, `codex`, `opencode`), or the shared libraries of the
-  machine. A step for a specific need can be added, but not a step
-  that needs `apt-get`: on an InstaBox machine `apt-get` stops with a
-  segmentation fault. The import keeps the template's `libapt-private`
-  (apt 3.0.3) and the package database of the template, and the image's
-  `apt-get` (Ubuntu 24.04) cannot use them. Seen on 2026-11-19 on a
-  machine of the template `agent-browser` 2026-11-14.2815: `apt-get
-  update` gives `libapt-private.so.0.0: no version information available`
-  and `Segmentation fault`; `dpkg-query -W bubblewrap` finds no package
-  although `/usr/bin/bwrap` is there. So a program that an old snapshot
-  does not have comes only with a new machine from a new snapshot, or as
-  a file in the bundle. The agent in the machine cannot install Debian
-  packages either.
+  machine. The import keeps the template's `libapt-private` (apt 3.0.3)
+  and the package database of the template under the image's `apt-get`.
+  The result depends on the release of the snapshot's image:
+  - Ubuntu-based snapshot (core `cdb5021` and earlier): `apt-get` stops
+    with a segmentation fault, because the image's `apt-get` (Ubuntu
+    24.04) cannot use the template's library. Seen on 2026-11-19 on a
+    machine of the template `agent-browser` 2026-11-14.2815: `apt-get
+    update` gives `libapt-private.so.0.0: no version information
+    available` and `Segmentation fault`; `dpkg-query -W bubblewrap` finds
+    no package although `/usr/bin/bwrap` is there. A step that needs
+    `apt-get` fails there, so a program that such a snapshot does not have
+    comes only with a new machine from a new snapshot, or as a file in the
+    bundle. The agent in the machine cannot install Debian packages
+    either.
+  - Debian 13-based snapshot: the image's `apt-get` and `/etc/apt` are
+    Debian 13's, the release of the template's library and package
+    database. `sudo apt-get update` and `sudo apt-get install -y PACKAGE`
+    are expected to work, for the system upgrade and for the agent
+    (container test with the template's libraries and dpkg database; to
+    be confirmed on a real machine). The package database still lists only
+    the template's packages: `apt-get` sees the image's packages as not
+    installed and can install a package of the image again.
 - Tests: `internal/vmm/instabox/system_test.go` (fake API: a current
   marker costs one probe, a new bundle is installed and recorded, a
   failure is logged once for each process, the order after the guest
   install) and `make instabox-system-test` (the real command and script
-  as UID 1000 with `sudo` in an Ubuntu container: an old guest binary, no
-  `lbx` link, no `bubblewrap`; a second run changes nothing; a bad archive
-  and a failed `apt-get` write no marker).
+  as UID 1000 with `sudo` in a `debian:trixie` container, or the image in
+  `LYDIABOX_TEST_DOCKER_IMAGE`, for example `ubuntu:24.04`: an old guest
+  binary, no `lbx` link, no `bubblewrap`; a second run changes nothing; a
+  bad archive and a failed `apt-get` write no marker).
 
 ### Operator command
 
@@ -644,7 +710,7 @@ key, API key).
   (`system_test.go`, [System upgrade](#system-upgrade)). The shell
   commands of the guest upgrade are played by the test; they were run
   once by hand in a Debian container, not on a real machine. The command
-  and script of the system upgrade run in an Ubuntu container with
+  and script of the system upgrade run in a Debian 13 container with
   `make instabox-system-test`, not on a real machine yet.
 - `internal/cli` (`TestInstaboxCellEndToEnd`): `lydiabox up` as a cell on a
   UNIX socket, the driver selected by `auto`, and the fake port proxy
@@ -789,10 +855,14 @@ Each item needs a check with a real account (see the checklist below).
    the unpacked layers) filled the disk and the import failed
    (2026-11-19). `install-harnesses.sh` removes what no program reads
    (`prune_node_modules`, [harness-formats.md](harness-formats.md#acp-agents)):
-   the full desktop image is now 6.48 GB in `docker images` (1.66 GB
-   compressed, 4.82 GB of layers; `/usr/lib/node_modules` 1962 MB), the
-   slim one 1.1 GB. Keep the full image at or below the 6.66 GB that
-   imported.
+   the Ubuntu-based image of core `cdb5021` was 6.48 GB in `docker images`
+   (1.66 GB compressed, 4.82 GB of layers; `/usr/lib/node_modules` 1962
+   MB), the slim one 1.1 GB. The Debian 13 image (`debian:trixie-slim`
+   base) is 6.60 GB in `docker images` (1.70 GB compressed, 4664 MiB of
+   files; `/usr/lib/node_modules` 1962 MB). A `debian:trixie` base, with
+   the translations and changelogs of the full container image, was 6.73
+   GB, above the limit. Keep the full image at or below the 6.66 GB that
+   imported (core `6109c08`: 1.71 GB compressed, 4691 MiB of files).
 5. **Machine user of an imported image.** Verified on a real machine,
    2026-11-16: UID 1000 keeps the machine's name and home; exec runs as
    that user; the links stay

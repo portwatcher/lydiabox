@@ -79,7 +79,11 @@ state. InstaBox changes often: read the pages again before each phase.
 ## 2. Guest image
 
 1. Build the guest root filesystem ([deploy/rootfs/Dockerfile](../deploy/rootfs/Dockerfile))
-   as a `linux/amd64` OCI image. Push it to a private registry.
+   as a `linux/amd64` OCI image on Debian 13 (`debian:trixie-slim`), the
+   release of the InstaBox template: the import keeps the machine's shared
+   libraries and dpkg database, so the image's programs must be of the
+   same release ([instabox.md](instabox.md#image)). Push it to a private
+   registry.
 2. Import it with `instabox snapshot import`. The registry password is
    not kept in the snapshot (images).
 3. The `ENTRYPOINT` starts `lydiabox-guest` as `instabox-image.service`.
@@ -112,8 +116,11 @@ an existing machine and keep `/data`. A restore replaces `/data` too
 installs the system bundle of the cell (the image's own files, the guest
 binary of the image path, the `lbx` links) with `sudo -n` when the marker
 `/etc/lydiabox/system.sha256` names another bundle
-([instabox.md](instabox.md#system-upgrade)). `apt-get` does not run on a machine, so a package cannot be added in
-place. For a larger change (Chrome,
+([instabox.md](instabox.md#system-upgrade)). On a machine of an
+Ubuntu-based snapshot `apt-get` does not run, so a package cannot be added
+in place. On a machine of a Debian 13-based snapshot `apt-get` is expected
+to work (container test; to be confirmed on a real machine). For a larger
+change (Chrome,
 Xfce, the harness CLIs, a new package), add files to the bundle, or make a new machine
 from the new snapshot and move the data with the backup of
 [§6.2](#62-mitigations).

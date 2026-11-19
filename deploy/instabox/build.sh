@@ -4,7 +4,8 @@
 # that InstaBox can pull from, so this script never runs it.
 #
 # Usage: deploy/instabox/build.sh [--tag IMAGE] [--base IMAGE] [--slim]
-#                                 [--no-base] [--push] [--name SNAPSHOT]
+#                                 [--distro IMAGE] [--no-base] [--push]
+#                                 [--name SNAPSHOT]
 #
 #   --tag IMAGE      image to build (default lydiabox/instabox:latest; use a
 #                    registry reference such as ghcr.io/OWNER/lydiabox-instabox:TAG
@@ -13,6 +14,10 @@
 #                    or lydiabox/guest:instabox-base-slim with --slim)
 #   --slim           use the desktop-slim stage as the base (no Chrome,
 #                    Blender, Node.js, or harness CLIs; for tests)
+#   --distro IMAGE   distribution of the base (DESKTOP_IMAGE of
+#                    deploy/rootfs/Dockerfile; default debian:trixie-slim, the
+#                    release of the InstaBox machine template, so that the
+#                    image's programs match the machine's shared libraries)
 #   --no-base        reuse an existing base image instead of building it
 #   --push           push the image after the build (docker login first)
 #   --name SNAPSHOT  snapshot name in the printed command (default lydiabox-desktop)
@@ -27,6 +32,7 @@ repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 tag=lydiabox/instabox:latest
 base=""
 stage=desktop
+distro=debian:trixie-slim
 build_base=1
 push=0
 name=lydiabox-desktop
@@ -52,6 +58,11 @@ while [ $# -gt 0 ]; do
 		stage=desktop-slim
 		shift
 		;;
+	--distro)
+		[ $# -ge 2 ] || die "--distro needs an image reference"
+		distro=$2
+		shift 2
+		;;
 	--no-base)
 		build_base=0
 		shift
@@ -66,7 +77,7 @@ while [ $# -gt 0 ]; do
 		shift 2
 		;;
 	-h | --help)
-		sed -n '2,22p' "$0"
+		sed -n '2,27p' "$0"
 		exit 0
 		;;
 	*) die "unknown argument $1" ;;
@@ -86,9 +97,9 @@ docker buildx version >/dev/null 2>&1 || die "docker buildx (BuildKit) is requir
 cd "$repo_root"
 
 if [ "$build_base" -eq 1 ]; then
-	echo "instabox build: base $base (deploy/rootfs/Dockerfile, target $stage, linux/amd64)"
+	echo "instabox build: base $base (deploy/rootfs/Dockerfile, target $stage, $distro, linux/amd64)"
 	docker buildx build --platform linux/amd64 \
-		-f deploy/rootfs/Dockerfile --target "$stage" \
+		-f deploy/rootfs/Dockerfile --target "$stage" --build-arg "DESKTOP_IMAGE=$distro" \
 		-t "$base" --load .
 else
 	docker image inspect "$base" >/dev/null 2>&1 || die "base image $base not found; drop --no-base"

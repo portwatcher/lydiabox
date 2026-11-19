@@ -23,7 +23,7 @@ agent VM on InstaBox ([docs/cloud-instabox.md](docs/cloud-instabox.md));
 [docs/cloud-own-compute.md](docs/cloud-own-compute.md) is the later design
 for KVM hosts that the service operates.
 [docs/instabox.md](docs/instabox.md) describes the InstaBox API client
-(`internal/instabox`) and the guest image for InstaBox (`deploy/instabox`,
+(`internal/instabox`) and the guest image for InstaBox (Debian 13, `deploy/instabox`,
 `make instabox-image`).
 
 ## Quick start

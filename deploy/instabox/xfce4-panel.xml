@@ -4,13 +4,15 @@
   which xfce4-panel copies into a home that has no panel settings (the
   first start of the desktop in a new agent home).
 
-  Only plugins that xfce4-panel loads in its own process. On an InstaBox
-  machine the panel program is the image's (Xfce 4.18) but the shared
-  libraries are the machine's (libxfce4panel 4.20): a plugin that runs in
-  a wrapper-2.0 process (systray, pulseaudio, actions, and the other
-  X-XFCE-Internal=FALSE plugins) then opens "Are you sure that you want to
-  remove ...?" at each start. The default of the base image also names
-  plugins that are not installed (power-manager-plugin,
+  Only plugins that xfce4-panel loads in its own process. On a machine of
+  an Ubuntu-based snapshot the panel program is the image's (Xfce 4.18)
+  but the shared libraries are the machine's (libxfce4panel 4.20): a
+  plugin that runs in a wrapper-2.0 process (systray, pulseaudio, actions,
+  and the other X-XFCE-Internal=FALSE plugins) then opens "Are you sure
+  that you want to remove ...?" at each start. The Debian 13 image has
+  Xfce 4.20 as the machine has, but this rule stays until a real machine
+  shows that wrapper-2.0 plugins work there. The default of the base
+  image also names plugins that are not installed (power-manager-plugin,
   notification-plugin, and an empty plugin-7).
 -->
 <channel name="xfce4-panel" version="1.0">

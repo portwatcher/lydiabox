@@ -11,12 +11,16 @@
 # So the run-time scripts use UID 1000 by number, never a user name.
 #
 # BASE_IMAGE is the "desktop" (or "desktop-slim") stage of
-# deploy/rootfs/Dockerfile, built for linux/amd64. Build both with
+# deploy/rootfs/Dockerfile, built for linux/amd64 on Debian 13 (trixie),
+# the release of the template agent-browser. Build both with
 # deploy/instabox/build.sh (or `make instabox-image`).
 #
-# The import keeps the machine's shared libraries (*.so) over the image's,
-# but the image's other files (programs, /etc, links) replace the
-# machine's: verified on a real machine (docs/instabox.md).
+# The import keeps the machine's shared libraries (*.so) and dpkg
+# database over the image's, but the image's other files (programs, /etc,
+# links) replace the machine's: verified on a real machine
+# (docs/instabox.md). With a Debian 13 base, the image's programs (apt,
+# xfce4-panel, the dbus tools) and the machine's libraries are of the same
+# release; the image of an Ubuntu 24.04 base mixed the two releases.
 #
 # Run-time layout (the core uses the guest paths /home/agent and
 # /workspace, so both stay as links onto the persistent disk):
@@ -35,7 +39,15 @@ FROM ${BASE_IMAGE}
 # and /home/agent and /workspace become links onto the persistent disk
 # (the import keeps both links; the entry point makes them when they are
 # missing and moves the link of the old layout).
+# /etc/apt of the image replaces the machine's: it must have the sources of
+# the base's release only, and no package lists. dpkg's unsafe I/O setting
+# of the Debian container image does not go to a machine.
 RUN set -eux; \
+	rm -f /etc/dpkg/dpkg.cfg.d/docker-apt-speedup; \
+	if [ "$(. /etc/os-release && echo "$ID")" = debian ] && grep -rIil -e ubuntu -e launchpad /etc/apt; then \
+	echo "/etc/apt names Ubuntu" >&2; exit 1; \
+	fi; \
+	rm -rf /var/lib/apt/lists/*; \
 	mkdir -p /usr/local/share/lydiabox/etc; \
 	mv /home/agent /usr/local/share/lydiabox/home-seed; \
 	ln -s /data/lydiabox/home /home/agent; \

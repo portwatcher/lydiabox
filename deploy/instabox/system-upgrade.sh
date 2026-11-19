@@ -112,10 +112,13 @@ fi
 # the package database is the machine template's and does not list the
 # image's packages (docs/instabox.md, "System upgrade").
 # - bwrap: Codex's sandbox.
-# A missing program is installed with apt-get. On an InstaBox machine
-# apt-get does not run (the import keeps the template's libapt, which the
-# image's apt-get cannot use), so a missing program is an error there: the
-# machine needs a new snapshot.
+# A missing program is installed with apt-get. On a machine of an
+# Ubuntu-based snapshot apt-get does not run (the import keeps the
+# template's Debian 13 libapt, which the image's Ubuntu apt-get cannot
+# use), so a missing program is an error there: the machine needs a new
+# snapshot. On a machine of a Debian 13-based snapshot the image's apt-get
+# and the machine's libapt are of the same release, so apt-get is expected
+# to work there (to be confirmed on a real machine).
 programs="bwrap:bubblewrap"
 missing=""
 for e in $programs; do
@@ -126,7 +129,7 @@ done
 if [ -n "$missing" ]; then
 	export DEBIAN_FRONTEND=noninteractive
 	apt="apt-get -q -o DPkg::Lock::Timeout=120"
-	hint="on an InstaBox machine apt-get does not run; make the machine again from a new snapshot"
+	hint="on a machine of an Ubuntu-based snapshot apt-get does not run: make the machine again from a new snapshot; on a Debian 13-based snapshot, look at the apt-get output"
 	# shellcheck disable=SC2086 # word splitting is intended
 	$apt update || die "apt-get update failed; the packages$missing are not installed ($hint)"
 	# shellcheck disable=SC2086 # word splitting is intended

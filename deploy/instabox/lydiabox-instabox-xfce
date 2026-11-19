@@ -6,11 +6,12 @@
 # its systemd user manager runs a session bus at $XDG_RUNTIME_DIR/bus, but
 # that bus starts D-Bus activated services (xfconfd, which reads and
 # writes the Xfce settings) with the user manager's environment: HOME is
-# InstaBox's /data/home, not /home/agent. The image's dbus-run-session
-# cannot run there (it needs LIBDBUS_PRIVATE_1.14.10 of the image's
-# libdbus, but the machine keeps its own, newer libdbus), so this program
-# runs dbus-daemon itself (the machine's on InstaBox) for the life of
-# startxfce4, with this program's environment.
+# InstaBox's /data/home, not /home/agent. The dbus-run-session of an
+# Ubuntu-based image cannot run there (it needs LIBDBUS_PRIVATE_1.14.10 of
+# the image's libdbus, but the machine keeps its own, newer libdbus), so
+# this program runs dbus-daemon itself (the machine's on InstaBox) for the
+# life of startxfce4, with this program's environment. This also works
+# with the Debian 13 image.
 set -eu
 
 log() { echo "lydiabox-instabox-xfce: $*" >&2; }

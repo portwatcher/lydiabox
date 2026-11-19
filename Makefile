@@ -102,7 +102,7 @@ guest-image-slim:
 #   make instabox-image          build $(INSTABOX_IMAGE) and print the import command
 #   make instabox-image-test     container test of $(INSTABOX_IMAGE) (skips without Docker)
 #   make instabox-system-test    runs the system upgrade (deploy/instabox/system-upgrade.sh)
-#                                in an Ubuntu container (needs Docker and network)
+#                                in a Debian 13 container (needs Docker and network)
 # INSTABOX_IMAGE_FLAGS passes build.sh flags, for example --slim or --push.
 INSTABOX_IMAGE       ?= lydiabox/instabox:latest
 INSTABOX_IMAGE_FLAGS ?=

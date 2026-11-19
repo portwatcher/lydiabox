@@ -25,18 +25,19 @@ func TestSystemRootCanBeQuoted(t *testing.T) {
 }
 
 // TestSystemUpgradeInDocker runs the real command of the driver (the root
-// exec and system-upgrade.sh) in an Ubuntu container as UID 1000 with
-// sudo, as on a machine: a machine of an old snapshot with no bubblewrap,
-// no lbx link, and an old guest binary on the image path. It needs Docker
-// and network access for apt-get: set LYDIABOX_TEST_DOCKER=1
-// (make instabox-system-test).
+// exec and system-upgrade.sh) in a Debian 13 container (the release of the
+// InstaBox template; LYDIABOX_TEST_DOCKER_IMAGE selects another, for
+// example ubuntu:24.04) as UID 1000 with sudo, as on a machine: a machine
+// of an old snapshot with no bubblewrap, no lbx link, and an old guest
+// binary on the image path. It needs Docker and network access for
+// apt-get: set LYDIABOX_TEST_DOCKER=1 (make instabox-system-test).
 func TestSystemUpgradeInDocker(t *testing.T) {
 	if os.Getenv("LYDIABOX_TEST_DOCKER") != "1" {
 		t.Skip("set LYDIABOX_TEST_DOCKER=1 to run the system upgrade in a container")
 	}
 	image := os.Getenv("LYDIABOX_TEST_DOCKER_IMAGE")
 	if image == "" {
-		image = "ubuntu:24.04"
+		image = "debian:trixie"
 	}
 	b, err := instaboximage.System()
 	if err != nil {
@@ -59,6 +60,7 @@ func TestSystemUpgradeInDocker(t *testing.T) {
 	root(`set -e
 apt-get update -q >/dev/null
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends sudo git >/dev/null
+getent passwd 1000 >/dev/null || useradd --uid 1000 --create-home --shell /bin/bash machine
 u=$(getent passwd 1000 | cut -d: -f1)
 echo "$u ALL=(ALL) NOPASSWD:ALL" >/etc/sudoers.d/u1000
 chmod 0440 /etc/sudoers.d/u1000
@@ -157,7 +159,7 @@ cat ` + instaboximage.MarkerPath)
 DEBIAN_FRONTEND=noninteractive apt-get remove -y -q bubblewrap >/dev/null
 rm -f ` + instaboximage.MarkerPath + `
 rm -rf /var/lib/apt/lists/* /etc/apt/sources.list.d/*
-echo "deb http://invalid.invalid/ubuntu noble main" >/etc/apt/sources.list`)
+echo "deb http://invalid.invalid/debian trixie main" >/etc/apt/sources.list`)
 	stdout, stderr, code = run(good, b.SHA256)
 	if code == 0 || !strings.Contains(stderr, "ERROR: apt-get") {
 		t.Fatalf("failed apt-get: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
