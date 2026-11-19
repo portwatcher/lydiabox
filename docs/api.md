@@ -789,8 +789,9 @@ Texts are cut at 32 KiB, tool inputs at 8 KiB, outputs at 12 KiB.
 - `attention`: the terminal is quiet and shows an approval prompt
   (`prompt` is its line); the client offers the terminal;
 - `setup`: before the first event, the terminal shows a first-run screen
-  that only the user can answer (`prompt` is its line): the Antigravity
-  "Terms of Service & Data Use", a folder-trust question, a sign-in method,
+  that only the user can answer (`prompt` is its line): an Antigravity
+  onboarding step (welcome, color scheme, "Terms of Service & Data Use"),
+  a folder-trust question, a sign-in method,
   or the theme of Claude Code. LydiaBox does not answer it. The client
   offers the terminal and holds a message until the state is `idle`;
 - `idle`: the terminal runs and is quiet;
