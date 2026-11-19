@@ -43,6 +43,19 @@ export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, ac
         disabled={!connected}
         onHandoff={(to) => onModeChange(to === "user" ? "TAKEOVER" : "OBSERVER")}
       />
+      <AgentStatus
+        name="Agent"
+        phase={activity.phase}
+        label={activity.label}
+        elapsed={activity.since === null ? null : now - activity.since}
+        steps={activity.steps}
+        aria-expanded={sidebar}
+        aria-controls="desktop-feed"
+        aria-label={`Agent: ${activity.label}. ${sidebar ? "Hide" : "Show"} activity`}
+        title={sidebar ? "Hide activity" : "Show activity"}
+        onClick={onToggleSidebar}
+        className="max-w-80"
+      />
       {/* A keyboard hint; hidden at phone widths, where the toolbar wraps and touch has no Shift+Esc. */}
       {hint ? <span className="hidden text-xs text-base-content/70 sm:inline">{hint}</span> : null}
       <div className="flex flex-wrap items-center gap-1">
@@ -57,19 +70,6 @@ export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, ac
         {count(viewers, { one: "# viewer", other: "# viewers" })}
       </span>
       <div className="ml-auto flex flex-wrap items-center gap-3">{machine}</div>
-      <AgentStatus
-        name="Agent"
-        phase={activity.phase}
-        label={activity.label}
-        elapsed={activity.since === null ? null : now - activity.since}
-        steps={activity.steps}
-        aria-expanded={sidebar}
-        aria-controls="desktop-feed"
-        aria-label={`Agent: ${activity.label}. ${sidebar ? "Hide" : "Show"} activity`}
-        title={sidebar ? "Hide activity" : "Show activity"}
-        onClick={onToggleSidebar}
-        className="sm:max-w-80"
-      />
     </div>
   );
 }
