@@ -24,7 +24,7 @@ func openCodeEvents(home, id string) ([]harness.Event, error) {
 	l := newEventLog()
 	for _, msg := range msgs {
 		at := millis(msg.Time.Created)
-		model := strings.Trim(msg.ProviderID+"/"+msg.ModelID, "/")
+		model := ocModel(msg.ProviderID, msg.ModelID)
 		for _, p := range msg.Parts {
 			switch p.Type {
 			case "text":

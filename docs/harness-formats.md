@@ -97,6 +97,7 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | IDs | `ses_`, `msg_`, `prt_` + time-ordered suffix | Verified |
 | Start / resume | `opencode [--session id] [--model provider/model] [--prompt text]`; `opencode import <file>` takes `opencode export` JSON. The launcher adds `--auto` (approves permission requests that the config does not deny). `opencode --help` has no sandbox option | Verified (`opencode --help`, opencode 1.19.6) |
 | Config | `.config/opencode/opencode.json`: `provider.lydiabox` (`npm: "@ai-sdk/openai-compatible"`, `options.baseURL`, `options.apiKey`, `models`), `model: "lydiabox/<provider>/<model>"`, `mcp.<name> = {"type":"remote","url","enabled":true}`. When the file already uses the newer `providers` or `mcp.servers` keys, those are written instead | Verified (old form, still accepted); new form Inferred |
+| Session model | The session list shows the model of the last assistant message. For the provider `lydiabox` it is the gateway model ID (`codex/gpt-6.1-sol`), as for the other harnesses; another provider shows as `<providerID>/<modelID>` | Verified (unit tests) |
 
 ## ACP agents
 

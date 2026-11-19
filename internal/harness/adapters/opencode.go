@@ -9,6 +9,22 @@ import (
 	"github.com/lydiabox/lydiabox/internal/harness"
 )
 
+// GatewayProvider is the opencode provider of the LydiaBox model gateway
+// (wire.ProviderID): the magpie wirer writes it, and its model IDs are
+// gateway model IDs.
+const GatewayProvider = "lydiabox"
+
+// ocModel returns the model of an opencode message as the other harnesses
+// report it: a gateway model ID without the opencode provider prefix
+// ("codex/gpt-6.1-sol", not "lydiabox/codex/gpt-6.1-sol"), or
+// "<provider>/<model>" for another provider.
+func ocModel(provider, model string) string {
+	if provider == GatewayProvider && model != "" {
+		return model
+	}
+	return strings.Trim(provider+"/"+model, "/")
+}
+
 // OpenCode reads sst/opencode sessions from its SQLite database or legacy
 // JSON storage (see opencode_store.go).
 type OpenCode struct{}
@@ -34,7 +50,7 @@ func ocMeta(home string, s ocSession, msgs []ocMessage) (harness.SessionMeta, in
 		}
 		if msg.Role == "assistant" {
 			if msg.ModelID != "" {
-				m.Model = strings.Trim(msg.ProviderID+"/"+msg.ModelID, "/")
+				m.Model = ocModel(msg.ProviderID, msg.ModelID)
 			}
 			usage.CostUSD += msg.Cost
 			if t := msg.Tokens; t != nil {
@@ -118,7 +134,7 @@ func (o OpenCode) LaunchCommand(opts harness.LaunchOptions) ([]string, string) {
 		cmd = append(cmd, "--session", opts.ResumeNativeID)
 	}
 	if opts.Model != "" {
-		cmd = append(cmd, "--model", "lydiabox/"+opts.Model)
+		cmd = append(cmd, "--model", GatewayProvider+"/"+opts.Model)
 	}
 	return cmd, opts.ResumeNativeID
 }
