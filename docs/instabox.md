@@ -656,9 +656,18 @@ Each item needs a check with a real account (see the checklist below).
    create time, but no figures are given for create from a large
    snapshot, start from stopped, resume from paused, or the import of a
    multi-GB image ("a few minutes").
-4. **Image size limits.** No limit on the image or the root disk it fills
-   (16 GiB on `agent-browser`) is stated; the full desktop image is
-   6.65 GB in Docker (the slim one 1.1 GB).
+4. **Image size limits.** No limit on the image is stated, but the
+   import machine (`agent-browser`) has a 16 GiB root disk that holds the
+   pulled image (`/var/lib/containerd`) and the files laid out from it, so
+   every MB of image costs about 2 MB of that disk. The image of core
+   `dbb41c1` (8.36 GB in `docker images`, which counts the compressed and
+   the unpacked layers) filled the disk and the import failed
+   (2026-11-19). `install-harnesses.sh` removes what no program reads
+   (`prune_node_modules`, [harness-formats.md](harness-formats.md#acp-agents)):
+   the full desktop image is now 6.48 GB in `docker images` (1.66 GB
+   compressed, 4.82 GB of layers; `/usr/lib/node_modules` 1962 MB), the
+   slim one 1.1 GB. Keep the full image at or below the 6.66 GB that
+   imported.
 5. **Machine user of an imported image.** Verified on a real machine,
    2026-11-16: UID 1000 keeps the machine's name and home; exec runs as
    that user; the links stay

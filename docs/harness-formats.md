@@ -110,15 +110,27 @@ the MCP servers `lydiabox` and `lydiabox-connectors` in `mcpServers`, and
 selects the full-access mode. Checked on 2026-11-19 in the guest image
 (`lydiabox/guest:instabox-base`, amd64, as UID 1000, configs written by
 the wirers, a stub MCP server, and a fake model gateway on port 3425 that
-streams one reply for every model API):
+streams one reply for every model API; Claude Code and Codex again in the
+InstaBox image after the prune, with the installed CLIs):
 
 | Harness | Agent | Version | Session | Full access | Result |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Claude Code (2.1.325) | `claude-agent-acp` (npm `@agentclientprotocol/claude-agent-acp`, Zed/ACP adapter) | 0.108.1 (pinned in `install-harnesses.sh`) | `session/new`, `session/load` | mode `bypassPermissions` (offered to a user other than root) | Verified: full turn through the gateway (`/v1/messages`), usage with context window and cost, resume with replay |
-| Codex (0.169.0) | `codex-acp` (npm `@agentclientprotocol/codex-acp`; it drives the installed `codex app-server`, so the rollouts are the TUI's) | 2.7.0 (pinned) | `session/new`, `session/load` | mode `agent-full-access` | Verified: full turn (`/v1/responses`), usage with context window, resume with replay; no login needed with the `lydiabox` model provider; it reports MCP servers that the config already defines as `mcp_startup.*` tool calls, which the bridge drops. Codex adds a "Model metadata … not found" warning to the reply for a gateway model, as in its TUI |
+| Claude Code (2.1.328) | `claude-agent-acp` (npm `@agentclientprotocol/claude-agent-acp`, Zed/ACP adapter), with the installed `claude` (`CLAUDE_CODE_EXECUTABLE`; the MCP servers then go to `claude` as `--mcp-config` argv) | 0.108.1 (pinned in `install-harnesses.sh`) | `session/new`, `session/load` | mode `bypassPermissions` (offered to a user other than root) | Verified: full turn through the gateway (`/v1/messages`, with the tools of both MCP servers), usage with context window and cost, resume with replay |
+| Codex (0.170.0) | `codex-acp` (npm `@agentclientprotocol/codex-acp`), with the installed `codex` (`CODEX_PATH`; it drives `codex app-server`, so the rollouts are the TUI's) | 2.7.0 (pinned) | `session/new`, `session/load` | mode `agent-full-access` | Verified: full turn (`/v1/responses`), usage with context window, resume with replay; no login needed with the `lydiabox` model provider; it reports MCP servers that the config already defines as `mcp_startup.*` tool calls, which the bridge drops. Codex adds a "Model metadata … not found" warning to the reply for a gateway model, as in its TUI |
 | opencode (1.19.5) | `opencode acp` | the installed CLI | `session/new`, `session/load` | no mode; `OPENCODE_CONFIG_CONTENT` allows every tool, as `--auto` does | Verified: full turn (`/v1/chat/completions`), usage, resume with replay |
 | dsh (0.2.2-rc.1) | `dsh acp` (profile bundle `@deepseek-ai/dsh-acp-app`, through the launcher wrapper) | the installed CLI | `session/new`, `session/resume` (no `session/load`: the bridge sends the transcript history first) | `DSH_PERMISSION_MODE=danger-full-access` | Verified: full turn (`/v1/chat/completions`), context size and window, resume with the transcript history; dsh is not in the ACP registry |
 | Antigravity (1.5.9) | `agy acp --dangerously-skip-permissions` | the installed CLI | `session/new`, `session/load` | the flag approves every tool (its modes are `default`, `accept-edits`, `plan`) | Not used: the session, the context window (1,048,576), and resume work, but the ACP server offers only Google's built-in models as the model option, has no `--model` flag, and ignores the CLI settings `model` key, so a prompt goes to `gemini-3.1-pro-preview` instead of the LydiaBox model. Antigravity keeps the terminal engine and the transcript chat view; the API refuses `engine: "acp"` for it |
+
+Image size: both npm packages bundle a full copy of their CLI (355 MB of
+Claude, 436 MB of Codex). The bridge sets `CLAUDE_CODE_EXECUTABLE` and
+`CODEX_PATH` to the installed programs, and `install-harnesses.sh`
+(`prune_node_modules`) removes the bundled copies, opencode's platform
+package (its postinstall copied the binary to `opencode-ai/bin`), native
+prebuilds for other platforms, source maps, and type declarations (not in
+`claude-agent-acp`, whose SDK names `.d.ts` files at run time). The
+InstaBox import lays the pulled image out on its 16 GiB root disk next to
+the image itself, so every MB of image costs about 2 MB there
+([instabox.md](instabox.md)).
 
 The ACP registry (`https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`)
 lists the Claude, Codex, OpenCode, and Antigravity agents (the registry's
