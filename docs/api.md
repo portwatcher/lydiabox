@@ -629,8 +629,9 @@ Details:
 
 - `workspaceDir` defaults to `/workspace` and is created when it is missing.
 - `model` is passed to the harness (`--model`) and becomes the binding of
-  the harness (section 10): the New session dialog preselects it next time,
-  and the harness config uses it when the harness starts without a model. A
+  the harness (section 10): the New session dialog preselects it next time
+  while `GET /api/v1/models` lists it, and the harness config uses it when
+  the harness starts without a model. A
   model that is not a `provider/model` ID is passed but not bound.
 - Before every start the harness config is pointed at the gateway again
   (`PUT /api/v1/models/bindings` rewrites the same keys).
