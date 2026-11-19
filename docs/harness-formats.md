@@ -197,7 +197,15 @@ The agent state of the event stream comes from the terminal, the same for
 all five harnesses: output in the last 2 seconds is `working` (the TUIs
 animate while they work), and a quiet screen whose last 2000 characters
 match an approval prompt ("Do you want to proceed?", "Would you like to run
-…?", "Allow once", "Permission required", "(y/n)", …) is `attention`. The
+…?", "Allow once", "Permission required", "(y/n)", …) is `attention`.
+Before the first event, a first-run screen is `setup` ("Terms of Service &
+Data Use" of Antigravity, "Do you trust the files in this folder?", "Do you
+trust the contents of this directory?", "Do you trust this folder?", "Yes,
+I trust this folder", "How would you like to authenticate", "Select login
+method", "Sign in with ChatGPT", "Choose the text style"), and the input
+endpoint refuses prompts with `409`. Only the output after the last input
+counts for `setup`: when the user answers the screen in the terminal, the
+program draws other output, and the old text in the tail does not count. The
 room also tracks bracketed paste mode (`ESC [?2004h` / `l`) for the input
 endpoint.
 

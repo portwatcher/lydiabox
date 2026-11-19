@@ -788,6 +788,11 @@ Texts are cut at 32 KiB, tool inputs at 8 KiB, outputs at 12 KiB.
   animate while they work);
 - `attention`: the terminal is quiet and shows an approval prompt
   (`prompt` is its line); the client offers the terminal;
+- `setup`: before the first event, the terminal shows a first-run screen
+  that only the user can answer (`prompt` is its line): the Antigravity
+  "Terms of Service & Data Use", a folder-trust question, a sign-in method,
+  or the theme of Claude Code. LydiaBox does not answer it. The client
+  offers the terminal and holds a message until the state is `idle`;
 - `idle`: the terminal runs and is quiet;
 - `offline`: the session has no running terminal (`live` is `false`).
 
@@ -804,7 +809,9 @@ characters other than newline and tab are removed. A harness that turned on
 bracketed paste mode gets the text as one paste (`ESC [200~` … `ESC [201~`);
 Enter follows 250 ms later, so that the paste-burst detection of Codex and
 Claude Code does not turn it into a newline. `400` for an empty text, `409`
-when the session has no running terminal, `404` for an unknown session.
+when the session has no running terminal or the terminal shows a first-run
+setup screen (state `setup`: the program would lose the text), `404` for
+an unknown session.
 
 ### `POST /api/v1/sessions/{id}/permission`
 
@@ -1156,6 +1163,11 @@ Details:
 - Login `state`: `starting`, `installing`, `waiting`, `done` (`account` is
   set), `failed` (see `error`), or `canceled`. Poll `GET .../logins/{id}`
   while the state is `starting`, `installing`, or `waiting`.
+- magpie lists the models of a new account some seconds after `done`:
+  until then, the subscription has `"models": []` and `GET
+  /api/v1/models` does not have its models. The Models page loads both
+  again for up to 30 seconds until they appear; the Studio model pickers
+  load the list again every 10 seconds while it is empty.
 - `setupToken` (Claude only) adds the account from `claude setup-token`
   directly; the response has `state` `done` and no `id`.
 - `providerId` is empty until an account is signed in. The subscription

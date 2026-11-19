@@ -36,8 +36,14 @@ func (m *Manager) SendInput(ctx context.Context, tenantID, id, text string) erro
 	if err != nil {
 		return err
 	}
+	act := room.Activity()
+	if act.Setup != "" && !m.hasEvents(tenantID, id) {
+		// The program would drop the prompt, or take it as an answer to
+		// the setup screen. Only the user answers that screen.
+		return fmt.Errorf("%w: the terminal shows a setup screen (%q); finish it in the Terminal view, then send the prompt again", ErrConflict, act.Setup)
+	}
 	payload := text
-	if room.Activity().BracketedPaste {
+	if act.BracketedPaste {
 		payload = "\x1b[200~" + text + "\x1b[201~"
 	}
 	if err := room.Write([]byte(payload)); err != nil {

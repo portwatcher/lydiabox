@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { availabilityOf } from "../api/errors";
 import { models as modelsApi, sessions as sessionsApi } from "../api/domains";
+import type { SubscriptionKind } from "../api/types";
 import { ErrorView, LoadingView } from "../components/StateView";
 import { Panel } from "../components/ui";
+import { announceModelsChanged } from "../hooks/useModelOptions";
 import { useResource } from "../hooks/useResource";
 import { ModelCatalog } from "./models/ModelCatalog";
 import { ProviderKeys } from "./models/ProviderKeys";
@@ -10,6 +12,7 @@ import { ProviderStatus, statusRows } from "./models/ProviderStatus";
 import { RoutingEditor } from "./models/RoutingEditor";
 import { SubscriptionCards } from "./models/SubscriptionCards";
 import { UsagePanel } from "./models/UsagePanel";
+import { subscriptionListed, useSettle } from "./models/settle";
 
 function Pending({ title, error, failed, onRetry, label }: { title: string; error: unknown; failed: string; onRetry: () => void; label: string }) {
   return (
@@ -34,11 +37,24 @@ export default function ModelsPage() {
   const { reload: reloadProviders, mutate: mutateProviders } = providers;
   const { reload: reloadGateway } = gateway;
   const { mutate: mutateRouting } = routing;
-  const subscriptionsChanged = useCallback(() => {
+  const reloadCatalog = useCallback(() => {
     reloadSubscriptions();
     reloadProviders();
     reloadModels();
+    announceModelsChanged();
   }, [reloadSubscriptions, reloadProviders, reloadModels]);
+  const settle = useSettle(reloadCatalog);
+  const latest = useRef({ subscriptions: subscriptions.data, models: list.data });
+  latest.current = { subscriptions: subscriptions.data, models: list.data };
+  // Magpie lists the models of a new account or key some seconds after
+  // the change, so the page loads again until they appear.
+  const subscriptionsChanged = useCallback(
+    (signedIn?: SubscriptionKind) => {
+      settle(signedIn ? () => subscriptionListed(signedIn, latest.current.subscriptions, latest.current.models) : undefined);
+    },
+    [settle],
+  );
+  const modelsChanged = useCallback(() => settle(), [settle]);
 
   // The time of the last answer, for the status panel.
   const [checkedAt, setCheckedAt] = useState<number | null>(null);
@@ -56,8 +72,8 @@ export default function ModelsPage() {
   const refresh = useCallback(() => {
     setRefreshing(true);
     reloadGateway();
-    subscriptionsChanged();
-  }, [reloadGateway, subscriptionsChanged]);
+    reloadCatalog();
+  }, [reloadGateway, reloadCatalog]);
 
   const names = useMemo(() => {
     const out: Record<string, string> = {};
@@ -102,7 +118,7 @@ export default function ModelsPage() {
           <ProviderKeys
             providers={providers.data.filter((p) => !p.subscription)}
             onChange={(update) => mutateProviders((current) => update(current ?? []))}
-            onModelsChanged={reloadModels}
+            onModelsChanged={modelsChanged}
           />
         ) : (
           <Pending title="API keys" error={providers.error} failed="Providers not loaded" onRetry={providers.reload} label="Loading providers…" />

@@ -15,7 +15,8 @@ export type ToolKind = (typeof TOOL_KINDS)[number];
 
 export type ResultStatus = "ok" | "error" | "pending";
 export type StepStatus = "pending" | "in_progress" | "completed";
-export type AgentState = "working" | "idle" | "attention" | "offline";
+/** "setup": before the first message, the terminal shows a first-run screen (terms, folder trust) that only the user can answer. */
+export type AgentState = "working" | "idle" | "attention" | "setup" | "offline";
 
 export interface ToolCall {
   id: string;
@@ -201,7 +202,7 @@ export function parseEventsMessage(message: unknown): EventsMessage | null {
       return {
         type: "status",
         sessionId: str(message, "sessionId"),
-        state: oneOf(message.state, ["working", "idle", "attention", "offline"] as const) ?? "offline",
+        state: oneOf(message.state, ["working", "idle", "attention", "setup", "offline"] as const) ?? "offline",
         live: bool(message, "live"),
         synced: bool(message, "synced"),
         prompt: str(message, "prompt"),

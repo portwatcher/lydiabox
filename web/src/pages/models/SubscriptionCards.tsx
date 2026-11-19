@@ -12,8 +12,11 @@ import { SignInDialog } from "./SignInDialog";
 
 interface SubscriptionCardsProps {
   subscriptions: Subscription[];
-  /** Reloads subscriptions, providers, and models after a change. */
-  onChanged: () => void;
+  /**
+   * Reloads subscriptions, providers, and models after a change; `signedIn`
+   * names the subscription that got a new account.
+   */
+  onChanged: (signedIn?: SubscriptionKind) => void;
 }
 
 interface Removal {
@@ -99,11 +102,12 @@ export function SubscriptionCards({ subscriptions, onChanged }: SubscriptionCard
   const closeSignIn = useCallback(() => setSigningIn(null), []);
   const signedIn = useCallback(
     (account: string) => {
+      const kind = signingIn?.kind;
       setSigningIn(null);
-      onChanged();
+      onChanged(kind);
       toast.success(account ? `${account} signed in` : "Account signed in");
     },
-    [onChanged, toast],
+    [onChanged, signingIn, toast],
   );
 
   const toggle = async (sub: Subscription) => {
