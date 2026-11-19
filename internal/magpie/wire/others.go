@@ -209,26 +209,59 @@ func opencodeProvider(p *object, newForm bool, b Binding) error {
 	if err := p.setChild(opts, o); err != nil {
 		return err
 	}
-	if b.Model == "" {
-		return nil
-	}
 	models, err := p.child("models")
 	if err != nil {
 		return err
 	}
-	m, err := models.child(b.Model)
-	if err != nil {
-		return err
-	}
-	if m.getString("name") == "" {
-		if err := m.set("name", b.Model); err != nil {
+	if b.Model != "" {
+		m, err := models.child(b.Model)
+		if err != nil {
+			return err
+		}
+		if m.getString("name") == "" {
+			if err := m.set("name", b.Model); err != nil {
+				return err
+			}
+		}
+		if err := models.setChild(b.Model, m); err != nil {
 			return err
 		}
 	}
-	if err := models.setChild(b.Model, m); err != nil {
-		return err
+	if len(models.keys) == 0 {
+		return nil
+	}
+	for _, id := range models.keys {
+		m, err := models.child(id)
+		if err != nil {
+			return err
+		}
+		if err := opencodeImageInput(m); err != nil {
+			return err
+		}
+		if err := models.setChild(id, m); err != nil {
+			return err
+		}
 	}
 	return p.setChild("models", models)
+}
+
+// opencodeImageInput declares image input on a gateway model entry that
+// does not declare its modalities. opencode 1.18 gives a model of a custom
+// provider image input only from modalities.input; without it, an image in
+// a tool result (lydiabox_computer_screenshot) does not reach the model.
+// The gateway catalog has no modalities, so every model gets images, as
+// Claude Code and Codex send them; an entry with modalities is kept.
+func opencodeImageInput(m *object) error {
+	if _, ok := m.get("modalities"); ok {
+		return nil
+	}
+	if err := m.set("modalities", map[string][]string{"input": {"text", "image"}, "output": {"text"}}); err != nil {
+		return err
+	}
+	if _, ok := m.get("attachment"); !ok {
+		return m.set("attachment", true)
+	}
+	return nil
 }
 
 func opencodeMCP(o *object, b Binding) error {

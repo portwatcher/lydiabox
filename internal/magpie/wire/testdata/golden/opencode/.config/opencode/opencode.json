@@ -16,7 +16,17 @@
       },
       "models": {
         "kimi/kimi-k3": {
-          "name": "kimi/kimi-k3"
+          "name": "kimi/kimi-k3",
+          "modalities": {
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "attachment": true
         }
       }
     }
