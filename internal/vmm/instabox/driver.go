@@ -90,8 +90,12 @@ type Options struct {
 	// GuestStatusAfter is how long the port proxy answers 502 before the
 	// driver logs one status line of the image's programs (default 45 s).
 	GuestStatusAfter time.Duration
-	Logger           *slog.Logger
-	Now              func() time.Time
+	// GuestBinary is the host path of the linux/amd64 lydiabox-guest
+	// binary. When a machine has another guest binary, the driver
+	// installs this one (upgrade.go). Empty: no guest upgrade.
+	GuestBinary string
+	Logger      *slog.Logger
+	Now         func() time.Time
 }
 
 // Driver implements vmm.Driver on InstaBox machines.
@@ -101,6 +105,9 @@ type Driver struct {
 	gate  gate
 	// recMu serializes the changes of the stored records.
 	recMu sync.Mutex
+	// guestOnce reads the host's guest binary (guest) once.
+	guestOnce sync.Once
+	guest     *hostGuest
 
 	mu      sync.Mutex
 	tenants map[string]*tenant

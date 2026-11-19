@@ -34,6 +34,9 @@ type Record struct {
 	LinkURL string `json:"linkUrl,omitempty"`
 	// EnvSHA256 is the hash of the guest.env that the machine has.
 	EnvSHA256 string `json:"envSha256,omitempty"`
+	// GuestSHA256 is a hash of the machine ID and the host's guest binary
+	// when the machine runs that binary (upgrade.go).
+	GuestSHA256 string `json:"guestSha256,omitempty"`
 }
 
 // recordSecrets are the encrypted part of a record.

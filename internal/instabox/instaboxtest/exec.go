@@ -318,3 +318,21 @@ func (s *Server) File(id, p string) ([]byte, uint32, bool) {
 	}
 	return append([]byte(nil), f.data...), f.mode, true
 }
+
+// RenameFile moves a file of a machine, as `mv -f from to` in the machine
+// does. It reports whether from existed.
+func (s *Server) RenameFile(id, from, to string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.lookup(id)
+	if m == nil {
+		return false
+	}
+	f, ok := m.files[path.Clean(from)]
+	if !ok {
+		return false
+	}
+	delete(m.files, path.Clean(from))
+	m.files[path.Clean(to)] = f
+	return true
+}

@@ -38,6 +38,9 @@ type env struct {
 
 	mu   sync.Mutex
 	cmds []string // the exec commands, in order
+	// onExec answers a command before the default answers when it
+	// returns true (guestImage in upgrade_test.go).
+	onExec func(id string, req instaboxtest.ExecRequest) (instaboxtest.ExecResult, bool)
 }
 
 // checkLeaks fails the test when goroutines started during the test are
@@ -98,7 +101,13 @@ func newEnvWith(t *testing.T, wrap func(*fakeguest.Runner) instaboxtest.GuestRun
 func (e *env) exec(id string, req instaboxtest.ExecRequest) instaboxtest.ExecResult {
 	e.mu.Lock()
 	e.cmds = append(e.cmds, req.Cmd)
+	hook := e.onExec
 	e.mu.Unlock()
+	if hook != nil {
+		if res, ok := hook(id, req); ok {
+			return res
+		}
+	}
 	if strings.Contains(req.Cmd, "supervisorctl") && strings.Contains(req.Cmd, "restart lydiabox-guest") {
 		e.runner.Restart(id)
 		return instaboxtest.ExecResult{Stdout: "lydiabox-guest: started\n"}

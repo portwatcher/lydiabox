@@ -67,7 +67,9 @@ func (d *Driver) Create(ctx context.Context, tid string, spec vmm.Spec) error {
 	}
 	if found != nil {
 		d.opts.Logger.Info("instabox: adopted the machine of the tenant", "tenant", tid, "machine", found.ID)
-		_, _, err := d.update(ctx, tid, func(r *Record, _ *recordSecrets) { r.MachineID, r.CreateKey, r.EnvSHA256 = found.ID, "", "" })
+		_, _, err := d.update(ctx, tid, func(r *Record, _ *recordSecrets) {
+			r.MachineID, r.CreateKey, r.EnvSHA256, r.GuestSHA256 = found.ID, "", "", ""
+		})
 		return err
 	}
 	if rec.CreateKey == "" {

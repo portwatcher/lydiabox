@@ -105,7 +105,8 @@ func (d *Driver) attach(ctx context.Context, tid string, m *ib.Machine) error {
 			return err
 		}
 	}
-	if err := d.ensureGuestEnv(ctx, tid, m.ID, rec, sec); err != nil {
+	restarted, err := d.prepareGuest(ctx, tid, m.ID, rec, sec)
+	if err != nil {
 		return err
 	}
 	d.startLease(tid, m.ID)
@@ -119,7 +120,7 @@ func (d *Driver) attach(ctx context.Context, tid string, m *ib.Machine) error {
 	same := t.machineID == m.ID && t.attached
 	t.machineID, t.attached, t.down, t.reported = m.ID, true, false, vmm.StateRunning
 	d.mu.Unlock()
-	if same && l.Status().State != link.StateIdle {
+	if same && !restarted && l.Status().State != link.StateIdle {
 		err = l.Wake()
 	} else {
 		err = l.Connect(target)
@@ -128,15 +129,79 @@ func (d *Driver) attach(ctx context.Context, tid string, m *ib.Machine) error {
 	return err
 }
 
+// prepareGuest upgrades the guest binary (upgrade.go) and writes the
+// guest settings, then restarts the guest daemon once when one of them
+// needs it. It reports whether it restarted the daemon: the link must then
+// connect again. The binary is installed before guest.env is written, so
+// that the wrapper of a new machine starts the new binary at once.
+func (d *Driver) prepareGuest(ctx context.Context, tid, id string, rec Record, sec recordSecrets) (bool, error) {
+	up, err := d.upgradeGuest(ctx, tid, id, rec)
+	if err != nil {
+		return false, err
+	}
+	envHash, envRestart, err := d.ensureGuestEnv(ctx, tid, id, rec, sec)
+	if err != nil {
+		return false, err
+	}
+	restarted := false
+	if envRestart || up.restart {
+		why := "guest settings changed"
+		if !envRestart {
+			why = "a new guest binary is installed and no terminal or harness session runs"
+		}
+		d.opts.Logger.Info("instabox: restarting the guest daemon: "+why, "tenant", tid, "machine", id)
+		err := d.restartGuest(ctx, id)
+		switch {
+		case err == nil:
+			restarted = true
+		case envRestart:
+			return false, d.fail(tid, err)
+		default:
+			var acc *AccountError
+			if err = d.fail(tid, err); errors.As(err, &acc) {
+				return false, err
+			}
+			d.opts.Logger.Warn("instabox: guest upgrade: restart; the new guest binary is staged until the next attach",
+				"tenant", tid, "machine", id, "err", err)
+		}
+	}
+	guestDone := up.done || (restarted && up.installed)
+	if envHash == "" && !guestDone {
+		return restarted, nil
+	}
+	_, _, err = d.update(ctx, tid, func(r *Record, _ *recordSecrets) {
+		if envHash != "" {
+			r.EnvSHA256 = envHash
+		}
+		if guestDone {
+			r.GuestSHA256 = up.key
+		}
+	})
+	return restarted, err
+}
+
+// restartGuest restarts the guest daemon with the image's supervisor.
+func (d *Driver) restartGuest(ctx context.Context, id string) error {
+	res, err := d.opts.Client.Exec(ctx, id, ib.ExecRequest{Cmd: restartGuest, TimeoutSeconds: 60, NoHistory: true})
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("instabox: restart of the guest daemon exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	return nil
+}
+
 // ensureGuestEnv writes guest.env when the machine does not have the
-// current one. The image's wrapper waits for a missing file; a file with
+// current one. It returns the hash to record ("" when the record has it
+// already). The image's wrapper waits for a missing file; a file with
 // other values (an adopted machine) needs a restart of the guest daemon.
-func (d *Driver) ensureGuestEnv(ctx context.Context, tid, id string, rec Record, sec recordSecrets) error {
+func (d *Driver) ensureGuestEnv(ctx context.Context, tid, id string, rec Record, sec recordSecrets) (string, bool, error) {
 	want := guestEnv(sec.LinkSecret, d.opts.LinkPort)
 	sum := sha256.Sum256(append([]byte(id+"\x00"), want...))
 	hash := hex.EncodeToString(sum[:])
 	if rec.EnvSHA256 == hash {
-		return nil
+		return "", false, nil
 	}
 	cur, err := d.opts.Client.ReadFile(ctx, id, guestEnvPath, 64<<10)
 	restart := false
@@ -147,23 +212,12 @@ func (d *Driver) ensureGuestEnv(ctx context.Context, tid, id string, rec Record,
 		fallthrough
 	case errors.Is(err, ib.ErrNotFound):
 		if _, err := d.opts.Client.PutFileBytes(ctx, id, guestEnvPath, want, ib.PutFileOptions{Mode: 0o600, Parents: true}); err != nil {
-			return d.fail(tid, err)
+			return "", false, d.fail(tid, err)
 		}
 	default:
-		return d.fail(tid, err)
+		return "", false, d.fail(tid, err)
 	}
-	if restart {
-		d.opts.Logger.Info("instabox: guest settings changed; restarting the guest daemon", "tenant", tid, "machine", id)
-		res, err := d.opts.Client.Exec(ctx, id, ib.ExecRequest{Cmd: restartGuest, TimeoutSeconds: 60, NoHistory: true})
-		if err != nil {
-			return d.fail(tid, err)
-		}
-		if res.ExitCode != 0 {
-			return fmt.Errorf("instabox: restart of the guest daemon exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-		}
-	}
-	_, _, err = d.update(ctx, tid, func(r *Record, _ *recordSecrets) { r.EnvSHA256 = hash })
-	return err
+	return hash, restart, nil
 }
 
 // detach closes the link and ends the activity lease before a pause or a

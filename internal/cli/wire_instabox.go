@@ -42,6 +42,13 @@ func newInstaboxDriver(d *deps) (vmm.Driver, error) {
 	opts := vmmib.Options{
 		Client: client, Store: d.Store, Snapshot: cfg.Instabox.Snapshot, IdlePause: cfg.Instabox.IdlePause, Logger: log,
 	}
+	// The driver installs this guest binary on machines that have another
+	// one (docs/instabox.md, "Guest binary upgrade").
+	if bin, err := guestBinary(cfg); err == nil {
+		opts.GuestBinary = bin
+	} else {
+		log.Info("no guest binary upgrade: " + err.Error())
+	}
 	if instaboxOptions != nil {
 		instaboxOptions(&opts)
 	}
