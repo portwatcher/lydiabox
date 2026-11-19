@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router";
 import { ApiError, NetworkError, http } from "./api/http";
 import { accessLogoutPath, auth } from "./api/system";
 import type { AuthState } from "./api/types";
+import { AppCommands } from "./components/AppCommands";
 import { PageArea } from "./components/Outage";
 import { StatusBar } from "./components/StatusBar";
 import { ErrorView, LoadingView, StateView } from "./components/StateView";
@@ -32,6 +33,7 @@ type AuthStatus =
 
 export function App() {
   const [state, setState] = useState<AuthStatus>({ kind: "checking" });
+  const [palette, setPalette] = useState(false);
 
   const check = useCallback(() => {
     setState({ kind: "checking" });
@@ -97,7 +99,8 @@ export function App() {
         <ToastProvider>
           <SystemProvider>
             <div className="flex h-dvh flex-col">
-              <StatusBar email={state.session.email} onLogout={logout} />
+              <StatusBar email={state.session.email} onLogout={logout} onSearch={() => setPalette(true)} />
+              <AppCommands open={palette} onOpenChange={setPalette} />
               <PageArea>
                 <Suspense fallback={<LoadingView label="Loading…" />}>
                   <Routes>

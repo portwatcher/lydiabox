@@ -5,7 +5,8 @@ import { models } from "../../api/domains";
 import type { Subscription, SubscriptionKind } from "../../api/types";
 import { ConfirmDialog } from "../../components/Dialog";
 import { useToast } from "../../components/Toast";
-import { Badge, Button, IconButton, Panel } from "../../components/ui";
+import { Mark, StatusDot, initials } from "../../components/product/Marks";
+import { Badge, Button, IconButton, Panel, cx } from "../../components/ui";
 import { count } from "../../lib/format";
 import { SignInDialog } from "./SignInDialog";
 
@@ -24,16 +25,25 @@ function SubscriptionCard({ sub, onSignIn, onRemove, onToggle, toggling }: { sub
   const switchId = `sub-enabled-${sub.kind}`;
   const signedIn = sub.accounts.length > 0;
   return (
-    <li className="card card-sm border border-base-content/10 bg-base-100">
+    <li className={cx("card card-sm border bg-base-100", signedIn && sub.enabled ? "border-base-content/20" : "border-dashed border-base-content/15")}>
       <div className="card-body gap-3">
-        <div className="flex items-center gap-2">
-          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{sub.name}</h3>
-          {signedIn ? <Badge>{count(sub.models.length, { one: "# model", other: "# models" })}</Badge> : null}
+        <div className="flex items-center gap-3">
+          <Mark name={sub.name} size="lg" />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <h3 className="truncate text-sm font-semibold">{sub.name}</h3>
+            <span className="text-xs text-base-content/70">
+              {signedIn ? count(sub.models.length, { one: "# model", other: "# models" }) : "Not signed in"}
+            </span>
+          </div>
+          {signedIn ? <StatusDot health={sub.enabled ? (sub.accounts.some((a) => a.needsSignIn) ? "outage" : "operational") : "off"} /> : null}
         </div>
         {signedIn ? (
           <ul className="flex flex-col divide-y divide-base-content/10">
             {sub.accounts.map((a) => (
               <li key={a.user} className="flex items-center gap-2 py-1.5">
+                <span aria-hidden className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-base-300 text-[10px] font-semibold text-base-content/80">
+                  {initials(a.user)}
+                </span>
                 <span className="min-w-0 flex-1 truncate text-[13px]" title={a.user}>
                   {a.user}
                 </span>

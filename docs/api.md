@@ -827,7 +827,11 @@ Server → client:
 `key`, `screenshot`, `launch`. Fields that do not apply are zero or empty:
 `x`/`y` for pointer actions (drag end point; drag start in `fromX`/`fromY`),
 `dx`/`dy` for scroll, `text` for `type`, `keys` (for example `"ctrl+l"`)
-for `key`, `text` holds the app name for `launch`.
+for `key`, `text` holds the app name for `launch`. The `browser_*` tools
+use the same kinds and set `tool` to their name: `click` at the screen
+point of the element, `type` (password characters shown as `•`), `key`,
+`scroll`, `launch` with the URL for a navigation, and `screenshot` for
+`browser_snapshot` and `browser_screenshot`.
 
 Client → server:
 
@@ -924,7 +928,8 @@ include key values, only `hasKey`.
 
 A binding is the last model of a harness: every session start with a model
 sets it (section 8). The web UI has no page to edit bindings; it reads them
-to preselect the model of a new session.
+to preselect the model of a new session and shows them on the model cards
+of the Models page.
 
 ```json
 Provider:     { "id": "openai", "kind": "openai", "name": "OpenAI", "baseUrl": "", "enabled": true, "hasKey": true,

@@ -7,6 +7,7 @@ import {
   LogOut,
   Monitor,
   Plug,
+  Search,
   Sparkles,
   SquareTerminal,
   TriangleAlert,
@@ -18,6 +19,7 @@ import { useSystem } from "../hooks/useSystem";
 import { useNow } from "../hooks/useResource";
 import { formatAgo, formatDateTime, parseTime, vmProblem } from "../lib/format";
 import { syncState } from "../lib/sync";
+import { isMac } from "./AppCommands";
 import { VmActivity } from "./VmPower";
 import { IconButton, cx } from "./ui";
 
@@ -123,7 +125,7 @@ function VmSlow() {
   );
 }
 
-export function StatusBar({ email, onLogout }: { email?: string; onLogout: () => void }) {
+export function StatusBar({ email, onLogout, onSearch }: { email?: string; onLogout: () => void; onSearch?: () => void }) {
   const { error, status, outage } = useSystem();
   return (
     // The VM controls are on the Desktop page; pages start or resume the VM
@@ -171,6 +173,18 @@ export function StatusBar({ email, onLogout }: { email?: string; onLogout: () =>
         <VmProblem />
         <VmSlow />
         <VmActivity />
+        {onSearch ? (
+          <button
+            type="button"
+            onClick={onSearch}
+            aria-label="Search pages, sessions, and actions"
+            aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+            className="btn btn-ghost btn-sm gap-2 border-base-content/15 px-2 font-normal text-base-content/70 hover:bg-base-content/10 hover:text-base-content"
+          >
+            <Search aria-hidden className="size-4" />
+            <kbd className="kbd kbd-xs hidden sm:inline-flex">{isMac ? "⌘K" : "Ctrl K"}</kbd>
+          </button>
+        ) : null}
         {email ? <span className="hidden text-xs text-base-content/70 md:inline">{email}</span> : null}
         <IconButton icon={LogOut} label={email ? `Sign out ${email}` : "Sign out"} onClick={onLogout} />
       </div>

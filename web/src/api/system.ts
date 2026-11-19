@@ -1,5 +1,5 @@
 import { http } from "./http";
-import type { AuthState, Status, VMStatus } from "./types";
+import type { AuthState, RemoteAccessStatus, Status, VMStatus } from "./types";
 
 // Section 2: authentication.
 export const auth = {
@@ -13,6 +13,9 @@ export const accessLogoutPath = "/cdn-cgi/access/logout";
 
 // Section 3: status.
 export const getStatus = (signal?: AbortSignal) => http.get<Status>("/api/v1/status", undefined, signal);
+
+// Section 3a: remote access.
+export const getRemoteAccess = (signal?: AbortSignal) => http.get<RemoteAccessStatus>("/api/v1/remote-access", undefined, signal);
 
 // Section 7: VM power.
 export const vm = {

@@ -26,7 +26,7 @@
    - Refresh tokens are AES-256-GCM encrypted in host SQLite and **never written to the VM disk**. Inside the VM, `lydiabox-guest` provides a dynamic `git-credential-helper` and a bridged **Connector MCP Server** over `vsock`.
 5. **Computer Use, Desktop Apps (Chrome / Blender) & Live WebRTC Takeover**:
    - Guest OS runs a lightweight X11 desktop (`Xvfb`/`Xorg` + `Xfce4`), pre-installed with **Google Chrome** (CDP enabled), **Blender**, and standard Linux toolchains.
-   - Pure-Go static guest agent (`lydiabox-guest`) provides a built-in **Computer Use MCP Server** (X11 screenshot, mouse, keyboard via pure-Go `xgb/xtest`, bash, Chrome CDP, Blender Python) and **WebRTC desktop streaming** (`pion/webrtc`).
+   - Pure-Go static guest agent (`lydiabox-guest`) provides a built-in **Computer Use MCP Server** (X11 screenshot, mouse, keyboard via pure-Go `xgb/xtest`, bash, Chrome CDP, high-level browser use, Blender Python) and its shell form `lbx` and **WebRTC desktop streaming** (`pion/webrtc`).
    - Users watch the agent operate the desktop in real time via Web UI (`OBSERVER` mode with action HUD overlay) and can click **"Takeover Desktop"** (`TAKEOVER` mode) to pause agent input and control Chrome/Blender directly with mouse and keyboard.
 
 ---
@@ -97,12 +97,13 @@ lydiabox/
     └── src/
         ├── App.tsx
         ├── api/                    # Typed REST & WebSocket clients
+        ├── components/product/     # Agent-product components on daisyUI: health labels, marks, model card, stat cells, command snippet, agent cursor/status/handoff, command palette
         └── pages/
             ├── StudioPage.tsx      # Sessions sidebar + xterm.js terminal
-            ├── DesktopPage.tsx     # WebRTC video canvas + Agent action overlay + Observer/Takeover toggle + VM state and power controls (only here)
+            ├── DesktopPage.tsx     # WebRTC video canvas + named agent cursor with trail + agent status pill + handoff control (Observer/Takeover) + VM state and power controls (only here)
             ├── FilesPage.tsx       # Offline-capable file tree, code editor, drag-drop folder upload, WebDAV/S3 mount info
-            ├── ModelsPage.tsx      # Magpie provider/routing management & per-Harness model selector
-            └── ConnectorsPage.tsx  # OAuth2 / PAT setup cards (GitHub, Google Drive, Notion, Slack) + audit log
+            ├── ModelsPage.tsx      # Gateway/provider status, subscriptions, API keys, model cards, session usage, routing groups
+            └── ConnectorsPage.tsx  # Connector setup rows (GitHub, Google Drive, Notion, Slack), remote access setup, audit log
 ~~~
 
 ---
@@ -288,6 +289,15 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      - `desktop_launch_app` (`chrome`, `blender`, `terminal`)
      - `browser_cdp_endpoint` (returns running Chrome `--remote-debugging-port=9222` WebSocket URL; auto-starts Chrome with `--user-data-dir=/home/agent/.config/google-chrome` if not running)
      - `blender_run_script` (executes Python code in Blender)
+     - High-level browser tools (addition, `internal/guest/browser`): `browser_open` (`url`, `new_tab`), `browser_back`, `browser_forward`, `browser_tabs` (`list`, `select`, `close`), `browser_snapshot`, `browser_click` (`ref`), `browser_type` (`ref`, `text`, `clear`, `submit`), `browser_select` (`ref`, `values`), `browser_press` (`key`, `ref`), `browser_scroll` (`ref` or `dx`/`dy`), `browser_text`, `browser_eval`, `browser_screenshot` (`full_page`), `browser_wait` (`load`, `selector`, `text`, `url`).
+5. **Browser Use (`internal/guest/browser`, addition)**:
+   - One pure-Go implementation drives the visible desktop Chrome that `browser_cdp_endpoint` starts, so the user can watch every step in the stream and take over. A small own CDP client on `github.com/coder/websocket` (already a dependency) is used instead of `chromedp`, which adds the large generated `cdproto` packages and a second WebSocket library for the 15 CDP methods that the tools need. One browser-level WebSocket reaches every tab through flattened sessions (`Target.attachToTarget` with `flatten`).
+   - `browser_snapshot` lists the headings and the interactive elements of the current tab in document order, one line each, for example `[e5] link "Learn more" -> https://...` or `[e7] textbox "Search" value="..."`. A ref stays the same for the same element in every snapshot of a document (a `WeakMap` in the page); a new document starts again at `e1`. Clicks, typing, and key presses are real input events (`Input.dispatchMouseEvent`, `Input.insertText`, `Input.dispatchKeyEvent`), not DOM calls.
+   - The current tab is the tab the agent selected while it is on screen, else the tab the user sees (the agent follows a tab switch made during a takeover). A click that opens a tab makes the new tab current; a click or a key press that starts a navigation waits for the load (10 s).
+   - Actions that change the page go through `x11.Controller.Act`: they wait up to 30 s while the user holds the desktop (then return the takeover message), never interleave with other agent input, and emit `agent_action` events (`click` at the screen point of the element, `type` with masked passwords, `key`, `scroll`, `launch` with the URL). Snapshots, text, screenshots, and the tab list are allowed during a takeover.
+6. **Shell Form and Discovery (addition)**:
+   - `lbx` (a link to `lydiabox-guest`, also `lydiabox-guest browser|computer ...`) calls the tools of the running guest MCP server, so harnesses without MCP support get the same browser session, refs, takeover rules, and events: `lbx browser open|snapshot|click|type|fill|select|press|scroll|text|eval|screenshot|wait|tabs|tab|close|new|back|forward`, `lbx computer screenshot|click|move|drag|type|key|scroll|launch`, `lbx tools`, and `lbx call <tool> <json>`. Screenshots are written to a PNG file and the path is printed. `LYDIABOX_MCP_URL` overrides the endpoint.
+   - Every harness wirer (`internal/magpie/wire`) keeps a marked block (`<!-- lydiabox:begin ... -->` to `<!-- lydiabox:end -->`) in the global instruction file of its harness: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.dsh/AGENTS.md`, and `~/.gemini/GEMINI.md` (Antigravity). The block names the `lbx` commands and the MCP tools. It is replaced in place on each harness start; text outside the markers stays.
 
 ---
 
@@ -319,15 +329,18 @@ Build a responsive, dark-themed workstation UI (TailwindCSS + daisyUI + Lucide i
    - Center pane: Live `xterm.js` WebSocket PTY terminal attached to the active Harness session. A session without a live terminal shows its read-only history (user and assistant messages and tool calls, `GET /api/v1/sessions/{id}/transcript`) with "Continue session", which resumes it in a terminal.
 3. **Desktop & Computer Use Tab (`/desktop`)**:
    - Full-viewport WebRTC `<video>` player with aspect-ratio scaling (`1920x1080` coordinate mapping).
-   - Live SVG overlay rendering Agent cursor position, click ripples, and recent MCP tool call feed on a collapsible right sidebar.
-   - Prominent Mode Switcher: **`👁 Observer Mode`** vs **`🖱 Takeover Control`** (captures pointer/keyboard events and sends over WebRTC DataChannel) + quick-launch buttons for Chrome & Blender.
+   - Live SVG overlay rendering the agent cursor (a named tag and a fading trail of its recent path), click ripples, and keystroke pills; the recent tool call feed is a timeline in a collapsible right sidebar.
+   - Agent status pill in the toolbar (2026-11-19): the current action, the run time, and the step count while the agent works; "Watching" when it is idle; "You have control" during a takeover. It opens and closes the activity sidebar.
+   - Handoff control (2026-11-19) for **Observer** vs **Takeover** (captures pointer/keyboard events and sends over WebRTC DataChannel): a track shows who has control (agent or you), and one button says "Take over" or "Hand back to the agent". Quick-launch buttons for Chrome, Blender, and Terminal.
 4. **Files Tab (`/files`)**:
    - Always-available file browser over `/workspace` and `/home/agent` (works with VM off!).
    - Supports directory tree navigation, inline file editor/viewer, folder drag-and-drop upload, file download, and a **"Mount Locally (WebDAV)"** modal showing endpoint & credentials.
 5. **Models & Magpie Tab (`/models`)**:
-   - Configure LLM Provider keys / Routing Groups via Magpie API and bind default models per Harness (`claude-code`, `codex`, `dsh`, `antigravity`, `opencode`).
+   - Configure LLM Provider keys / Routing Groups via Magpie API. From top to bottom (2026-11-19): a status list (the gateway, every signed-in subscription, and every API-key provider, with its health and model count; an error opens in place); the subscription cards; the API keys (masked key state, health, routing switch, rotate the key in place, edit, delete); model cards grouped by provider (context window, the harnesses whose last session used the model, its routing groups, copy the model ID); the token use and cost that sessions report, by model (hidden when no session reports usage); the routing groups. The cards show the bindings and do not change them.
 6. **Connectors Tab (`/connectors`)**:
-   - Cards for GitHub, Google Drive, Notion, and Slack showing connection status, OAuth "Connect" button (or "Configure Client ID / Paste Token" drawer for self-hosted setup), and real-time credential access audit logs.
+   - One row each for GitHub, Google Drive, Notion, and Slack (2026-11-19): the account line, and the action that moves the connector forward (OAuth "Connect", "Paste token", or "Set up" for a missing client ID). A failed OAuth sign-in stays on its row with "Try again". An open row lists the accounts with their scopes, an in-place disconnect confirmation, and "Activity", which filters the real-time credential access audit log to that connector.
+   - Remote access (`GET /api/v1/remote-access`): the hostname, allowed emails, tunnel state, and desktop relay when it is on; the `lydiabox cloudflare setup` steps with copy buttons when it is off. A workstation signed in through Cloudflare Access does not show the setup steps.
+7. **Command palette** (2026-11-19): Cmd+K (macOS) or Ctrl+K, or the search button in the status bar, opens a palette of the pages, the recent sessions, and the VM action that fits its state (Start, Resume, or Hibernate). The key does nothing inside a terminal (Ctrl+K edits the shell line) or while the remote desktop holds the keyboard.
 
 ---
 

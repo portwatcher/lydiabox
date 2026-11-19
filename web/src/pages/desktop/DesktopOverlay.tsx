@@ -1,3 +1,4 @@
+import { AgentCursor } from "../../components/product/AgentCursor";
 import type { Size } from "../../lib/coords";
 import type { OverlayState } from "./overlay";
 
@@ -6,7 +7,7 @@ import type { OverlayState } from "./overlay";
  * frame and `xMidYMid meet` matches the video's `object-fit: contain`, so
  * overlay and video share one geometry at any size.
  */
-export function DesktopOverlay({ state, screen }: { state: OverlayState; screen: Size }) {
+export function DesktopOverlay({ state, screen, name = "Agent" }: { state: OverlayState; screen: Size; name?: string }) {
   const unit = screen.width / 1920;
   return (
     <>
@@ -53,20 +54,7 @@ export function DesktopOverlay({ state, screen }: { state: OverlayState; screen:
             ) : null}
           </g>
         ))}
-        {state.cursor ? (
-          <g
-            style={{ transform: `translate(${state.cursor.x}px, ${state.cursor.y}px) scale(${1.4 * unit})` }}
-            className="motion-safe:transition-transform motion-safe:duration-150 motion-safe:ease-out"
-          >
-            <path
-              d="M0 0 L0 22 L6 16.5 L10 25 L13.5 23.5 L9.5 15 L17 15 Z"
-              fill="var(--color-primary)"
-              stroke="var(--color-primary-content)"
-              strokeWidth={1.5}
-              strokeLinejoin="round"
-            />
-          </g>
-        ) : null}
+        {state.cursor ? <AgentCursor at={state.cursor} trail={state.trail} name={name} unit={unit} /> : null}
       </svg>
       {state.pills.length > 0 ? (
         <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-6 flex flex-wrap justify-center gap-2 px-4">

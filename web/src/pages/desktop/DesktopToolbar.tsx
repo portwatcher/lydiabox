@@ -1,9 +1,12 @@
-import { Box, Eye, Globe, MousePointer2, PanelRightClose, PanelRightOpen, SquareTerminal, Users } from "lucide-react";
+import { Box, Globe, SquareTerminal, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { DesktopMode, LaunchApp } from "../../api/types";
-import { Button, cx } from "../../components/ui";
+import { AgentHandoff } from "../../components/product/AgentHandoff";
+import { AgentStatus } from "../../components/product/AgentStatus";
+import { Button } from "../../components/ui";
 import { count } from "../../lib/format";
+import type { AgentActivity } from "./activity";
 
 const apps: { app: LaunchApp; label: string; icon: LucideIcon }[] = [
   { app: "chrome", label: "Chrome", icon: Globe },
@@ -11,43 +14,16 @@ const apps: { app: LaunchApp; label: string; icon: LucideIcon }[] = [
   { app: "terminal", label: "Terminal", icon: SquareTerminal },
 ];
 
-function ModeSwitch({ mode, busy, disabled, onChange }: { mode: DesktopMode; busy: boolean; disabled: boolean; onChange: (m: DesktopMode) => void }) {
-  const options: { value: DesktopMode; label: string; icon: LucideIcon }[] = [
-    { value: "OBSERVER", label: "Observer", icon: Eye },
-    { value: "TAKEOVER", label: "Takeover", icon: MousePointer2 },
-  ];
-  return (
-    <div role="group" aria-label="Control mode" className="tabs tabs-box tabs-sm flex-nowrap border border-base-content/20 p-0.5">
-      {options.map(({ value, label, icon: Icon }) => {
-        const active = mode === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={active}
-            disabled={disabled || busy}
-            onClick={() => !active && onChange(value)}
-            className={cx(
-              "tab h-7 gap-1.5 px-2.5 text-[13px] font-medium",
-              // The fill is explicit: daisyUI drops it on a disabled tab, and the mode shows also while the desktop is not connected.
-              active ? (value === "TAKEOVER" ? "tab-active bg-primary text-primary-content" : "tab-active bg-base-100 ring-1 ring-base-content/60 ring-inset") : "text-base-content/70 hover:text-base-content",
-            )}
-          >
-            <Icon aria-hidden className="size-4" />
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 interface DesktopToolbarProps {
   mode: DesktopMode;
   modeBusy: boolean;
   connected: boolean;
   viewers: number;
   sidebar: boolean;
+  /** What the agent does now; the pill opens and closes the activity panel. */
+  activity: AgentActivity;
+  /** Client time, for the run timer. */
+  now: number;
   /** Keyboard hint of the takeover mode, shown beside the mode switch (outside the remote screen). */
   hint?: ReactNode;
   onModeChange: (mode: DesktopMode) => void;
@@ -58,10 +34,28 @@ interface DesktopToolbarProps {
 }
 
 /** Desktop controls and the VM controls. */
-export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hint = null, onModeChange, onLaunch, onToggleSidebar, machine }: DesktopToolbarProps) {
+export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, activity, now, hint = null, onModeChange, onLaunch, onToggleSidebar, machine }: DesktopToolbarProps) {
   return (
     <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 border-b border-base-content/10 px-3 py-2">
-      <ModeSwitch mode={mode} busy={modeBusy} disabled={!connected} onChange={onModeChange} />
+      <AgentHandoff
+        controller={mode === "TAKEOVER" ? "user" : "agent"}
+        busy={modeBusy}
+        disabled={!connected}
+        onHandoff={(to) => onModeChange(to === "user" ? "TAKEOVER" : "OBSERVER")}
+      />
+      <AgentStatus
+        name="Agent"
+        phase={activity.phase}
+        label={activity.label}
+        elapsed={activity.since === null ? null : now - activity.since}
+        steps={activity.steps}
+        aria-expanded={sidebar}
+        aria-controls="desktop-feed"
+        aria-label={`Agent: ${activity.label}. ${sidebar ? "Hide" : "Show"} activity`}
+        title={sidebar ? "Hide activity" : "Show activity"}
+        onClick={onToggleSidebar}
+        className="max-w-80"
+      />
       {/* A keyboard hint; hidden at phone widths, where the toolbar wraps and touch has no Shift+Esc. */}
       {hint ? <span className="hidden text-xs text-base-content/70 sm:inline">{hint}</span> : null}
       <div className="flex flex-wrap items-center gap-1">
@@ -76,16 +70,6 @@ export function DesktopToolbar({ mode, modeBusy, connected, viewers, sidebar, hi
         {count(viewers, { one: "# viewer", other: "# viewers" })}
       </span>
       <div className="ml-auto flex flex-wrap items-center gap-3">{machine}</div>
-      <Button
-        size="sm"
-        variant="ghost"
-        icon={sidebar ? PanelRightClose : PanelRightOpen}
-        aria-expanded={sidebar}
-        aria-controls="desktop-feed"
-        onClick={onToggleSidebar}
-      >
-        Activity
-      </Button>
     </div>
   );
 }

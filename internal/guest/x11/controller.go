@@ -205,6 +205,21 @@ func (c *Controller) awaitControl(ctx context.Context, deadline time.Time) error
 // agentInput runs fn with the input lock held once the agent has control
 // (waiting up to TakeoverWait for a handback), then publishes ev.
 func (c *Controller) agentInput(ctx context.Context, ev AgentAction, fn func(Backend) error) error {
+	return c.Act(ctx, ev, func() error {
+		be, err := c.backend()
+		if err != nil {
+			return err
+		}
+		return c.drop(be, fn(be))
+	})
+}
+
+// Act runs an agent action that does not use the X connection (a browser
+// action through the Chrome DevTools Protocol) under the same rules as
+// X11 input: it waits up to TakeoverWait while the user holds the desktop,
+// holds the input lock so it never interleaves with other agent input, and
+// publishes ev when fn succeeds. A zero ev.Action publishes nothing.
+func (c *Controller) Act(ctx context.Context, ev AgentAction, fn func() error) error {
 	deadline := time.Now().Add(c.opts.TakeoverWait)
 	for {
 		if err := c.awaitControl(ctx, deadline); err != nil {
@@ -218,17 +233,21 @@ func (c *Controller) agentInput(ctx context.Context, ev AgentAction, fn func(Bac
 		c.inputMu.Unlock()
 	}
 	defer c.inputMu.Unlock()
-	be, err := c.backend()
-	if err != nil {
+	if err := fn(); err != nil {
 		return err
 	}
-	if err := c.drop(be, fn(be)); err != nil {
-		return err
+	if ev.Action != "" {
+		c.Observe(ev)
 	}
+	return nil
+}
+
+// Observe publishes an agent action that injects no input (a page
+// snapshot or a browser screenshot); it is allowed in TAKEOVER mode.
+func (c *Controller) Observe(ev AgentAction) {
 	ev.Type = "agent_action"
 	ev.Timestamp = c.opts.Now().UTC()
 	c.hub.Publish(ev)
-	return nil
 }
 
 // Screenshot captures the screen. It is allowed in TAKEOVER mode because it

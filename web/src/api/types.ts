@@ -78,6 +78,31 @@ export interface Status {
   time: string;
 }
 
+// Section 3a: remote access.
+export type TunnelState = "stopped" | "connecting" | "connected" | "error";
+
+export interface TunnelStatus {
+  state: TunnelState | string;
+  lastError?: string;
+  restarts: number;
+  startedAt: string;
+}
+
+export interface RemoteAccessStatus {
+  provider: string;
+  /** True when Cloudflare Access login is on. */
+  configured: boolean;
+  hostname?: string;
+  teamDomain?: string;
+  emails?: string[];
+  serviceTokenClientId?: string;
+  bypassPaths?: string[];
+  turnKeyId?: string;
+  turnInUse: boolean;
+  /** Absent when LydiaBox does not run cloudflared. */
+  tunnel?: TunnelStatus;
+}
+
 // Section 4: File Manager.
 export type RootName = "workspace" | "home";
 export type EntryType = "file" | "dir" | "symlink" | "other";

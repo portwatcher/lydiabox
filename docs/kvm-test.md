@@ -166,7 +166,7 @@ mcp() { curl -s -m 600 -X POST http://127.0.0.1:8910/mcp -H 'Content-Type: appli
 | :--- | :--- | :--- | :--- |
 | F1 | Wake | `api POST /api/v1/vm/wake` | `RUNNING`, `"driver":"chv"` |
 | F2 | Desktop processes | `pgrep -af 'Xvfb\|startxfce4\|xfwm4\|xfce4-panel\|lydiabox-guest serve'`; `DISPLAY=:0 xdpyinfo \| grep dimensions` | `Xvfb :0 -screen 0 1920x1080x24`, `dbus-run-session -- /usr/bin/startxfce4`, `xfwm4`, `xfce4-panel`, `lydiabox-guest serve`; `1920x1080` |
-| F3 | Tool list | `curl -s -X POST http://127.0.0.1:8910/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` | 9 tools |
+| F3 | Tool list | `curl -s -X POST http://127.0.0.1:8910/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` | 23 tools (9 computer-use tools and 14 `browser_*` tools) |
 | F4 | Screenshot | `mcp computer_screenshot '{}'`; decode the base64 PNG | 1920x1080, the Xfce desktop with the panel, no error dialog |
 | F5 | Chrome | `mcp desktop_launch_app '{"app":"chrome"}'` | `Launched chrome`; a `chromium` (arm64) or `chrome` (amd64) process with `--remote-debugging-port=9222` |
 | F6 | CDP | `mcp browser_cdp_endpoint '{}'`; `curl http://127.0.0.1:9222/json/version` | `ws://127.0.0.1:9222/devtools/browser/...`; JSON with `webSocketDebuggerUrl`. The tool waits 30 s for a Chrome that it starts; call it again if Chrome starts more slowly |

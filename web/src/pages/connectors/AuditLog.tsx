@@ -14,10 +14,16 @@ import { appendOlder, auditDetail, auditKindLabel, isFailureKind, mergeNewer } f
 const PAGE = 50;
 const LIVE_MS = 5000;
 
-export function AuditLog({ names }: { names: Record<string, string> }) {
+interface AuditLogProps {
+  names: Record<string, string>;
+  /** The connector filter; "" shows all. */
+  provider: ConnectorProvider | "";
+  onProvider: (provider: ConnectorProvider | "") => void;
+}
+
+export function AuditLog({ names, provider, onProvider: setProvider }: AuditLogProps) {
   const toast = useToast();
   const now = useNow(30_000);
-  const [provider, setProvider] = useState<ConnectorProvider | "">("");
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [nextBefore, setNextBefore] = useState<number | undefined>(undefined);
   const [error, setError] = useState<unknown>(null);

@@ -7,8 +7,10 @@ import { ErrorView, LoadingView, StateView } from "../components/StateView";
 import { useToast } from "../components/Toast";
 import { Banner, Button, IconButton, cx } from "../components/ui";
 import { VmPower, VmResources, VmWakeButton } from "../components/VmPower";
+import { useNow } from "../hooks/useResource";
 import { useServerDown, useSystem } from "../hooks/useSystem";
 import { ActionFeed } from "./desktop/ActionFeed";
+import { agentActivity } from "./desktop/activity";
 import { DesktopOverlay } from "./desktop/DesktopOverlay";
 import { DesktopToolbar } from "./desktop/DesktopToolbar";
 import { initialOverlay, overlayReducer } from "./desktop/overlay";
@@ -46,6 +48,7 @@ export default function DesktopPage() {
     return () => mql.removeEventListener("change", onChange);
   }, []);
   const [modeBusy, setModeBusy] = useState(false);
+  const now = useNow(1000);
   const [keyboardHeld, setKeyboardHeld] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -131,12 +134,12 @@ export default function DesktopPage() {
   }, [stream.paused, fetchedAt, refresh, clearPaused]);
 
   useEffect(() => {
-    if (overlay.ripples.length === 0 && overlay.pills.length === 0 && !overlay.drag) {
+    if (overlay.ripples.length === 0 && overlay.pills.length === 0 && !overlay.drag && overlay.trail.length === 0) {
       return;
     }
     const id = setInterval(() => dispatch({ type: "expire", now: Date.now() }), 100);
     return () => clearInterval(id);
-  }, [overlay.ripples.length, overlay.pills.length, overlay.drag]);
+  }, [overlay.ripples.length, overlay.pills.length, overlay.drag, overlay.trail.length]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -176,6 +179,7 @@ export default function DesktopPage() {
   }
 
   const connected = stream.socket === "open";
+  const activity = agentActivity(overlay.feed, now, stream.mode, connected);
   // Live only once the video connection is up: before that the stage would
   // show a black screen.
   const live = connected && stream.stream !== null && stream.peer === "connected";
@@ -243,6 +247,8 @@ export default function DesktopPage() {
         connected={connected}
         viewers={stream.viewers}
         sidebar={sidebar}
+        activity={activity}
+        now={now}
         hint={takeover && live ? keyboardHeld ? <ReleaseHint /> : "Click the desktop to take control" : null}
         onModeChange={(m) => void changeMode(m)}
         onLaunch={launch}

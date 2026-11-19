@@ -47,21 +47,21 @@ func TestWirersPreserveUserContent(t *testing.T) {
 		// keep are user fragments that must survive verbatim.
 		keep []string
 	}{
-		{"claude-code", []string{".claude/settings.json", ".claude.json"}, "kimi/kimi-k3",
-			[]string{`"Bash(git status:*)"`, `"BASH_DEFAULT_TIMEOUT_MS": "120000"`, `"numStartups": 42`,
+		{"claude-code", []string{".claude/settings.json", ".claude.json", ".claude/CLAUDE.md"}, "kimi/kimi-k3",
+			[]string{"# My global rules\n\n- Answer in British English.\n- Run the tests before a commit.\n\n<!-- lydiabox:begin", `"Bash(git status:*)"`, `"BASH_DEFAULT_TIMEOUT_MS": "120000"`, `"numStartups": 42`,
 				`"github-mcp-server"`, `"X-Trace": "1"`, `"/workspace/lydiabox"`, `"statusLine"`}},
-		{"codex", []string{".codex/config.toml"}, "kimi/kimi-k3",
-			[]string{"# Personal Codex configuration. Keep this comment.", `approval_policy = "on-request"  # ask before running commands`,
+		{"codex", []string{".codex/config.toml", ".codex/AGENTS.md"}, "kimi/kimi-k3",
+			[]string{"# Codex notes\n\nPrefer small commits.\n\n<!-- lydiabox:begin (managed", "<!-- lydiabox:end -->\n\n## After the block\nKeep this section.\n", "# Personal Codex configuration. Keep this comment.", `approval_policy = "on-request"  # ask before running commands`,
 				`model = "kimi/kimi-k3" # my default model`, `model = "gpt-5.2-mini"`, "# The fast profile keeps its own model.",
 				`  "@acme/docs-mcp", # pinned`, `url = "http://127.0.0.1:8910/mcp" # stale port`, "startup_timeout_sec = 20",
 				"[tui]\nnotifications = true"}},
-		{"dsh", []string{".dsh/.env"}, "kimi/kimi-k3",
+		{"dsh", []string{".dsh/.env", ".dsh/AGENTS.md"}, "kimi/kimi-k3",
 			[]string{"# dsh environment, edited by hand", "export DEEPSEEK_API_KEY=lydiabox-local # personal key",
 				"DSH_THEME=dark", "# trailing comment block"}},
-		{"antigravity", []string{".antigravity/settings.json", ".gemini/antigravity-cli/settings.json", ".gemini/antigravity/mcp_config.json", ".gemini/config/mcp_config.json"}, "kimi/kimi-k3",
+		{"antigravity", []string{".antigravity/settings.json", ".gemini/antigravity-cli/settings.json", ".gemini/antigravity/mcp_config.json", ".gemini/config/mcp_config.json", ".gemini/GEMINI.md"}, "kimi/kimi-k3",
 			[]string{`"theme": "solarized"`, `"telemetry": false`, `"HTTP_PROXY": "http://proxy.local:3128"`, `"@modelcontextprotocol/server-filesystem"`,
 				`"colorScheme": "dark"`, `"trustedWorkspaces": [`, `"modelName": "gemini-api://gemini-3.1-pro-preview"`}},
-		{"opencode", []string{".config/opencode/opencode.json"}, "kimi/kimi-k3",
+		{"opencode", []string{".config/opencode/opencode.json", ".config/opencode/AGENTS.md"}, "kimi/kimi-k3",
 			[]string{`"theme": "tokyonight"`, `"timeout": 600000`, `"db-mcp"`, `"leader": "ctrl+x"`}},
 	}
 	for _, tc := range cases {

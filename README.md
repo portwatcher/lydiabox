@@ -398,7 +398,8 @@ Cloudflare Realtime TURN key for the desktop stream (`-turn=false` skips
 it). It stores the tokens encrypted in the state database. Run it again to
 change the emails; `lydiabox cloudflare status` shows the setup and
 `lydiabox cloudflare teardown` deletes it. `lydiabox up` downloads the
-pinned `cloudflared` on first use.
+pinned `cloudflared` on first use. The Connectors page shows the remote access
+state, or these steps with copy buttons while it is off.
 
 - With a tunnel, `lydiabox up` listens on `127.0.0.1:8080`, so that every
   request goes through Cloudflare Access. To also serve the LAN, set
@@ -430,8 +431,10 @@ pinned `cloudflared` on first use.
 
 ## Models and sessions
 
-`lydiabox up` runs magpie on `127.0.0.1:3425` (`LYDIABOX_MAGPIE_ADDR`). Add providers, routing
-groups, and the default model of each harness in the Models page. Upstream
+`lydiabox up` runs magpie on `127.0.0.1:3425` (`LYDIABOX_MAGPIE_ADDR`). Add providers and routing
+groups in the Models page; it also shows the health of each provider, the
+models with the harnesses that used them last, and the token use and cost
+that sessions report. A session chooses its model. Upstream
 keys stay in `$LYDIABOX_DATA_DIR/state/magpie`. Inside the VM, harnesses
 use the gateway at `http://127.0.0.1:3425` with a placeholder token; the
 host side of the tunnel replaces it with a revocable gateway key.
@@ -446,6 +449,31 @@ the provider terms first: see
 The Studio lists the sessions of all five harnesses from `/home/agent`,
 also while the VM is off. See
 [docs/harness-formats.md](docs/harness-formats.md).
+
+## Browser and computer use
+
+Agents in the VM use the desktop like a person, on the screen that you
+watch and can take over. Each harness gets the tools in two forms:
+
+- the `lydiabox` MCP server (`http://127.0.0.1:8910/mcp`): `computer_*`
+  tools for the X11 desktop and `browser_*` tools for the desktop Chrome;
+- the `lbx` command in the shell, with the same operations:
+
+```sh
+lbx browser open https://example.com
+lbx browser snapshot          # [e1] link "Learn more" -> https://...
+lbx browser click e1
+lbx browser type e3 "query" --submit
+lbx computer screenshot       # prints the path of a PNG
+lbx browser help
+```
+
+The wirers write a short marked block about these tools into the global
+instruction file of each harness (`~/.claude/CLAUDE.md`,
+`~/.codex/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.dsh/AGENTS.md`,
+`~/.gemini/GEMINI.md`), so agents know them without a prompt. Your own text
+in these files stays. While you have taken over the desktop, agent actions
+wait up to 30 s and then report the takeover.
 
 ## Connectors
 

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/guest/browser"
 	"github.com/lydiabox/lydiabox/internal/guest/credproxy"
 	"github.com/lydiabox/lydiabox/internal/guest/mcp"
 	"github.com/lydiabox/lydiabox/internal/guest/ptymanager"
@@ -184,7 +185,7 @@ func startDesktop(ctx context.Context, f *serveFlags, log *slog.Logger, opts *da
 	display := f.display
 	desk := x11.NewController(x11.Options{Dial: func() (x11.Backend, error) { return x11.DialXGB(display) }})
 	apps := mcp.NewLocalApps(mcp.LocalAppsOptions{Display: display, WorkDir: desktopDir(workdir), ChromeFlags: strings.Fields(f.chromeFlags)})
-	server := mcp.NewServer(desk, apps)
+	server := mcp.NewServer(desk, apps, mcp.WithBrowser(browser.New(browser.Options{Endpoint: apps.CDPEndpoint, Desktop: desk})))
 	stream, err := webrtc.New(webrtc.Options{
 		Display: display, Width: w, Height: h, RTPAddr: f.rtpAddr, UDPPort: f.webrtcPort,
 		Encoder: webrtc.ExecLauncher{Path: f.ffmpeg, Stderr: os.Stderr}, Input: desk.HandleInputJSON, Logger: log,
