@@ -18,7 +18,7 @@ import { useToast } from "../../components/Toast";
 import { Banner, Button } from "../../components/ui";
 import { VmWakeButton } from "../../components/VmPower";
 import { useSystem } from "../../hooks/useSystem";
-import { harnessLabel } from "../../lib/harness";
+import { harnessLabel, setupStepsOf } from "../../lib/harness";
 
 interface ChatViewProps {
   session: Session;
@@ -192,7 +192,7 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   } else if (empty && !synced) {
     body = <LoadingView label="Loading the conversation…" />;
   } else if (empty && state === "setup") {
-    body = <SetupHandoff harness={harnessLabel(session.harness)} prompt={status?.prompt ?? ""} held={held} onOpenTerminal={onOpenTerminal} />;
+    body = <SetupHandoff harness={harnessLabel(session.harness)} steps={setupStepsOf(session.harness)} prompt={status?.prompt ?? ""} held={held} onOpenTerminal={onOpenTerminal} />;
   } else if (empty && live) {
     body = <StarterPrompts onPick={pick} />;
   } else if (empty) {

@@ -9,6 +9,20 @@ export const harnessLabels: Record<HarnessID, string> = {
   shell: "Shell",
 };
 
+/**
+ * What the first start of a harness asks in its terminal, when it asks
+ * more than the screen title shows. Antigravity shows the color scheme
+ * step until its terms are answered (agy 1.5.12 keeps the choice until
+ * then), so LydiaBox cannot skip it.
+ */
+const setupSteps: Partial<Record<HarnessID, string>> = {
+  antigravity: "Choose a color scheme. Then read the terms, and accept them if you agree.",
+};
+
+export function setupStepsOf(id: string): string {
+  return id in setupSteps ? (setupSteps[id as HarnessID] ?? "") : "";
+}
+
 export function harnessLabel(id: string): string {
   return id in harnessLabels ? harnessLabels[id as HarnessID] : id;
 }
