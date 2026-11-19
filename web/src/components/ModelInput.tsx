@@ -1,36 +1,19 @@
-import { useId } from "react";
+import { useMemo } from "react";
 import type { Model } from "../api/types";
-import { TextInput } from "./ui";
+import { Combobox } from "./Combobox";
 
 interface ModelInputProps {
   id: string;
   value: string;
   onChange: (value: string) => void;
   models: Model[];
-  placeholder?: string;
+  /** Accessible name of the list, the same as the field label. */
+  label: string;
   describedBy?: string;
 }
 
-/** A model ID field that suggests known `provider/model` IDs and accepts any value. */
-export function ModelInput({ id, value, onChange, models, placeholder, describedBy }: ModelInputProps) {
-  const listId = useId();
-  return (
-    <>
-      <TextInput
-        id={id}
-        list={listId}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        spellCheck={false}
-        autoComplete="off"
-        aria-describedby={describedBy}
-      />
-      <datalist id={listId}>
-        {models.map((m) => (
-          <option key={m.id} value={m.id} />
-        ))}
-      </datalist>
-    </>
-  );
+/** A model ID field that offers the listed `provider/model` IDs by provider and accepts any value. */
+export function ModelInput({ id, value, onChange, models, label, describedBy }: ModelInputProps) {
+  const options = useMemo(() => models.map((m) => ({ value: m.id, label: m.name || m.id, group: m.provider })), [models]);
+  return <Combobox id={id} value={value} onChange={onChange} options={options} label={label} describedBy={describedBy} />;
 }

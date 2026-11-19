@@ -31,7 +31,7 @@ function TargetAdder({ index, models, onAdd }: { index: number; models: Model[];
         Model to add
       </label>
       <div className="min-w-0 flex-1">
-        <ModelInput id={id} value={value} onChange={setValue} models={models} />
+        <ModelInput id={id} label="Model to add" value={value} onChange={setValue} models={models} />
       </div>
       <Button type="submit" icon={Plus} disabled={!value.trim()}>
         Add

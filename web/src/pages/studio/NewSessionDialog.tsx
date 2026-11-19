@@ -6,6 +6,7 @@ import { models as modelsApi, sessions } from "../../api/domains";
 import { SESSION_HARNESSES } from "../../api/types";
 import type { HarnessID, Model, Session } from "../../api/types";
 import { Dialog } from "../../components/Dialog";
+import { Combobox } from "../../components/Combobox";
 import { ModelInput } from "../../components/ModelInput";
 import { Banner, Button, Field, Select, TextInput } from "../../components/ui";
 import { harnessLabels } from "../../lib/harness";
@@ -66,6 +67,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
   const [lastModels, setLastModels] = useState<Partial<Record<HarnessID, string>>>({});
 
   const model = typedModel ?? lastModels[harness] ?? "";
+  const workspaceOptions = useMemo(() => workspaces.map((w) => ({ value: w })), [workspaces]);
 
   const chooseHarness = (h: HarnessID) => {
     setHarness(h);
@@ -165,24 +167,19 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
           </Select>
         </Field>
         <Field id="ns-workspace" label="Workspace folder" error={workspaceError}>
-          <TextInput
+          <Combobox
             id="ns-workspace"
-            list="ns-workspaces"
+            label="Workspace folder"
             value={workspace}
-            onChange={(e) => setWorkspace(e.target.value)}
-            spellCheck={false}
-            aria-invalid={workspaceError ? true : undefined}
-            aria-describedby={workspaceError ? "ns-workspace-error" : undefined}
+            onChange={setWorkspace}
+            options={workspaceOptions}
+            invalid={Boolean(workspaceError)}
+            describedBy={workspaceError ? "ns-workspace-error" : undefined}
           />
-          <datalist id="ns-workspaces">
-            {workspaces.map((w) => (
-              <option key={w} value={w} />
-            ))}
-          </datalist>
         </Field>
         {harness !== "shell" ? (
           <Field id="ns-model" label="Model">
-            <ModelInput id="ns-model" value={model} onChange={setModel} models={models} />
+            <ModelInput id="ns-model" label="Model" value={model} onChange={setModel} models={models} />
           </Field>
         ) : null}
         <Field id="ns-title" label="Title">

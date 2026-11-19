@@ -4,9 +4,18 @@ import { describeError } from "../../api/errors";
 import { models } from "../../api/domains";
 import type { Provider, UpdateProviderRequest } from "../../api/types";
 import { Dialog } from "../../components/Dialog";
-import { Banner, Button, Field, TextInput, describedBy } from "../../components/ui";
+import { Banner, Button, Field, Select, TextInput, describedBy } from "../../components/ui";
 
-const KINDS = ["openai", "anthropic", "google", "deepseek", "moonshot", "openrouter", "openai-compatible"];
+/** The magpie presets that the dialog offers (docs/api.md, POST /api/v1/models/providers). */
+const KINDS: { value: string; label: string }[] = [
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Anthropic" },
+  { value: "google", label: "Google" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "moonshot", label: "Moonshot" },
+  { value: "openrouter", label: "OpenRouter" },
+  { value: "openai-compatible", label: "OpenAI compatible" },
+];
 
 interface ProviderDialogProps {
   open: boolean;
@@ -25,7 +34,7 @@ export function ProviderDialog({ open, provider, onClose, onSaved }: ProviderDia
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ kind?: string; name?: string; baseUrl?: string; apiKey?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; baseUrl?: string; apiKey?: string }>({});
 
   useEffect(() => {
     if (open) {
@@ -40,9 +49,6 @@ export function ProviderDialog({ open, provider, onClose, onSaved }: ProviderDia
 
   const validate = () => {
     const errors: typeof fieldErrors = {};
-    if (!editing && !kind.trim()) {
-      errors.kind = "Enter the provider kind, such as openai.";
-    }
     if (!name.trim()) {
       errors.name = "Enter a display name.";
     }
@@ -107,21 +113,14 @@ export function ProviderDialog({ open, provider, onClose, onSaved }: ProviderDia
       <form id="provider-form" onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
         {error ? <Banner tone="danger">{error}</Banner> : null}
         {!editing ? (
-          <Field id="pv-kind" label="Kind" error={fieldErrors.kind}>
-            <TextInput
-              id="pv-kind"
-              list="pv-kinds"
-              value={kind}
-              onChange={(e) => setKind(e.target.value)}
-              spellCheck={false}
-              aria-invalid={fieldErrors.kind ? true : undefined}
-              aria-describedby={describedBy("pv-kind", false, Boolean(fieldErrors.kind))}
-            />
-            <datalist id="pv-kinds">
+          <Field id="pv-kind" label="Kind">
+            <Select id="pv-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
               {KINDS.map((k) => (
-                <option key={k} value={k} />
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
               ))}
-            </datalist>
+            </Select>
           </Field>
         ) : null}
         <Field id="pv-name" label="Name" error={fieldErrors.name}>

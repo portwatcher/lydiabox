@@ -116,18 +116,18 @@ export function Badge({ tone = "neutral", icon: Icon, children, className }: { t
  * daisyUI draws the field border at 20% of the text color (1.8:1). The
  * border here is 45% (4.0:1 on base-100), so the field edge stays visible.
  */
-const field = "w-full min-w-0 border-base-content/45 aria-invalid:border-error";
+export const fieldClass = "w-full min-w-0 border-base-content/45 aria-invalid:border-error";
 
 export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function TextInput(
   { className, ...rest },
   ref,
 ) {
-  return <input ref={ref} className={cx("input", field, className)} {...rest} />;
+  return <input ref={ref} className={cx("input", fieldClass, className)} {...rest} />;
 });
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cx("select", field, className)} {...rest}>
+    <select className={cx("select", fieldClass, className)} {...rest}>
       {children}
     </select>
   );
