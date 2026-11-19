@@ -23,6 +23,9 @@ func (s SessionsRoutes) RegisterRoutes(r Router) {
 	r.HandleFunc("PATCH /api/v1/sessions/{id}", s.patch)
 	r.HandleFunc("GET /api/v1/sessions/{id}/transcript", s.transcript)
 	r.HandleFunc("GET /api/v1/sessions/{id}/ws", s.ws)
+	r.HandleFunc("GET /api/v1/sessions/{id}/events", s.events)
+	r.HandleFunc("POST /api/v1/sessions/{id}/input", s.input)
+	r.HandleFunc("POST /api/v1/sessions/{id}/interrupt", s.interrupt)
 }
 
 // CodeNotInstalled answers a session start whose harness program is not

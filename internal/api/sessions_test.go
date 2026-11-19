@@ -29,6 +29,7 @@ type sessionsEnv struct {
 	srv    *httptest.Server
 	runner *harnesstest.Runner
 	ws     string
+	home   string
 }
 
 func newSessionsEnv(t *testing.T) *sessionsEnv {
@@ -42,9 +43,9 @@ func newSessionsEnv(t *testing.T) *sessionsEnv {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mgr, err := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(),
 		Files:     agentfs.NewLocal(harnesstest.Dirs{Home: home, Workspace: ws}, agentfs.LocalOptions{}),
-		Discovery: harness.LocalDiscovery{Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Adapters: adapters.All()},
+		Discovery: harness.LocalDiscovery{Dirs: harnesstest.Dirs{Home: home, Workspace: ws}, Adapters: adapters.All(), EventReader: adapters.NewEventReader()},
 		Store:     &harnesstest.Store{}, Runner: runner, Waker: &harnesstest.Waker{}, Logger: log,
-		KillGrace: 100 * time.Millisecond, TermGrace: 100 * time.Millisecond})
+		KillGrace: 100 * time.Millisecond, TermGrace: 100 * time.Millisecond, EventPoll: 20 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +57,7 @@ func newSessionsEnv(t *testing.T) *sessionsEnv {
 	}
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
-	return &sessionsEnv{srv: srv, runner: runner, ws: ws}
+	return &sessionsEnv{srv: srv, runner: runner, ws: ws, home: home}
 }
 
 func (e *sessionsEnv) do(t *testing.T, method, path string, body any) (*http.Response, []byte) {
