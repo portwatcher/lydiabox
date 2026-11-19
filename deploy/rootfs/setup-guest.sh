@@ -1,9 +1,9 @@
 #!/bin/sh
 # Shared guest image setup for the "desktop" and "desktop-slim" stages of
-# deploy/rootfs/Dockerfile. The agent user owns uid 1000 (the ubuntu image's
-# default user is removed), /workspace exists, git asks lydiabox-guest
-# for credentials, and lbx (browser and computer use from the shell) is on
-# PATH.
+# deploy/rootfs/Dockerfile. The agent user owns uid 1000 (the default user
+# "ubuntu" of the Ubuntu image is removed; the Debian image has none),
+# /workspace exists, git asks lydiabox-guest for credentials, and lbx
+# (browser and computer use from the shell) is on PATH.
 set -eux
 if id ubuntu >/dev/null 2>&1; then userdel -r ubuntu; fi
 useradd --create-home --uid 1000 --user-group --shell /bin/bash agent

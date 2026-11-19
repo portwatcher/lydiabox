@@ -9,5 +9,6 @@
 !deploy/rootfs/supervisord.conf
 !deploy/rootfs/lydiabox-init
 !deploy/rootfs/setup-guest.sh
+!deploy/rootfs/dpkg-excludes
 internal/webui/dist/assets
 **/*_test.go

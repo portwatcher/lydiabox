@@ -1,0 +1,9 @@
+# dpkg rules of the LydiaBox desktop image on Debian (deploy/rootfs/Dockerfile):
+# no manuals, translations, or documentation, except the copyright files.
+# The rules of /etc/dpkg/dpkg.cfg.d/excludes of the Ubuntu image also keep
+# the changelogs; Debian's changelogs are larger (34 MB), and the InstaBox
+# image must fit the import disk (docs/instabox.md).
+path-exclude=/usr/share/man/*
+path-exclude=/usr/share/locale/*/LC_MESSAGES/*.mo
+path-exclude=/usr/share/doc/*
+path-include=/usr/share/doc/*/copyright

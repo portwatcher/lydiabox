@@ -10,12 +10,21 @@
 #                       docker driver on small hosts and in tests
 #
 # Build arguments:
+#   DESKTOP_IMAGE        distribution of the "desktop" and "desktop-slim"
+#                        stages: ubuntu:24.04 (default; the chv and docker
+#                        drivers) or debian:trixie-slim (the InstaBox image,
+#                        deploy/instabox/build.sh). One package list serves
+#                        both; the steps that differ check ID in
+#                        /etc/os-release.
 #   CH_LINUX_REF         branch of github.com/cloud-hypervisor/linux (kernel)
 #   NODE_MAJOR           Node.js major version for the harness CLIs
 #   CLAUDE_CODE_PACKAGE, CODEX_PACKAGE, OPENCODE_PACKAGE, DSH_INSTALL,
 #   ANTIGRAVITY_INSTALL  harness installers (deploy/rootfs/install-harnesses.sh)
 
 ARG UBUNTU_IMAGE=ubuntu:24.04
+# The kernel, initramfs, and squash stages are build tools and stay on
+# UBUNTU_IMAGE.
+ARG DESKTOP_IMAGE=${UBUNTU_IMAGE}
 ARG GO_IMAGE=golang:1.24-bookworm
 # Stage copied into rootfs.squashfs: "desktop" or "desktop-slim"
 # (build-artifacts.sh --slim).
@@ -79,7 +88,7 @@ RUN set -eux; \
 	find . -print0 | cpio --null --create --format=newc --quiet | gzip -9 >/out/initramfs.cpio.gz
 
 # --- Desktop root filesystem (also the docker driver image) ------------------
-FROM ${UBUNTU_IMAGE} AS desktop
+FROM ${DESKTOP_IMAGE} AS desktop
 ARG TARGETARCH
 ARG NODE_MAJOR=24
 ARG CLAUDE_CODE_PACKAGE=@anthropic-ai/claude-code
@@ -89,29 +98,51 @@ ARG OPENCODE_PACKAGE=opencode-ai
 ARG DSH_INSTALL="npm install -g --no-fund --no-audit @deepseek-ai/dsh"
 ARG ANTIGRAVITY_INSTALL="curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin"
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=Etc/UTC
+COPY deploy/rootfs/dpkg-excludes /tmp/dpkg-excludes
+# Ubuntu and Debian get the same package list. Distribution steps:
+# - Debian: dpkg leaves out the manuals, translations, and documentation
+#   (as /etc/dpkg/dpkg.cfg.d/excludes of the Ubuntu image does), so that
+#   the InstaBox image fits the import disk (docs/instabox.md).
+# - Ubuntu: software-properties-common (add-apt-repository, for the
+#   Chromium PPA on arm64); Debian 13 does not have the package.
 # bubblewrap: Codex's background app server checks for it on PATH at each
 # start (also when the session runs with
 # --dangerously-bypass-approvals-and-sandbox) and shows a warning without it.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN set -eux; \
+	. /etc/os-release; \
+	extra=""; \
+	case "$ID" in \
+	ubuntu) extra=software-properties-common ;; \
+	debian) cp /tmp/dpkg-excludes /etc/dpkg/dpkg.cfg.d/lydiabox-excludes ;; \
+	*) echo "unsupported distribution $ID" >&2; exit 1 ;; \
+	esac; \
+	rm /tmp/dpkg-excludes; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends \
 	xvfb xorg xfce4 xfce4-terminal dbus dbus-x11 fonts-noto-cjk ffmpeg blender \
 	git gh curl jq ripgrep python3 python3-pip python3-venv bubblewrap \
 	supervisor sudo ca-certificates gnupg wget xdg-utils iproute2 iputils-ping procps less \
-	vim-tiny unzip zip openssh-client build-essential software-properties-common \
-	&& rm -rf /var/lib/apt/lists/*
-# Node.js for the harness CLIs.
+	vim-tiny unzip zip openssh-client build-essential $extra; \
+	rm -rf /var/lib/apt/lists/*
+# Node.js for the harness CLIs (NodeSource: its "nodistro" source serves
+# Ubuntu and Debian).
 RUN set -eux; \
 	curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -; \
 	apt-get install -y --no-install-recommends nodejs; \
 	rm -rf /var/lib/apt/lists/*
-# Google Chrome on amd64; Chromium (deb, not the snap) on arm64.
+# Google Chrome on amd64. On arm64: Chromium from Debian main, or on Ubuntu
+# the deb of the xtradeb PPA (Ubuntu's own chromium is a snap).
 RUN set -eux; \
+	. /etc/os-release; \
 	if [ "$TARGETARCH" = amd64 ]; then \
 	curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg; \
 	echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" \
 	>/etc/apt/sources.list.d/google-chrome.list; \
 	apt-get update; apt-get install -y --no-install-recommends google-chrome-stable; \
-	else \
+	elif [ "$ID" = ubuntu ]; then \
 	add-apt-repository -y ppa:xtradeb/apps; \
+	apt-get update; apt-get install -y --no-install-recommends chromium; \
+	else \
 	apt-get update; apt-get install -y --no-install-recommends chromium; \
 	fi; \
 	rm -rf /var/lib/apt/lists/*
@@ -135,7 +166,7 @@ CMD ["/usr/local/sbin/lydiabox-init"]
 # ffmpeg for the WebRTC stream. It has no Chrome, Blender, Node.js, or
 # harness CLIs:
 #   deploy/rootfs/build-artifacts.sh --slim --docker-image lydiabox/guest:slim --no-vm-images
-FROM ${UBUNTU_IMAGE} AS desktop-slim
+FROM ${DESKTOP_IMAGE} AS desktop-slim
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=Etc/UTC
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	xvfb xfce4-session xfwm4 xfce4-terminal dbus dbus-x11 x11-utils ffmpeg \
