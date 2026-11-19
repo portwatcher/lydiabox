@@ -160,7 +160,13 @@ codex-acp 2.7.0 source:
   https://www.iana.org`), and the input to the arguments.
 - Kind: a computer, browser, plan, agent, or MCP tool name sets the kind. A
   name with spaces is a title (codex-acp uses the command line), so a known
-  ACP kind sets the kind for it.
+  ACP kind sets the kind for it. A shell call of `lbx browser` or `lbx
+  computer` gets the kind `browser` or `computer` (`harness.ShellKind`). An
+  update leaves out the fields that did not change: claude-agent-acp sends a
+  Bash call first with the name `Bash`, the title `Terminal`, the kind
+  `execute`, and an empty input, then the command without the name and the
+  kind. The bridge keeps the ACP kind and the `name` of each call, and sets
+  the kind again on each update. A title does not replace a `name`.
 - Images: an image content block and the images of `rawOutput` (Claude Code
   and opencode send a screenshot in both). Each data URL is added once.
 - Duration: from the first report of the call to its end. A call that the
