@@ -61,16 +61,16 @@ func (a *activity) input() {
 	a.fresh = a.fresh[:0]
 }
 
-// setup returns the line of the first-run setup screen that the terminal
+// setup returns the title of the first-run setup screen that the terminal
 // shows, or "".
 func (a *activity) setup() string {
 	if len(a.fresh) == 0 {
 		return a.setupAtInput
 	}
-	if line := lastMatchLine(setupRe, a.fresh); line != "" {
-		return line
+	if title := lastMatchTitle(setupRe, a.fresh); title != "" {
+		return title
 	}
-	return lastMatchLine(setupStepRe, a.fresh)
+	return lastMatchTitle(setupStepRe, a.fresh)
 }
 
 // Activity is what the output of a terminal shows about its program.
@@ -134,6 +134,34 @@ func approvalPrompt(tail []byte) string { return lastMatchLine(approvalRe, tail)
 
 // lastMatchLine returns the line of the last match of re in the last
 // screenful of output, or "".
+// lastMatchTitle returns the last match of re in the last screenful of
+// output, up to the end of its sentence (":", "?", "!") or the next gap
+// of two spaces: a TUI draws other boxes (a preview, options) on the same
+// screen line.
+func lastMatchTitle(re *regexp.Regexp, tail []byte) string {
+	text := screenText(tail)
+	if r := []rune(text); len(r) > 2000 {
+		text = string(r[len(r)-2000:])
+	}
+	loc := re.FindAllStringIndex(text, -1)
+	if len(loc) == 0 {
+		return ""
+	}
+	m := loc[len(loc)-1]
+	rest := text[m[1]:]
+	end := len(rest)
+	if i := strings.IndexAny(rest, "\n:?!"); i >= 0 {
+		end = i
+		if rest[i] != '\n' {
+			end++
+		}
+	}
+	if i := strings.Index(rest[:end], "  "); i >= 0 {
+		end = i
+	}
+	return strings.Join(strings.Fields(text[m[0]:m[1]]+rest[:end]), " ")
+}
+
 func lastMatchLine(re *regexp.Regexp, tail []byte) string {
 	text := screenText(tail)
 	if r := []rune(text); len(r) > 2000 {
