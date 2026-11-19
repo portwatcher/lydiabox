@@ -115,3 +115,38 @@ check_session_bus() {
 	fi
 	echo "ok ($current): Xfce on LydiaBox's session bus, settings in LydiaBox's home, the image's Codex settings"
 }
+
+# check_apt (machine model): /etc/apt of the image replaces the machine's,
+# so it has Debian 13 sources (and the third-party sources of the build)
+# with no Ubuntu source or key, and /var/lib/apt/lists is empty. With the
+# model's Debian 13 libraries and dpkg database, apt-get update and an
+# install of a small package work as root, with no warning. The network
+# part is skipped when the Debian archive cannot be reached.
+check_apt() {
+	if in_ctr 'grep -rIil -e ubuntu -e launchpad /etc/apt; find /etc/apt -iname "*ubuntu*"' | grep . >&2; then
+		fail "/etc/apt names Ubuntu"
+	fi
+	# shellcheck disable=SC2016 # expanded in the container
+	in_ctr '. /etc/os-release && test "$ID" = debian && test "$VERSION_ID" = 13 &&
+		grep -qx "Suites: trixie trixie-updates" /etc/apt/sources.list.d/debian.sources' ||
+		fail "the image's /etc/os-release or Debian sources are not Debian 13"
+	lists=$(in_ctr 'find /var/lib/apt/lists -mindepth 1 ! -name lock ! -name partial')
+	[ -z "$lists" ] || fail "/var/lib/apt/lists of the image is not empty: $lists"
+	if ! in_ctr 'curl -fsS -o /dev/null --max-time 20 http://deb.debian.org/debian/dists/trixie/InRelease' >/dev/null 2>&1; then
+		echo "SKIP ($current): apt-get update and install: the Debian archive cannot be reached"
+		return
+	fi
+	out=$(in_ctr 'DEBIAN_FRONTEND=noninteractive apt-get -q update 2>&1') || {
+		echo "$out" | tail -20 >&2
+		fail "apt-get update"
+	}
+	if echo "$out" | grep -E '^(W|E):|no version information|Segmentation' >&2; then
+		fail "apt-get update gave a warning or an error"
+	fi
+	out=$(in_ctr 'DEBIAN_FRONTEND=noninteractive apt-get -q install -y --no-install-recommends hello 2>&1 && hello') || {
+		echo "$out" | tail -20 >&2
+		fail "apt-get install hello"
+	}
+	echo "$out" | grep -qx 'Hello, world!' || fail "hello does not run after apt-get install"
+	echo "ok ($current): Debian 13 sources only; apt-get update and apt-get install hello work as root"
+}

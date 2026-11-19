@@ -19,8 +19,11 @@
 #            files, a dbus-run-session that fails, the user manager's
 #            session bus (HOME /data/home), the template's Codex settings
 #            and harness links, systemd's and supplier variables in the
-#            unit, and a socket as the standard output of the entry point
-#            (the journal)
+#            unit, a socket as the standard output of the entry point
+#            (the journal), and the Debian 13 template's shared libraries
+#            and dpkg database over the image's; apt-get update and an
+#            install of one package work there as root (skipped without
+#            network)
 #   migrate  the machine scenario on a disk of the old layout (core
 #            802e85c and earlier: /home/agent -> /data/home): the start
 #            moves the link one time and leaves /data/home unchanged
@@ -242,6 +245,8 @@ EOF'
 	check_layout
 	check_desktop
 	echo "ok ($current): layout and desktop after restart"
+	# Last, because it changes the root disk.
+	[ "$current" != machine ] || check_apt
 	docker rm -f "$name" >/dev/null
 	docker volume rm "$volume" >/dev/null
 }
