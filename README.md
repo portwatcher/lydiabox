@@ -11,8 +11,8 @@ static Go binary runs the control plane on your server:
 - the magpie LLM gateway, which keeps upstream API keys on the host;
 - GitHub, Google Drive, Notion, and Slack connectors whose tokens never
   reach the VM disk;
-- a web workstation: terminal sessions, live desktop with takeover, files,
-  models, and connectors.
+- a web workstation: agent sessions in a chat view or a terminal, live
+  desktop with takeover, files, models, and connectors.
 
 See [docs/design.md](docs/design.md) for the architecture,
 [docs/api.md](docs/api.md) for the HTTP and WebSocket API, and
@@ -447,7 +447,9 @@ the provider terms first: see
 [docs/subscriptions-manual-test.md](docs/subscriptions-manual-test.md).
 
 The Studio lists the sessions of all five harnesses from `/home/agent`,
-also while the VM is off. See
+also while the VM is off. A harness session opens in a chat view built from
+its transcript (messages, tool calls with their output, plan, token use);
+the terminal of the same session is one switch away. See
 [docs/harness-formats.md](docs/harness-formats.md).
 
 ## Browser and computer use

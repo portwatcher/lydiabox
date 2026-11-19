@@ -98,6 +98,42 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Start / resume | `opencode [--session id] [--model provider/model] [--prompt text]`; `opencode import <file>` takes `opencode export` JSON. The launcher adds `--auto` (approves permission requests that the config does not deny). `opencode --help` has no sandbox option | Verified (`opencode --help`, opencode 1.19.6) |
 | Config | `.config/opencode/opencode.json`: `provider.lydiabox` (`npm: "@ai-sdk/openai-compatible"`, `options.baseURL`, `options.apiKey`, `models`), `model: "lydiabox/<provider>/<model>"`, `mcp.<name> = {"type":"remote","url","enabled":true}`. When the file already uses the newer `providers` or `mcp.servers` keys, those are written instead | Verified (old form, still accepted); new form Inferred |
 
+## Session events
+
+`internal/harness/adapters` (`EventReader`) turns each native transcript
+into the typed events of `GET /api/v1/sessions/{id}/events` (`docs/api.md`
+section 8). It keeps the parse state of the last 16 sessions: an appended
+JSONL file is parsed from the last complete line; a file that changed
+otherwise (shorter, or another first 256 bytes) is parsed again; the
+SQLite stores are read again when the database or its WAL file changed. The
+same code runs on the host (`juicefs` mode) and in the guest daemon
+(`harness.events`, `provider` mode).
+
+| Harness | User, assistant | Reasoning | Tool call, result, duration | Plan | Usage, context | Turn end, errors |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Claude Code | `text` blocks (noise such as `<command-name>` left out) | `thinking` blocks | `tool_use` and `tool_result` (`is_error`, image blocks); duration from the timestamps | `TodoWrite` input | `message.usage` once per `message.id`; context = input + cache creation + cache read; window not recorded | `stop_reason` `end_turn`; `[Request interrupted` is an interrupted end; `isApiErrorMessage` is an error |
+| Codex | `response_item` messages (context such as `<environment_context>` left out) | `reasoning` summary | `function_call`, `custom_tool_call` (`apply_patch` gives the diff), `local_shell_call`, `web_search_call` and their outputs; `metadata.exit_code` or `Exit code:` gives the error, `metadata.duration_seconds` the duration | `update_plan` input | `event_msg` `token_count` `last_token_usage`; context = `input_tokens`; window = `model_context_window` | `task_complete`, `turn_aborted`, `error` |
+| dsh | `user/message` (`source.kind` `user`), `assistant/message` `text` parts | `reasoning` and `thinking` parts (Inferred) | `tool-call` parts and `tool/result` (`isError`); duration from the times | to-do tool input (Inferred) | `usage` of each assistant message; window not recorded | an assistant message without tool calls ends the turn (Inferred); `*error*` events |
+| opencode | `text` parts (synthetic parts left out) | `reasoning` parts | `tool` parts: one event with the call and its result (`state.status`, `output`, `error`, `attachments`, `time`) | `todowrite` input | `step-finish` `tokens` and `cost`; window not recorded | assistant `time.completed` with `finish` other than `tool-calls`; message `error` |
+| Antigravity | user input and planner steps (longest string) | not available | code action and view file steps give an edit or a read of the file they name; no output, no duration | `brain/<id>/task.md` checklist (`[ ]`, `[/]`, `[x]`) | not available | not available |
+
+Gaps: the Antigravity step payloads have no public schema, so its events
+have no tool output, reasoning, or usage. Claude Code, dsh, and opencode do
+not record the context window; the web UI then takes it from the model list
+(`contextWindow` of `GET /api/v1/models`). Tool kinds come from the tool
+names (`harness.ToolKind`); a name that contains `computer` or
+`screenshot` is computer use, one that contains `browser`, `playwright`, or
+`puppeteer` is browser use, and an `mcp__` name or a name with `__` is an
+MCP tool.
+
+The agent state of the event stream comes from the terminal, the same for
+all five harnesses: output in the last 2 seconds is `working` (the TUIs
+animate while they work), and a quiet screen whose last 2000 characters
+match an approval prompt ("Do you want to proceed?", "Would you like to run
+…?", "Allow once", "Permission required", "(y/n)", …) is `attention`. The
+room also tracks bracketed paste mode (`ESC [?2004h` / `l`) for the input
+endpoint.
+
 ## Common rules
 
 - Discovery skips sidechain and subagent sessions, archived opencode

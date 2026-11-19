@@ -711,6 +711,95 @@ resumes the machine; `503` when it does not start or its guest program is
 too old. `404` for an unknown session, a shell session, or a session whose
 harness has not written a transcript yet; `400` for an invalid ID.
 
+### `GET /api/v1/sessions/{id}/events` — WebSocket
+
+Subprotocol: `lydiabox.events.v1`. The typed events of a harness session
+and the state of its agent, for the chat view. The host reads the native
+transcript that the harness writes (`docs/harness-formats.md`, "Session
+events"): in the `juicefs` mode it reads the files itself, in the `provider`
+mode the guest reads them (`harness.events`; a guest program without the
+method gives the events of the plain transcript). The host keeps one reader
+per session for every client: it reads every second while the session has a
+terminal and every 4 seconds without one, and only the new lines of a
+growing JSONL transcript are parsed. The first read may start or resume the
+machine (`provider` mode, like the transcript); later reads do not. Shell
+sessions and unknown harnesses get `error` `not_found` and a close `1008`.
+
+Server → client (text frames):
+
+```json
+{ "type": "events", "reset": true, "events": [ … ] }
+{ "type": "events", "events": [ … ] }
+{ "type": "status", "sessionId": "codex:019a…", "state": "working", "live": true, "synced": true, "prompt": "", "error": "" }
+{ "type": "pong", "id": 7 }
+```
+
+The first `events` message has `reset: true` and holds every event read so
+far (a long history comes in more messages; only the first has `reset`). A
+later `events` message holds new events and events that changed: an event
+replaces the event with the same `key`, otherwise it is added at the end. A
+client that falls behind is closed with `1013` and gets a reset when it
+connects again. The client sends `{ "type": "ping", "id": n }`.
+
+An event:
+
+```json
+{ "key": "tool:call_Kq1", "kind": "tool_call", "time": "2026-11-10T05:10:10Z", "model": "",
+  "tool": { "id": "call_Kq1", "name": "shell", "kind": "shell", "summary": "bash -lc go test ./…",
+            "input": "{\n  \"command\": …}", "path": "", "diff": "" },
+  "result": { "callId": "call_Kq1", "status": "error", "output": "--- FAIL …", "images": [], "durationMs": 10800 } }
+```
+
+| `kind` | Fields |
+| :--- | :--- |
+| `user` | `text`: a prompt of the user (injected context is left out) |
+| `assistant` | `text` (Markdown), `model` |
+| `reasoning` | `text`: the visible reasoning or its summary |
+| `tool_call` | `tool`; `result` when the format keeps the call and its result in one record (opencode, Antigravity) |
+| `tool_result` | `result`, with `callId` of its call |
+| `plan` | `plan`: `[{ "text", "status" }]`, status `pending`, `in_progress`, or `completed` (to-do and plan tools, Antigravity `task.md`) |
+| `usage` | `usage`: `inputTokens`, `outputTokens`, `cachedTokens`, `reasoningTokens`, `contextTokens` (the context the call read), `contextWindow` (when the harness records it), `costUsd`; `model` |
+| `turn_end` | `text` is `interrupted` for a turn that the user stopped |
+| `error` | `text`: an error that the harness recorded |
+
+`tool.kind` maps the tool names of all five harnesses to `shell`, `read`,
+`edit`, `search`, `web`, `mcp`, `computer`, `browser`, `plan`, `agent`, or
+`other`. `tool.diff` is a unified diff body (`+`, `-`, and space line
+prefixes) of an edit, `tool.path` the file that a read or an edit names.
+`result.status` is `ok`, `error`, or `pending` (a call that runs);
+`result.images` are `data:image/…` URLs (screenshots), at most 2 of 1 MiB.
+Texts are cut at 32 KiB, tool inputs at 8 KiB, outputs at 12 KiB.
+
+`status.state`:
+
+- `working`: the terminal wrote output in the last 2 seconds (the harnesses
+  animate while they work);
+- `attention`: the terminal is quiet and shows an approval prompt
+  (`prompt` is its line); the client offers the terminal;
+- `idle`: the terminal runs and is quiet;
+- `offline`: the session has no running terminal (`live` is `false`).
+
+`sessionId` is the ID that the session has now: a session started without
+a native ID gets one after the harness writes its transcript. `synced` is
+`true` after the first read (also when the harness has no transcript yet);
+`error` is the last read error (for example a stopped VM).
+
+### `POST /api/v1/sessions/{id}/input`
+
+Types a prompt into the terminal of a live session and submits it:
+`{"text": "Fix the flaky test"}` (at most 64 KiB) → `204`. Control
+characters other than newline and tab are removed. A harness that turned on
+bracketed paste mode gets the text as one paste (`ESC [200~` … `ESC [201~`);
+Enter follows 250 ms later, so that the paste-burst detection of Codex and
+Claude Code does not turn it into a newline. `400` for an empty text, `409`
+when the session has no running terminal, `404` for an unknown session.
+
+### `POST /api/v1/sessions/{id}/interrupt`
+
+Stops the current turn of a live session → `204`: Escape (twice, 150 ms
+apart, for opencode, which asks for a second press), Ctrl-C for a shell.
+Errors as for `input`.
+
 ### `GET /api/v1/sessions/{id}/ws` — WebSocket
 
 Subprotocol: `lydiabox.pty.v1`. Several clients may attach to one session
