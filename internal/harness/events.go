@@ -197,16 +197,33 @@ var toolKinds = map[string]string{
 	"task": ToolAgent, "agent": ToolAgent, "subagent": ToolAgent, "delegate": ToolAgent, "spawn_agent": ToolAgent,
 }
 
+// ShellKind refines the kind of a shell call that runs the lbx CLI
+// ("lbx browser …", "lbx computer …"): browser and computer use.
+func ShellKind(command string) string {
+	fields := strings.Fields(command)
+	for i, f := range fields {
+		if (f == "lbx" || strings.HasSuffix(f, "/lbx")) && i+1 < len(fields) {
+			switch fields[i+1] {
+			case "browser":
+				return ToolBrowser
+			case "computer":
+				return ToolComputer
+			}
+		}
+	}
+	return ToolShell
+}
+
 // ToolKind maps a tool name of any harness to a generic kind.
 func ToolKind(name string) string {
 	n := strings.ToLower(strings.TrimSpace(name))
 	switch {
 	case n == "":
 		return ToolOther
-	case strings.Contains(n, "computer") || strings.Contains(n, "screenshot"):
-		return ToolComputer
 	case strings.Contains(n, "browser") || strings.Contains(n, "playwright") || strings.Contains(n, "puppeteer"):
 		return ToolBrowser
+	case strings.Contains(n, "computer") || strings.Contains(n, "screenshot"):
+		return ToolComputer
 	}
 	if k, ok := toolKinds[n]; ok {
 		return k

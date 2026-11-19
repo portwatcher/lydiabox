@@ -94,6 +94,9 @@ func toolCallOf(id, name string, input json.RawMessage) *harness.ToolCall {
 	tc := &harness.ToolCall{ID: id, Name: name, Kind: harness.ToolKind(name), Summary: toolInput(input)}
 	obj := inputObject(input)
 	tc.Input = harness.Clip(prettyInput(input), harness.MaxToolInput)
+	if tc.Kind == harness.ToolShell {
+		tc.Kind = harness.ShellKind(tc.Summary)
+	}
 	if obj != nil {
 		tc.Path = firstString(obj, "file_path", "filePath", "path", "notebook_path", "AbsolutePath", "TargetFile")
 	}

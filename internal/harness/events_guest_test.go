@@ -90,10 +90,22 @@ func TestToolKind(t *testing.T) {
 		"MultiEdit": harness.ToolEdit, "Grep": harness.ToolSearch, "WebFetch": harness.ToolWeb, "TodoWrite": harness.ToolPlan,
 		"update_plan": harness.ToolPlan, "Task": harness.ToolAgent, "mcp__github__create_issue": harness.ToolMCP,
 		"mcp__lydiabox__computer_screenshot": harness.ToolComputer, "browser_navigate": harness.ToolBrowser,
-		"lbx_browser_click": harness.ToolBrowser, "something": harness.ToolOther, "": harness.ToolOther,
+		"lbx_browser_click": harness.ToolBrowser, "mcp__lydiabox__browser_screenshot": harness.ToolBrowser,
+		"something": harness.ToolOther, "": harness.ToolOther,
 	} {
 		if got := harness.ToolKind(name); got != want {
 			t.Errorf("ToolKind(%q) = %s, want %s", name, got, want)
+		}
+	}
+}
+
+func TestShellKind(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"lbx browser open https://example.com": harness.ToolBrowser, "bash -lc lbx computer screenshot": harness.ToolComputer,
+		"/usr/local/bin/lbx browser click e1": harness.ToolBrowser, "lbx tools": harness.ToolShell, "go test ./...": harness.ToolShell,
+	} {
+		if got := harness.ShellKind(cmd); got != want {
+			t.Errorf("ShellKind(%q) = %s, want %s", cmd, got, want)
 		}
 	}
 }

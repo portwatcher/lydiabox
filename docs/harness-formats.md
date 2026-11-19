@@ -121,10 +121,11 @@ Gaps: the Antigravity step payloads have no public schema, so its events
 have no tool output, reasoning, or usage. Claude Code, dsh, and opencode do
 not record the context window; the web UI then takes it from the model list
 (`contextWindow` of `GET /api/v1/models`). Tool kinds come from the tool
-names (`harness.ToolKind`); a name that contains `computer` or
-`screenshot` is computer use, one that contains `browser`, `playwright`, or
-`puppeteer` is browser use, and an `mcp__` name or a name with `__` is an
-MCP tool.
+names (`harness.ToolKind`); a name that contains `browser`, `playwright`,
+or `puppeteer` is browser use (the guest `browser_*` tools), one that
+contains `computer` or `screenshot` is computer use, and an `mcp__` name or
+a name with `__` is an MCP tool. A shell call of `lbx browser …` or
+`lbx computer …` is browser or computer use (`harness.ShellKind`).
 
 The agent state of the event stream comes from the terminal, the same for
 all five harnesses: output in the last 2 seconds is `working` (the TUIs
