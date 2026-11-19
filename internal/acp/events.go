@@ -21,12 +21,12 @@ type events struct {
 	turn    int
 	last    string // key of the last added event, to append chunks
 	replay  bool   // session/load replays the history: no durations
-	starts  map[string]time.Time
+	calls   map[string]*callState
 	nextKey int
 }
 
 func newEvents(emit func(harness.Event)) *events {
-	return &events{index: map[string]int{}, emit: emit, now: time.Now, starts: map[string]time.Time{}}
+	return &events{index: map[string]int{}, emit: emit, now: time.Now, calls: map[string]*callState{}}
 }
 
 func (l *events) put(e harness.Event) {
@@ -135,6 +135,15 @@ type toolUpdate struct {
 	Meta       *toolMeta               `json:"_meta"`
 }
 
+// callState is what an ACP agent says once about a tool call: an update
+// leaves out the fields that did not change (claude-agent-acp sends the kind
+// and the name only with the first report).
+type callState struct {
+	start   time.Time
+	acpKind string
+	named   bool // the name came from `name`, so a title does not replace it
+}
+
 // toolMeta holds the command output chunks of codex-acp: a client that
 // declares no terminal capability gets the output of a command only in
 // `_meta.terminal_output_delta` (Zed: `terminal_output`), not in content
@@ -241,27 +250,32 @@ func (l *events) tool(u toolUpdate) {
 	if !seen {
 		e = harness.Event{Key: key, Kind: harness.EventTool, Time: l.now().UTC(),
 			Tool: &harness.ToolCall{ID: u.ToolCallID}, Result: &harness.ToolResult{CallID: u.ToolCallID, Status: harness.StatusPending}}
-		l.starts[u.ToolCallID] = e.Time
+	}
+	st := l.calls[u.ToolCallID]
+	if st == nil {
+		st = &callState{start: e.Time}
+		l.calls[u.ToolCallID] = st
 	}
 	tc := *e.Tool
 	r := *e.Result
-	acpKind := ""
-	if u.Kind != nil {
-		acpKind = *u.Kind
+	if u.Kind != nil && *u.Kind != "" {
+		st.acpKind = *u.Kind
 	}
 	if u.Title != nil && *u.Title != "" {
-		tc.Name = *u.Title
+		if !st.named {
+			tc.Name = *u.Title
+		}
 		if tc.Summary == "" || len(u.RawInput) == 0 {
 			tc.Summary = harness.Clip(*u.Title, 400)
 		}
 	}
 	if u.Name != nil && *u.Name != "" {
-		tc.Name = *u.Name
+		tc.Name, st.named = *u.Name, true
 	}
 	if mcp, ok := codexMCP(u.RawInput); ok {
 		// The name has the form of the other harnesses (mcp__server__tool),
 		// and the summary and input show the arguments, not the wrapper.
-		tc.Name = "mcp__" + mcp.Server + "__" + mcp.Tool
+		tc.Name, st.named = "mcp__"+mcp.Server+"__"+mcp.Tool, true
 		tc.Summary = mcp.Tool
 		if !emptyJSON(mcp.Arguments) {
 			if s := adapters.ToolSummary(mcp.Arguments); s != "" {
@@ -284,9 +298,9 @@ func (l *events) tool(u toolUpdate) {
 	if len(u.Locations) > 0 && u.Locations[0].Path != "" {
 		tc.Path = u.Locations[0].Path
 	}
-	if acpKind != "" || tc.Kind == "" {
-		tc.Kind = toolKind(acpKind, tc.Name, tc.Summary)
-	}
+	// The kind follows the name and the summary: claude-agent-acp first
+	// reports a Bash call with the title "Terminal" and an empty input.
+	tc.Kind = toolKind(st.acpKind, tc.Name, tc.Summary)
 	var out []string
 	for _, c := range u.Content {
 		switch c.Type {
@@ -337,9 +351,7 @@ func (l *events) tool(u toolUpdate) {
 		// A replayed call, or a call whose first report is its end, has no
 		// duration: its start time is not known.
 		if r.Status != harness.StatusPending && !l.replay && seen {
-			if start, ok := l.starts[u.ToolCallID]; ok {
-				r.DurationMs = l.now().Sub(start).Milliseconds()
-			}
+			r.DurationMs = l.now().Sub(st.start).Milliseconds()
 		}
 	}
 	e.Tool, e.Result = &tc, &r

@@ -66,8 +66,12 @@ func EventsFromTranscript(t Transcript) []Event {
 		case RoleAssistant:
 			out = append(out, Event{Key: key, Kind: EventAssistant, Time: e.Time, Text: e.Text})
 		case RoleTool:
+			kind := ToolKind(e.Tool)
+			if kind == ToolShell {
+				kind = ShellKind(e.Text)
+			}
 			out = append(out, Event{Key: "tool:" + key, Kind: EventTool, Time: e.Time,
-				Tool: &ToolCall{ID: key, Name: e.Tool, Kind: ToolKind(e.Tool), Summary: e.Text}})
+				Tool: &ToolCall{ID: key, Name: e.Tool, Kind: kind, Summary: e.Text}})
 		}
 	}
 	return out

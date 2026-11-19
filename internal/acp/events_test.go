@@ -137,3 +137,27 @@ func TestReplayNoDuration(t *testing.T) {
 		t.Fatalf("duration %d", d)
 	}
 }
+
+// claude-agent-acp 0.108.1 first reports a Bash call with an empty input and
+// the title "Terminal"; the update with the command leaves out the kind and
+// the name, which did not change.
+func TestClaudeBashLbxKind(t *testing.T) {
+	evs := updates(t, false,
+		`{"sessionUpdate":"tool_call","toolCallId":"toolu_b1","_meta":{"claudeCode":{"toolName":"Bash"},"terminal_info":{"terminal_id":"toolu_b1"}},"name":"Bash","rawInput":{},"status":"pending","title":"Terminal","kind":"execute","content":[{"type":"terminal","terminalId":"toolu_b1"}]}`,
+		`{"sessionUpdate":"tool_call_update","toolCallId":"toolu_b1","_meta":{"claudeCode":{"toolName":"Bash"}},"rawInput":{"command":"lbx browser open https://example.com","description":"Open example.com"},"title":"lbx browser open https://example.com"}`,
+		`{"sessionUpdate":"tool_call_update","toolCallId":"toolu_b1","status":"completed","_meta":{"terminal_output_delta":{"data":"opened https://example.com\n","terminal_id":"toolu_b1"},"terminal_exit":{"exit_code":0,"signal":null,"terminal_id":"toolu_b1"}}}`,
+		`{"sessionUpdate":"tool_call","toolCallId":"toolu_b2","name":"Bash","rawInput":{},"status":"pending","title":"Terminal","kind":"execute"}`,
+		`{"sessionUpdate":"tool_call_update","toolCallId":"toolu_b2","rawInput":{"command":"lbx computer screenshot"},"title":"lbx computer screenshot"}`,
+		`{"sessionUpdate":"tool_call","toolCallId":"toolu_b3","name":"Bash","rawInput":{},"status":"pending","title":"Terminal","kind":"execute"}`,
+		`{"sessionUpdate":"tool_call_update","toolCallId":"toolu_b3","rawInput":{"command":"go test ./..."},"title":"go test ./..."}`,
+	)
+	for id, want := range map[string]string{"toolu_b1": harness.ToolBrowser, "toolu_b2": harness.ToolComputer, "toolu_b3": harness.ToolShell} {
+		e := toolEvent(t, evs, id)
+		if e.Tool.Kind != want || e.Tool.Name != "Bash" {
+			t.Errorf("%s: tool %+v, want kind %s and name Bash", id, e.Tool, want)
+		}
+	}
+	if e := toolEvent(t, evs, "toolu_b1"); e.Tool.Summary != "lbx browser open https://example.com" || e.Result.Output != "opened https://example.com\n" {
+		t.Fatalf("tool %+v result %+v", e.Tool, e.Result)
+	}
+}

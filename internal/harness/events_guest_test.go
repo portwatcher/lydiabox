@@ -68,6 +68,7 @@ func (oldGuest) FSCall(_ context.Context, _, method string, _, out any) error {
 	}
 	t := harness.Transcript{Entries: []harness.TranscriptEntry{
 		{Role: harness.RoleUser, Text: "hi"}, {Role: harness.RoleTool, Tool: "Bash", Text: "ls"}, {Role: harness.RoleAssistant, Text: "done"},
+		{Role: harness.RoleTool, Tool: "Bash", Text: "lbx browser open https://example.com"},
 	}}
 	b, _ := json.Marshal(t)
 	return json.Unmarshal(b, out)
@@ -79,7 +80,11 @@ func TestGuestEventsOldGuest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Events) != 3 || page.Events[1].Tool == nil || page.Events[1].Tool.Kind != harness.ToolShell || page.Events[2].Text != "done" {
+	if len(page.Events) != 4 || page.Events[1].Tool == nil || page.Events[1].Tool.Kind != harness.ToolShell || page.Events[2].Text != "done" {
+		t.Fatalf("events = %+v", page.Events)
+	}
+	// A shell call of the lbx CLI has the kind of its lbx command.
+	if page.Events[3].Tool == nil || page.Events[3].Tool.Kind != harness.ToolBrowser {
 		t.Fatalf("events = %+v", page.Events)
 	}
 }
