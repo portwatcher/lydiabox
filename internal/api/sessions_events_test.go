@@ -169,7 +169,7 @@ func TestSessionsEventStreamHistoryAndErrors(t *testing.T) {
 	}
 }
 
-// A first-run screen (here the Antigravity terms) before the first event
+// A first-run screen (here the Antigravity color scheme) before the first event
 // is not "idle", and a prompt sent to it is refused, not lost.
 func TestSessionsEventStreamSetupScreen(t *testing.T) {
 	e := newSessionsEnv(t)
@@ -185,9 +185,10 @@ func TestSessionsEventStreamSetupScreen(t *testing.T) {
 	c := e.dialEvents(t, ctx, s.ID)
 	defer c.CloseNow()
 
-	pty.Emit([]byte("\x1b[2J\x1b[H\x1b[1mTerms of Service & Data Use\x1b[0m\r\n> Accept\r\n  Decline\r\n"))
+	// The first Antigravity onboarding step comes before its terms.
+	pty.Emit([]byte("\x1b[2J\x1b[H\x1b[1mWelcome to Antigravity CLI!\x1b[0m\r\n\r\nChoose your color scheme:\r\n> terminal\r\n  dark\r\n[Next]\r\n↑/↓ Navigate · enter Confirm"))
 	m := waitStream(t, ctx, c, "setup", func(m streamMsg) bool { return m.Type == "status" && m.State == harness.StateSetup })
-	if m.Prompt != "Terms of Service & Data Use" {
+	if m.Prompt != "Choose your color scheme:" {
 		t.Fatalf("prompt = %q", m.Prompt)
 	}
 	resp, body = e.do(t, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(s.ID)+"/input", map[string]any{"text": "Hello"})

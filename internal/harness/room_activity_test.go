@@ -52,6 +52,9 @@ func TestSetupScreen(t *testing.T) {
 		"Do you trust the contents of this directory? Working with untrusted contents":                          "Do you trust the contents of this directory? Working with untrusted contents",
 		"Quick safety check: Is this a project you created or one you trust?\r\n ❯ 1. Yes, I trust this folder": "❯ 1. Yes, I trust this folder",
 		"I finished the change. The tests pass.\r\n> ":                                                          "",
+		agyColorScheme: "Choose your color scheme:",
+		"\x1b[1mWelcome to Antigravity CLI!\x1b[0m\r\n":                                        "Welcome to Antigravity CLI!",
+		"\x1b[2J\x1b[HPick a region\r\n> europe\r\n\x1b[2m↑/↓ Navigate · enter Confirm\x1b[0m": "↑/↓ Navigate · enter Confirm",
 	} {
 		var a activity
 		a.note([]byte(in), time.Now())
@@ -81,5 +84,34 @@ func TestSetupScreenEndsAfterInput(t *testing.T) {
 	}
 	if !strings.Contains(string(a.tail), "Terms of Service") {
 		t.Fatal("test premise: the old screen is in the tail")
+	}
+}
+
+// agyColorScheme is the first onboarding step of Antigravity CLI on a new
+// home (seen on a production tenant).
+const agyColorScheme = "\x1b[2J\x1b[H\x1b[1mWelcome to Antigravity CLI!\x1b[0m\r\n\r\n" +
+	"Choose your color scheme:\r\n" +
+	"\x1b[36m> terminal\x1b[0m\r\n  light\r\n  solarized light\r\n  colorblind-friendly light\r\n  dark\r\n" +
+	"  solarized dark\r\n  colorblind-friendly dark\r\n  tokyo night\r\n" +
+	"╭── Preview ──╮\r\n│ func main() {} │\r\n╰─────╯\r\n" +
+	"\x1b[7m[Next]\x1b[0m\r\n\x1b[2m↑/↓ Navigate · enter Confirm\x1b[0m"
+
+// The Antigravity onboarding is setup from the color scheme to the terms,
+// and ends only when the program shows other output.
+func TestSetupAntigravityOnboarding(t *testing.T) {
+	var a activity
+	a.note([]byte(agyColorScheme), time.Now())
+	if got := a.setup(); got != "Choose your color scheme:" {
+		t.Fatalf("color scheme step = %q", got)
+	}
+	a.input()
+	a.note([]byte("\x1b[2J\x1b[H\x1b[1mTerms of Service & Data Use\x1b[0m\r\n[Accept] [Decline]\r\n↑/↓ Navigate · enter Confirm"), time.Now())
+	if got := a.setup(); got != "Terms of Service & Data Use" {
+		t.Fatalf("terms step = %q", got)
+	}
+	a.input()
+	a.note([]byte("\x1b[2J\x1b[H> Ask anything\r\n"), time.Now())
+	if got := a.setup(); got != "" {
+		t.Fatalf("setup = %q at the prompt", got)
 	}
 }

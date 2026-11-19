@@ -86,12 +86,23 @@ func (w antigravityWirer) Apply(h Home, b Binding) error {
 	return nil
 }
 
-// applyAntigravityCLI sets the Gemini API provider and, when a model is
-// bound, a custom model entry keyed by the model name, so that
-// `agy --model <model>` reaches the gateway with that model.
+// antigravityColorScheme is the color scheme of a new Antigravity CLI
+// home. The first start of agy asks for a color scheme before its terms;
+// with the key set, only the terms (the user's decision) are left.
+const antigravityColorScheme = "dark"
+
+// applyAntigravityCLI sets the Gemini API provider, a color scheme when the
+// user has none, and, when a model is bound, a custom model entry keyed by
+// the model name, so that `agy --model <model>` reaches the gateway with
+// that model. It never accepts the terms of the CLI.
 func applyAntigravityCLI(o *object, model string) error {
 	if err := o.set("modelProvider", "gemini"); err != nil {
 		return err
+	}
+	if o.getString("colorScheme") == "" {
+		if err := o.set("colorScheme", antigravityColorScheme); err != nil {
+			return err
+		}
 	}
 	if model == "" {
 		return nil

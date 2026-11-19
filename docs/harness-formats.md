@@ -86,7 +86,7 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Payload decoding | Schema-free protobuf walk; the longest string of a user or planner step is its text; paths are strings that look like file paths | Inferred |
 | CLI | `agy [--model m] [--conversation <id>] [-i/--prompt-interactive <text>]`; `-p/--print`, `--settings`, `agy mcp list`, `agy models`. The launcher adds `--dangerously-skip-permissions` (approves every tool permission request). agy's terminal sandbox is the opt-in `--sandbox` flag, which the launcher does not pass | Verified (`agy --help`, agy 1.5.4 and 1.5.12) |
 | Config (design path) | `.antigravity/settings.json`: `endpoint`, `apiKey`, `model`, `env.GOOGLE_GEMINI_BASE_URL`, `env.GEMINI_API_KEY`. The CLI does not read this file; the wirer writes it because design section 4.4.1 names it, and `CurrentModel` reads `model` from it | Design path |
-| Config (CLI) | `.gemini/antigravity-cli/settings.json` (schema `https://antigravity.google/schemas/v1/settings.json`): `"modelProvider": "gemini"` and `customModelsConfig.customModels.<model> = {"modelName": "gemini-api://<model>", "label": "<model>"}`. With `GEMINI_API_KEY` and `GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:3425` in the environment (wirer `Env` and `ptymanager.DefaultEnv`), `agy --model <model>` sends `POST /v1beta/models/<model>:streamGenerateContent?alt=sse` with `X-Goog-Api-Key` to the gateway. The CLI `model` key is not written: agy 1.5.4 resolves a saved custom-model label to an empty model in print mode (`tModel: model is empty`), and without `GEMINI_API_KEY` it refuses to start when `modelProvider` is `gemini` | Verified (schema, docs, and agy 1.5.4 against a capture server) |
+| Config (CLI) | `.gemini/antigravity-cli/settings.json` (schema `https://antigravity.google/schemas/v1/settings.json`): `"modelProvider": "gemini"`, `"colorScheme": "dark"` when the user has no color scheme (the first start of agy then skips its color step; LydiaBox never accepts the terms, which stay the user's decision), and `customModelsConfig.customModels.<model> = {"modelName": "gemini-api://<model>", "label": "<model>"}`. With `GEMINI_API_KEY` and `GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:3425` in the environment (wirer `Env` and `ptymanager.DefaultEnv`), `agy --model <model>` sends `POST /v1beta/models/<model>:streamGenerateContent?alt=sse` with `X-Goog-Api-Key` to the gateway. The CLI `model` key is not written: agy 1.5.4 resolves a saved custom-model label to an empty model in print mode (`tModel: model is empty`), and without `GEMINI_API_KEY` it refuses to start when `modelProvider` is `gemini` | Verified (schema, docs, and agy 1.5.4 against a capture server) |
 | MCP | `.gemini/config/mcp_config.json` (documented global path; `agy mcp list` shows both servers) and `.gemini/antigravity/mcp_config.json` (design path), as `mcpServers.<name>.serverUrl` | Verified (docs, agy 1.5.4) |
 
 ## opencode (`sst/opencode`)
@@ -207,8 +207,10 @@ all five harnesses: output in the last 2 seconds is `working` (the TUIs
 animate while they work), and a quiet screen whose last 2000 characters
 match an approval prompt ("Do you want to proceed?", "Would you like to run
 …?", "Allow once", "Permission required", "(y/n)", …) is `attention`.
-Before the first event, a first-run screen is `setup` ("Terms of Service &
-Data Use" of Antigravity, "Do you trust the files in this folder?", "Do you
+Before the first event, a first-run screen is `setup` (the Antigravity
+onboarding: "Welcome to Antigravity CLI!", "Choose your color scheme:",
+"Terms of Service & Data Use", and any step with the footer "↑/↓ Navigate ·
+enter Confirm"; "Do you trust the files in this folder?", "Do you
 trust the contents of this directory?", "Do you trust this folder?", "Yes,
 I trust this folder", "How would you like to authenticate", "Select login
 method", "Sign in with ChatGPT", "Choose the text style"), and the input
