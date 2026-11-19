@@ -49,6 +49,7 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	}
 	bindings := &magpie.Bindings{Store: d.Store, Files: d.Files}
 	service := &magpie.Service{Gateway: sup, Bindings: bindings}
+	bindings.DefaultModel = func(ctx context.Context) string { return gatewayDefaultModel(ctx, service) }
 
 	runner, waker := guestRuntime(d)
 	mgr, err := harness.NewManager(harness.ManagerOptions{
@@ -258,4 +259,14 @@ func acpMCPServers() []harness.MCPServer {
 		out = append(out, harness.MCPServer{Name: s.Name, URL: s.URL})
 	}
 	return out
+}
+
+// gatewayDefaultModel returns the first model of the gateway catalog, or ""
+// when the gateway has none or does not answer.
+func gatewayDefaultModel(ctx context.Context, s *magpie.Service) string {
+	ms, err := s.ListModels(ctx)
+	if err != nil || len(ms) == 0 {
+		return ""
+	}
+	return ms[0].ID
 }

@@ -1,0 +1,21 @@
+# Managed by LydiaBox: the dsh launcher adds this overlay (dsh <profile> --patch) when DSH_MODEL is set.
+- id: llm-pi-ai
+  config:
+    providers:
+      lydiabox:
+        displayName: LydiaBox
+        api: openai-completions
+        baseURL: "http://127.0.0.1:3425/v1"
+        apiKeyEnv: OPENAI_API_KEY
+        defaultInput: [text, image]
+        compat:
+          supportsStore: false
+        models: !!js "[{ id: process.env.DSH_MODEL }]"
+- id: agent-default-model
+  config:
+    provider: lydiabox
+    model: !!js process.env.DSH_MODEL
+- id: acp
+  config:
+    provider: lydiabox
+    model: !!js process.env.DSH_MODEL

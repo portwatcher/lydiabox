@@ -55,7 +55,7 @@ func TestWirersPreserveUserContent(t *testing.T) {
 				`model = "kimi/kimi-k3" # my default model`, `model = "gpt-5.2-mini"`, "# The fast profile keeps its own model.",
 				`  "@acme/docs-mcp", # pinned`, `url = "http://127.0.0.1:8910/mcp" # stale port`, "startup_timeout_sec = 20",
 				"[tui]\nnotifications = true"}},
-		{"dsh", []string{".dsh/lydiabox.env", ".dsh/.env", ".dsh/AGENTS.md"}, "kimi/kimi-k3",
+		{"dsh", []string{".dsh/lydiabox.env", ".dsh/lydiabox.patch.yml", ".dsh/.env", ".dsh/AGENTS.md"}, "kimi/kimi-k3",
 			[]string{"# dsh environment, edited by hand", "DSH_THEME=dark", "# trailing comment block"}},
 		{"antigravity", []string{".antigravity/settings.json", ".gemini/antigravity-cli/settings.json", ".gemini/antigravity/mcp_config.json", ".gemini/config/mcp_config.json", ".gemini/GEMINI.md"}, "kimi/kimi-k3",
 			[]string{`"theme": "solarized"`, `"telemetry": false`, `"HTTP_PROXY": "http://proxy.local:3128"`, `"@modelcontextprotocol/server-filesystem"`,

@@ -71,8 +71,8 @@ func AgentFor(h, model string) (Agent, error) {
 		return Agent{Command: []string{"agy", "acp", "--dangerously-skip-permissions"}}, nil
 	case harness.DSH:
 		// dsh acp (the @deepseek-ai/dsh-acp-app profile) with the same
-		// environment as the terminal launch (DSH_PERMISSION_MODE, DSH_MODEL,
-		// ~/.dsh/lydiabox.env).
+		// environment and overlay as the terminal launch: the overlay sets
+		// the model of the acp row, which dsh uses for session/new.
 		return Agent{Command: adapters.DSHCommand(model, "acp")}, nil
 	}
 	return Agent{}, fmt.Errorf("%w: %s has no ACP agent", harness.ErrBadRequest, h)

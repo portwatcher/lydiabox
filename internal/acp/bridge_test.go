@@ -304,7 +304,7 @@ func TestAgentFor(t *testing.T) {
 	if a, _ := AgentFor(harness.ClaudeCode, ""); len(a.Env) != 0 {
 		t.Errorf("claude env without claude on PATH: %v", a.Env)
 	}
-	if a, _ := AgentFor(harness.DSH, "deepseek-v4"); !strings.Contains(strings.Join(a.Command, " "), "DSH_MODEL=deepseek-v4") {
+	if a, _ := AgentFor(harness.DSH, "deepseek-v4"); !strings.HasSuffix(strings.Join(a.Command, " "), " dsh deepseek-v4 acp") {
 		t.Errorf("dsh command %v", a.Command)
 	}
 	if _, err := AgentFor(harness.Shell, ""); err == nil {

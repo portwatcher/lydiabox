@@ -157,15 +157,6 @@ type sessionResult struct {
 	ConfigOptions []configOption `json:"configOptions"`
 }
 
-type configOption struct {
-	ID           string `json:"id"`
-	Category     string `json:"category"`
-	CurrentValue any    `json:"currentValue"`
-	Options      []struct {
-		Value string `json:"value"`
-	} `json:"options"`
-}
-
 func (b *Bridge) mcpServers() []map[string]any {
 	out := []map[string]any{}
 	for _, s := range b.opts.MCP {
@@ -276,25 +267,6 @@ func (b *Bridge) fullAccess(modes []harness.AgentMode) string {
 		}
 	}
 	return ""
-}
-
-// setModel selects the model of the session when the agent lists it as a
-// model config option (as "model", "lydiabox/model", or ".../model").
-func (b *Bridge) setModel(ctx context.Context, opts []configOption) {
-	if b.opts.Model == "" {
-		return
-	}
-	for _, o := range opts {
-		if o.Category != "model" && o.ID != "model" {
-			continue
-		}
-		for _, v := range o.Options {
-			if v.Value == b.opts.Model || v.Value == "lydiabox/"+b.opts.Model || strings.HasSuffix(v.Value, "/"+b.opts.Model) {
-				_ = b.conn.Call(ctx, "session/set_config_option", map[string]any{"sessionId": b.session, "configId": o.ID, "value": v.Value}, nil)
-				return
-			}
-		}
-	}
 }
 
 // history sends the transcript events of a session that the agent resumes

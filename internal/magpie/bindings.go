@@ -40,6 +40,10 @@ type Bindings struct {
 	// wire.DefaultGatewayURL).
 	GatewayURL string
 	MCPServers []wire.MCPServer
+	// DefaultModel returns a model that the gateway serves ("" when none).
+	// Wirers use it only for a harness that has no model bound and no
+	// usable default of its own (dsh). It may be nil.
+	DefaultModel func(ctx context.Context) string
 }
 
 func (b *Bindings) wirer(harness string) (wire.Wirer, error) {
@@ -55,8 +59,12 @@ func (b *Bindings) wirer(harness string) (wire.Wirer, error) {
 	return nil, fmt.Errorf("%w: unknown harness %q", ErrBadRequest, harness)
 }
 
-func (b *Bindings) binding(model string) wire.Binding {
-	return wire.Binding{GatewayURL: b.GatewayURL, Model: model, MCPServers: b.MCPServers}
+func (b *Bindings) binding(ctx context.Context, model string) wire.Binding {
+	wb := wire.Binding{GatewayURL: b.GatewayURL, Model: model, MCPServers: b.MCPServers}
+	if b.DefaultModel != nil {
+		wb.Fallback = func() string { return b.DefaultModel(ctx) }
+	}
+	return wb
 }
 
 // List returns one binding per harness; Model is empty when unbound.
@@ -91,7 +99,7 @@ func (b *Bindings) Bind(ctx context.Context, tenantID, harness, model string) (B
 	if model != "" && !ValidModelID(model) {
 		return Binding{}, fmt.Errorf("%w: model %q is not a provider/model ID", ErrBadRequest, model)
 	}
-	if err := w.Apply(wire.FSHome(ctx, b.Files, tenantID), b.binding(model)); err != nil {
+	if err := w.Apply(wire.FSHome(ctx, b.Files, tenantID), b.binding(ctx, model)); err != nil {
 		if errors.Is(err, wire.ErrUnparseable) {
 			return Binding{}, fmt.Errorf("%w: %v", ErrConflict, err)
 		}
@@ -137,7 +145,7 @@ func (b *Bindings) EnsureWired(ctx context.Context, tenantID, harness string) er
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	return w.Apply(wire.FSHome(ctx, b.Files, tenantID), b.binding(model))
+	return w.Apply(wire.FSHome(ctx, b.Files, tenantID), b.binding(ctx, model))
 }
 
 // WireAll runs EnsureWired for every harness and joins the errors.
@@ -161,5 +169,5 @@ func (b *Bindings) Env(harness string) map[string]string {
 	if err != nil {
 		return nil
 	}
-	return maps.Clone(w.Env(b.binding("")))
+	return maps.Clone(w.Env(b.binding(context.Background(), "")))
 }

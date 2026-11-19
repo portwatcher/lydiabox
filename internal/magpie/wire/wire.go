@@ -100,6 +100,10 @@ type Binding struct {
 	// empty model leaves the configured model unchanged.
 	Model      string
 	MCPServers []MCPServer
+	// Fallback returns a model that the gateway serves ("" when none). A
+	// wirer whose harness has no usable default model (dsh) calls it when
+	// no model is bound and its config has none; it may be nil.
+	Fallback func() string
 }
 
 func (b Binding) withDefaults() Binding {

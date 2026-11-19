@@ -27,24 +27,37 @@ type DSH struct{}
 func (DSH) Name() string { return harness.DSH }
 
 // dshEnvWrapper exports ~/.dsh/lydiabox.env (written by the magpie wirer)
-// into the dsh process, then runs the dsh command line passed as
-// arguments. dsh reads ~/.dsh/.env itself (and refuses base URLs there).
-const dshEnvWrapper = `set -a; [ -f "$HOME/.dsh/lydiabox.env" ] && . "$HOME/.dsh/lydiabox.env"; set +a; exec "$@"`
+// into the dsh process, then boots the dsh profile given as $2 with the
+// app arguments that follow. A non-empty $1 is the model of the session and
+// wins over DSH_MODEL from the file. dsh reads ~/.dsh/.env itself (and
+// refuses base URLs there).
+//
+// dsh 0.2.2 reads no model variable: each profile takes its model from a
+// profile row (the acp row of the acp profile, agent-default-model of the
+// others), which ships deepseek-official/deepseek-v4-flash. When a model is
+// known, the wrapper adds the per-launch overlay ~/.dsh/lydiabox.patch.yml
+// (also written by the wirer). The overlay adds the "lydiabox" route to the
+// gateway and selects process.env.DSH_MODEL in those rows. Launcher flags
+// such as --patch come before the app arguments.
+const dshEnvWrapper = `set -a; [ -f "$HOME/.dsh/lydiabox.env" ] && . "$HOME/.dsh/lydiabox.env"; set +a
+if [ -n "$1" ]; then DSH_MODEL=$1; export DSH_MODEL; fi
+DSH_PERMISSION_MODE=danger-full-access; export DSH_PERMISSION_MODE
+profile=$2; shift 2
+patch="$HOME/.dsh/lydiabox.patch.yml"
+if [ -n "$DSH_MODEL" ] && [ -f "$patch" ]; then exec dsh "$profile" --patch "$patch" "$@"; fi
+exec dsh "$profile" "$@"`
 
-// dshCommand builds the wrapped command. A model given here wins over
-// DSH_MODEL from ~/.dsh/lydiabox.env because it is set after the file is
+// dshCommand builds the wrapped command for a dsh profile ("tui", "acp")
+// and its app arguments. A model given here wins over DSH_MODEL from
+// ~/.dsh/lydiabox.env because the wrapper sets it after the file is
 // sourced.
 //
 // dsh has no permission flag. Its base profile (@deepseek-ai/dsh-base)
 // reads DSH_PERMISSION_MODE: "danger-full-access" turns off the command
 // sandbox and sets the approval policy to "never", so no tool waits for an
 // approval.
-func dshCommand(model string, args ...string) []string {
-	cmd := []string{"sh", "-c", dshEnvWrapper, "dsh", "env", "DSH_PERMISSION_MODE=danger-full-access"}
-	if model != "" {
-		cmd = append(cmd, "DSH_MODEL="+model)
-	}
-	return append(append(cmd, "dsh"), args...)
+func dshCommand(model, profile string, args ...string) []string {
+	return append([]string{"sh", "-c", dshEnvWrapper, "dsh", model, profile}, args...)
 }
 
 type dshHeader struct {
@@ -240,14 +253,14 @@ func (d DSH) find(home, id string) (string, error) {
 	return "", fmt.Errorf("%w: dsh session %s", harness.ErrNotFound, id)
 }
 
-// LaunchCommand implements harness.Launcher. dsh reads its model from the
-// profile and ~/.dsh/lydiabox.env (DSH_MODEL), so a per-session model is exported.
+// LaunchCommand implements harness.Launcher. The model of the session
+// reaches dsh through the wrapper and the overlay (see dshEnvWrapper).
 func (d DSH) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
-	args := []string{"tui"}
+	var args []string
 	if o.ResumeNativeID != "" {
 		args = append(args, "--resume", o.ResumeNativeID)
 	}
-	return dshCommand(o.Model, args...), o.ResumeNativeID
+	return dshCommand(o.Model, "tui", args...), o.ResumeNativeID
 }
 
 // Purge implements harness.Purger: it removes the session directory.

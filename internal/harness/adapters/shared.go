@@ -36,6 +36,9 @@ func Images(raw json.RawMessage) []string { return findImages(raw, nil, 0) }
 // PlanStatus normalizes a plan step status.
 func PlanStatus(s string) string { return planStatus(s) }
 
-// DSHCommand returns the dsh command line with the permission mode, the
-// model, and ~/.dsh/lydiabox.env, as the terminal launch uses it.
-func DSHCommand(model string, args ...string) []string { return dshCommand(model, args...) }
+// DSHCommand returns the command line of a dsh profile with the permission
+// mode, the model, ~/.dsh/lydiabox.env, and ~/.dsh/lydiabox.patch.yml, as
+// the terminal launch uses it.
+func DSHCommand(model, profile string, args ...string) []string {
+	return dshCommand(model, profile, args...)
+}

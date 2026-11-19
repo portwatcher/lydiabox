@@ -167,8 +167,8 @@ func TestLaunchCommands(t *testing.T) {
 		{adapters.Claude{}, harness.LaunchOptions{ResumeNativeID: "abc"}, "claude --dangerously-skip-permissions --resume abc", true},
 		{adapters.Codex{}, harness.LaunchOptions{ResumeNativeID: "abc", Model: "m/x"}, "codex resume abc --dangerously-bypass-approvals-and-sandbox --model m/x", true},
 		{adapters.Codex{}, harness.LaunchOptions{}, "codex --dangerously-bypass-approvals-and-sandbox", false},
-		{adapters.DSH{}, harness.LaunchOptions{Model: "deepseek/x"}, "env DSH_PERMISSION_MODE=danger-full-access DSH_MODEL=deepseek/x dsh tui", false},
-		{adapters.DSH{}, harness.LaunchOptions{ResumeNativeID: "s1"}, "env DSH_PERMISSION_MODE=danger-full-access dsh tui --resume s1", true},
+		{adapters.DSH{}, harness.LaunchOptions{Model: "deepseek/x"}, "dsh deepseek/x tui", false},
+		{adapters.DSH{}, harness.LaunchOptions{ResumeNativeID: "s1"}, "dsh  tui --resume s1", true},
 		{adapters.Antigravity{}, harness.LaunchOptions{ResumeNativeID: "c1"}, "agy --dangerously-skip-permissions --conversation c1", true},
 		{adapters.OpenCode{}, harness.LaunchOptions{Model: "kimi/kimi-k3"}, "opencode --auto --model lydiabox/kimi/kimi-k3", false},
 		{adapters.OpenCode{}, harness.LaunchOptions{ResumeNativeID: "ses_1"}, "opencode --auto --session ses_1", true},
@@ -198,7 +198,7 @@ func TestLaunchFullAccess(t *testing.T) {
 		{adapters.Claude{}, []string{"--dangerously-skip-permissions"}, []string{"--permission-mode", "--allow-dangerously-skip-permissions"}},
 		{adapters.Codex{}, []string{"--dangerously-bypass-approvals-and-sandbox"},
 			[]string{"-s", "--sandbox", "-a", "--ask-for-approval", "--full-auto", "--approve-for-me"}},
-		{adapters.DSH{}, []string{"DSH_PERMISSION_MODE=danger-full-access"}, nil},
+		// dsh: the wrapper exports DSH_PERMISSION_MODE (TestDSHWrapper).
 		{adapters.Antigravity{}, []string{"--dangerously-skip-permissions"}, []string{"--sandbox", "--mode"}},
 		{adapters.OpenCode{}, []string{"--auto"}, nil},
 	}
