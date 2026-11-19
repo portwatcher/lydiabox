@@ -235,9 +235,23 @@ makes these changes; the `vm.create` row above is `done` with them.
 | RTP to `TrackLocalStaticRTP` (H.264), signaling over `/api/v1/desktop/ws` | done | `internal/guest/webrtc`, `internal/desktop` | `TestViewerReceivesVideoAndSendsInput`, `TestSignalingRelayAndBroadcast`; E2E (live video and takeover keyboard input in a browser) |
 | WebRTC media transport | done (the design sets no port scheme; all media uses one UDP port, `LYDIABOX_WEBRTC_UDP_PORT`, default 50000, forwarded by the driver because the guest is behind NAT) | `internal/guest/webrtc`, drivers | `TestViewerReceivesVideoAndSendsInput`; E2E (step 19); KVM full-image run (W1 to W5: video and Takeover from a browser through the DNAT rule on chv) |
 | WebRTC through a TURN relay with no inbound port (addition: STUN/TURN settings, Cloudflare Realtime TURN credentials, relay-only policy, TURN over TCP and TLS) | done; the check with a real TURN service is pending ([turn-manual-test.md](turn-manual-test.md)) | `internal/desktop/ice`, `internal/desktop/viewer.go`, `internal/guest/webrtc`, `internal/config/webrtc.go` | `TestRelayOnlyThroughTURNBehindNAT`, `TestGuestRelayCandidateWithoutBrowserTURN`, `TestGuestServerReflexiveWithBrowserRelay`, `TestNoTURNFailsBehindNAT` (pion vnet, symmetric NATs), `TestRelayOnlyTURNOverTCP`, `TestRelayOnlyTURNOverTLS` (Linux), `TestCloudflareMint`, `TestCredentialsRefreshBeforeExpiry`, `TestDefaultICEUnchanged` |
-| MCP on `127.0.0.1:8910/mcp` with the 9 tools | done | `internal/guest/mcp` | `TestProtocolHandshakeAndToolList`; E2E (tool list) |
+| MCP on `127.0.0.1:8910/mcp` with the 9 tools (23 with the browser tools) | done | `internal/guest/mcp` | `TestProtocolHandshakeAndToolList`; E2E (tool list) |
 | `browser_cdp_endpoint` auto-starts Chrome with the profile directory | done | `internal/guest/mcp` | `TestLocalAppsStartsChromeForCDP`, `TestCDPEndpointWaitsForStartingChrome`; KVM full-image runs (F5: Chromium on arm64 and Google Chrome on amd64 start with the CDP flags; F6: the tool returns the endpoint of that browser, on arm64 repeated on an idle host; on amd64 after the `CHROME_CONFIG_HOME` fix, because Google Chrome refuses CDP on its default profile directory) |
 | `blender_run_script` | done | `internal/guest/mcp` | `TestToolsDriveTheDesktop` (fake Blender); KVM full-image run (F7: Blender 4.0.2) |
+| High-level browser use (addition): `browser_*` MCP tools on the visible desktop Chrome, element refs from `browser_snapshot`, real input events, tabs, history, text, JavaScript, page screenshots, waits; actions follow the takeover mode and emit `agent_action` events | done | `internal/guest/browser`, `internal/guest/mcp/browser_tools.go`, `internal/guest/x11` (`Act`, `Observe`) | fake CDP server (`internal/guest/browser/cdptest`): `TestOpenNavigatesCurrentTab`, `TestNewTabSelectCloseAndList`, `TestCurrentFollowsVisibleTabAndCreatesOne`, `TestClickDispatchesMouseEvents`, `TestTypeSelectPressScroll`, `TestTakeoverBlocksActionsButNotReads`, `TestReattachAndReconnect`; MCP: `TestBrowserToolsList`, `TestBrowserToolsCall`; `TestActFollowsTakeoverAndPublishes`; real Chrome: `TestRealChrome` (`LYDIABOX_TEST_CHROME`, Chrome 2026-11 on macOS, headless); Docker image run (below) |
+| `lbx` CLI for every harness (addition): `lbx browser ...`, `lbx computer ...`, `lbx tools`, `lbx call`; `/usr/local/bin/lbx` in the image | done | `internal/guest/cli/cmd_lbx.go`, `cmd_lbx_ops.go`, `deploy/rootfs/setup-guest.sh` | `TestLbxBrowser`, `TestLbxComputerToolsAndCall`, `TestLbxDaemonDown` (real MCP server, fake desktop and Chrome); Docker image run (below) |
+| Discovery in all five harnesses (addition): marked block in `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.dsh/AGENTS.md`, `~/.gemini/GEMINI.md` | done; a session of each harness that uses the block without a prompt is not checked yet | `internal/magpie/wire/instructions.go` | `TestWirersPreserveUserContent` (golden files with user text before and after an old block), `TestMergeInstructions`, `TestInstructionsInEveryHarness` |
+
+Docker image run of the browser use (2026-11-19): the `lydiabox/guest:instabox-base`
+image (amd64, emulated on an arm64 Mac) with the new `lydiabox-guest`, as
+the `agent` user. `lbx tools` lists 23 tools. `lbx browser open
+https://example.com` returns after 4.3 s with the title; `lbx browser
+snapshot` gives `[e1] link "Learn more" -> https://iana.org/help/example-domains`;
+`lbx browser click e1` opens `https://www.iana.org/help/example-domains`
+(`Example Domains`). `text`, `back`, `tabs`, `open --new-tab`, `close`,
+`lbx browser screenshot`, and `lbx computer screenshot` also pass, and the
+desktop screenshot shows the maximized Chrome on the Xfce desktop with the
+IANA page.
 
 ## 4.6 Zero-trust connectors
 

@@ -447,6 +447,31 @@ The Studio lists the sessions of all five harnesses from `/home/agent`,
 also while the VM is off. See
 [docs/harness-formats.md](docs/harness-formats.md).
 
+## Browser and computer use
+
+Agents in the VM use the desktop like a person, on the screen that you
+watch and can take over. Each harness gets the tools in two forms:
+
+- the `lydiabox` MCP server (`http://127.0.0.1:8910/mcp`): `computer_*`
+  tools for the X11 desktop and `browser_*` tools for the desktop Chrome;
+- the `lbx` command in the shell, with the same operations:
+
+```sh
+lbx browser open https://example.com
+lbx browser snapshot          # [e1] link "Learn more" -> https://...
+lbx browser click e1
+lbx browser type e3 "query" --submit
+lbx computer screenshot       # prints the path of a PNG
+lbx browser help
+```
+
+The wirers write a short marked block about these tools into the global
+instruction file of each harness (`~/.claude/CLAUDE.md`,
+`~/.codex/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.dsh/AGENTS.md`,
+`~/.gemini/GEMINI.md`), so agents know them without a prompt. Your own text
+in these files stays. While you have taken over the desktop, agent actions
+wait up to 30 s and then report the takeover.
+
 ## Connectors
 
 Connect GitHub, Google Drive, Notion, or Slack in the Connectors page:

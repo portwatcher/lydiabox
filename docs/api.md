@@ -827,7 +827,11 @@ Server → client:
 `key`, `screenshot`, `launch`. Fields that do not apply are zero or empty:
 `x`/`y` for pointer actions (drag end point; drag start in `fromX`/`fromY`),
 `dx`/`dy` for scroll, `text` for `type`, `keys` (for example `"ctrl+l"`)
-for `key`, `text` holds the app name for `launch`.
+for `key`, `text` holds the app name for `launch`. The `browser_*` tools
+use the same kinds and set `tool` to their name: `click` at the screen
+point of the element, `type` (password characters shown as `•`), `key`,
+`scroll`, `launch` with the URL for a navigation, and `screenshot` for
+`browser_snapshot` and `browser_screenshot`.
 
 Client → server:
 
