@@ -447,9 +447,11 @@ the provider terms first: see
 [docs/subscriptions-manual-test.md](docs/subscriptions-manual-test.md).
 
 The Studio lists the sessions of all five harnesses from `/home/agent`,
-also while the VM is off. A harness session opens in a chat view built from
-its transcript (messages, tool calls with their output, plan, token use);
-the terminal of the same session is one switch away. See
+also while the VM is off. A harness session opens in a chat view: the
+guest runs the harness's Agent Client Protocol (ACP) agent and streams its
+messages, tool calls with their output, plan, approvals, and token use.
+The terminal of the same session is one switch away (the switch resumes
+the same native session in the harness TUI). See
 [docs/harness-formats.md](docs/harness-formats.md).
 
 ## Browser and computer use

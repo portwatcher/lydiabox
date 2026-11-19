@@ -73,7 +73,7 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Resume | `dsh tui --resume <id>`; headless `--session-id` | Verified (`docs/cli-help.md`) |
 | Permissions | No CLI flag. The `@deepseek-ai/dsh-base` profile reads `DSH_PERMISSION_MODE`; the launcher sets `danger-full-access` (sandbox off, approval policy `never`). In that mode dsh runs commands as they are, without its sandbox, so they have network access | Verified (`dsh-base/cordis.patch.yml`, `docs/subsystems/sandbox.md`, dsh 0.2.2-rc.5) |
 | `encodedId` for IDs with only safe characters | The ID itself | Inferred |
-| `.dsh/.env` and `DSH_MODEL` | dsh has no documented `.env` support. The launcher runs dsh through `sh -c 'set -a; . ~/.dsh/.env; …'`, so `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `DEEPSEEK_BASE_URL`, the `*_API_KEY` placeholders, and `DSH_MODEL` reach the process | Inferred |
+| `.dsh/lydiabox.env` and `DSH_MODEL` | The wirer writes `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `DEEPSEEK_BASE_URL`, the `*_API_KEY` placeholders, and `DSH_MODEL` to `~/.dsh/lydiabox.env`; the launcher runs dsh through `sh -c 'set -a; . ~/.dsh/lydiabox.env; …'`, so they reach the process. dsh 0.2.2-rc.1 reads `~/.dsh/.env` itself and exits when that file sets a base URL ("only the launching environment may set" it), so the wirer removes the managed keys from `~/.dsh/.env` | Verified (dsh 0.2.2-rc.1, 2026-11-19) |
 
 ## Antigravity (`agy`)
 
@@ -97,6 +97,35 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | IDs | `ses_`, `msg_`, `prt_` + time-ordered suffix | Verified |
 | Start / resume | `opencode [--session id] [--model provider/model] [--prompt text]`; `opencode import <file>` takes `opencode export` JSON. The launcher adds `--auto` (approves permission requests that the config does not deny). `opencode --help` has no sandbox option | Verified (`opencode --help`, opencode 1.19.6) |
 | Config | `.config/opencode/opencode.json`: `provider.lydiabox` (`npm: "@ai-sdk/openai-compatible"`, `options.baseURL`, `options.apiKey`, `models`), `model: "lydiabox/<provider>/<model>"`, `mcp.<name> = {"type":"remote","url","enabled":true}`. When the file already uses the newer `providers` or `mcp.servers` keys, those are written instead | Verified (old form, still accepted); new form Inferred |
+
+## ACP agents
+
+The ACP engine (`docs/api.md` section 8, "ACP engine") runs the bridge
+`lydiabox-guest acp` (`internal/acp`) as a guest terminal in raw mode. The
+bridge is an ACP client (protocol version 1; a small JSON-RPC client that
+decodes the agent messages leniently, because the five agents follow
+different schema versions). It starts the agent below with the same
+environment as the terminal launch (gateway keys from the wirers), passes
+the MCP servers `lydiabox` and `lydiabox-connectors` in `mcpServers`, and
+selects the full-access mode. Checked on 2026-11-19 in the guest image
+(`lydiabox/guest:instabox-base`, amd64, as UID 1000, configs written by
+the wirers, a stub MCP server, and a fake model gateway on port 3425 that
+streams one reply for every model API):
+
+| Harness | Agent | Version | Session | Full access | Result |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Claude Code (2.1.325) | `claude-agent-acp` (npm `@agentclientprotocol/claude-agent-acp`, Zed/ACP adapter) | 0.108.1 (pinned in `install-harnesses.sh`) | `session/new`, `session/load` | mode `bypassPermissions` (offered to a user other than root) | Verified: full turn through the gateway (`/v1/messages`), usage with context window and cost, resume with replay |
+| Codex (0.169.0) | `codex-acp` (npm `@agentclientprotocol/codex-acp`; it drives the installed `codex app-server`, so the rollouts are the TUI's) | 2.7.0 (pinned) | `session/new`, `session/load` | mode `agent-full-access` | Verified: full turn (`/v1/responses`), usage with context window, resume with replay; no login needed with the `lydiabox` model provider; it reports MCP servers that the config already defines as `mcp_startup.*` tool calls, which the bridge drops. Codex adds a "Model metadata … not found" warning to the reply for a gateway model, as in its TUI |
+| opencode (1.19.5) | `opencode acp` | the installed CLI | `session/new`, `session/load` | no mode; `OPENCODE_CONFIG_CONTENT` allows every tool, as `--auto` does | Verified: full turn (`/v1/chat/completions`), usage, resume with replay |
+| dsh (0.2.2-rc.1) | `dsh acp` (profile bundle `@deepseek-ai/dsh-acp-app`, through the launcher wrapper) | the installed CLI | `session/new`, `session/resume` (no `session/load`: the bridge sends the transcript history first) | `DSH_PERMISSION_MODE=danger-full-access` | Verified: full turn (`/v1/chat/completions`), context size and window, resume with the transcript history; dsh is not in the ACP registry |
+| Antigravity (1.5.9) | `agy acp --dangerously-skip-permissions` | the installed CLI | `session/new`, `session/load` | the flag approves every tool (its modes are `default`, `accept-edits`, `plan`) | Not used: the session, the context window (1,048,576), and resume work, but the ACP server offers only Google's built-in models as the model option, has no `--model` flag, and ignores the CLI settings `model` key, so a prompt goes to `gemini-3.1-pro-preview` instead of the LydiaBox model. Antigravity keeps the terminal engine and the transcript chat view; the API refuses `engine: "acp"` for it |
+
+The ACP registry (`https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`)
+lists the Claude, Codex, OpenCode, and Antigravity agents (the registry's
+Antigravity entry is a separate `agy_acp_server` binary; the installed
+`agy` has the same server as `agy acp`). Not checked: tool calls and
+permission requests of a real agent (the fake model replies with text
+only), MCP tool calls through ACP, and a real model through magpie.
 
 ## Session events
 

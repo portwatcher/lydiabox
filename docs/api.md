@@ -614,11 +614,18 @@ user stopped: a new or resumed session is an explicit request.
 
 ```json
 { "harness": "claude-code", "workspaceDir": "/workspace/lydiabox", "model": "kimi/kimi-k3",
-  "resumeNativeId": "", "title": "", "cols": 160, "rows": 48 }
+  "resumeNativeId": "", "title": "", "engine": "acp", "cols": 160, "rows": 48 }
 ```
 
-`model`, `resumeNativeId` (resume an existing native session), and `title`
-are optional. Response `201`: `Session`. Errors: `400` unknown harness or a
+`model`, `resumeNativeId` (resume an existing native session), `title`, and
+`engine` are optional. `engine` is `pty` (default: the harness TUI in a
+terminal) or `acp` (the chat view: the ACP bridge `lydiabox-guest acp`
+runs the ACP agent of the harness in a guest terminal and exchanges JSON
+lines with the host; see "ACP engine" below). A shell runs only as `pty`;
+Antigravity also (`400`: its ACP agent cannot use the LydiaBox model
+gateway, `docs/harness-formats.md`, "ACP agents").
+A `Session` has `engine` (`pty` or `acp`; for a stored session the engine
+it last ran with). Response `201`: `Session`. Errors: `400` unknown harness or a
 `workspaceDir` outside `/workspace` and `/home/agent`, `409 not_installed`
 when the program of the harness is not installed in the VM (the message
 names it, for example `Claude Code is not installed in the VM (the command
@@ -655,7 +662,11 @@ Details:
 
 ### `PATCH /api/v1/sessions/{id}`
 
-Changes the model of a live session. Body `{ "model": "kimi/kimi-k3",
+Changes the model or the engine of a live session. Body `{ "model":
+"kimi/kimi-k3", "cols": 120, "rows": 40 }` or `{ "engine": "pty" }` (not
+both: `400`). An engine change ends the terminal or the bridge and resumes
+the same native session in the other engine (only one front end runs a
+session at a time). Model body: `{ "model": "kimi/kimi-k3",
 "cols": 120, "rows": 40 }` (`cols` and `rows` default to the current
 terminal size). The harness process ends like a delete (`SIGINT`, then
 `SIGTERM` and `SIGHUP`), and the same native session resumes with the new
@@ -761,6 +772,7 @@ An event:
 | `usage` | `usage`: `inputTokens`, `outputTokens`, `cachedTokens`, `reasoningTokens`, `contextTokens` (the context the call read), `contextWindow` (when the harness records it), `costUsd`; `model` |
 | `turn_end` | `text` is `interrupted` for a turn that the user stopped |
 | `error` | `text`: an error that the harness recorded |
+| `permission` | `permission`: `{ "id", "title", "toolCallId", "options": [{ "id", "name", "kind" }], "outcome" }` (ACP engine); `kind` is `allow_once`, `allow_always`, `reject_once`, or `reject_always`; `outcome` is the chosen option ID, `cancelled`, or empty while it waits |
 
 `tool.kind` maps the tool names of all five harnesses to `shell`, `read`,
 `edit`, `search`, `web`, `mcp`, `computer`, `browser`, `plan`, `agent`, or
@@ -793,6 +805,34 @@ bracketed paste mode gets the text as one paste (`ESC [200~` … `ESC [201~`);
 Enter follows 250 ms later, so that the paste-burst detection of Codex and
 Claude Code does not turn it into a newline. `400` for an empty text, `409`
 when the session has no running terminal, `404` for an unknown session.
+
+### `POST /api/v1/sessions/{id}/permission`
+
+Answers a permission request of the ACP agent of a session (an event of
+kind `permission`): `{"requestId": "perm4", "optionId": "allow"}` → `204`.
+`400` without both fields, `409` when the session has no running chat
+agent (a `pty` session or none).
+
+### ACP engine
+
+A session with `engine: "acp"` runs the ACP agent of its harness
+(`docs/harness-formats.md`, "ACP agents") through the bridge. The bridge
+initializes the agent, opens the session (`session/new`; for a resume
+`session/load`, which replays the history, or `session/resume` with the
+history from the transcript), selects the full-access mode of the agent
+(`session/set_mode`), and passes the MCP servers `lydiabox` and
+`lydiabox-connectors` in `mcpServers`. The bridge reports the native ID of
+a new session; the session is then listed under it. `input` sends a
+prompt (prompts queue while a turn runs), `interrupt` sends
+`session/cancel` (and drops the queued prompts), and `permission` answers
+`session/request_permission`. The event stream carries the agent's
+updates: text and reasoning chunks grow their event, a tool call and its
+updates are one `tool_call` event with its `result`, `plan` replaces the
+plan of the turn, `usage_update` gives the context size and window, and a
+`permission` event waits for an answer. The status has `engine: "acp"`,
+`agent` (name and version), `mode`, and `queued`; `attention` means a
+permission request waits. When the bridge ends with an error, the status
+of the offline session keeps it in `error`.
 
 ### `POST /api/v1/sessions/{id}/interrupt`
 
