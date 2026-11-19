@@ -110,11 +110,11 @@ Root filesystem upgrades: **not stated** how to replace the root disk of
 an existing machine and keep `/data`. A restore replaces `/data` too
 (snapshots). So the driver changes the root through `exec`: at attach it
 installs the system bundle of the cell (the image's own files, the guest
-binary of the image path, the `lbx` links, missing packages such as
-`bubblewrap`) with `sudo -n` when the marker
+binary of the image path, the `lbx` links) with `sudo -n` when the marker
 `/etc/lydiabox/system.sha256` names another bundle
-([instabox.md](instabox.md#system-upgrade)). For a larger change (Chrome,
-Xfce, the harness CLIs), add a step to the bundle, or make a new machine
+([instabox.md](instabox.md#system-upgrade)). `apt-get` does not run on a machine, so a package cannot be added in
+place. For a larger change (Chrome,
+Xfce, the harness CLIs, a new package), add files to the bundle, or make a new machine
 from the new snapshot and move the data with the backup of
 [§6.2](#62-mitigations).
 

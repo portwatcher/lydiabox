@@ -106,23 +106,31 @@ if command -v git >/dev/null 2>&1 &&
 	changed "git config --system credential.helper"
 fi
 
-# Step 4: Debian packages that the image has (deploy/rootfs/Dockerfile)
-# and an older snapshot does not. Only the missing ones are installed.
-# - bubblewrap: Codex's sandbox (bwrap).
-packages="bubblewrap"
+# Step 4: programs that the image has (deploy/rootfs/Dockerfile) and an
+# older snapshot does not. Each entry is PROGRAM:PACKAGE. The check is
+# the program on PATH, not the package database: on an InstaBox machine
+# the package database is the machine template's and does not list the
+# image's packages (docs/instabox.md, "System upgrade").
+# - bwrap: Codex's sandbox.
+# A missing program is installed with apt-get. On an InstaBox machine
+# apt-get does not run (the import keeps the template's libapt, which the
+# image's apt-get cannot use), so a missing program is an error there: the
+# machine needs a new snapshot.
+programs="bwrap:bubblewrap"
 missing=""
-for p in $packages; do
-	if ! dpkg-query -W -f '${Status}\n' "$p" 2>/dev/null | grep -q ' ok installed$'; then
-		missing="$missing $p"
+for e in $programs; do
+	if ! command -v "${e%%:*}" >/dev/null 2>&1; then
+		missing="$missing ${e#*:}"
 	fi
 done
 if [ -n "$missing" ]; then
 	export DEBIAN_FRONTEND=noninteractive
 	apt="apt-get -q -o DPkg::Lock::Timeout=120"
+	hint="on an InstaBox machine apt-get does not run; make the machine again from a new snapshot"
 	# shellcheck disable=SC2086 # word splitting is intended
-	$apt update || die "apt-get update failed; the packages$missing are not installed"
+	$apt update || die "apt-get update failed; the packages$missing are not installed ($hint)"
 	# shellcheck disable=SC2086 # word splitting is intended
-	$apt install -y --no-install-recommends $missing || die "apt-get install$missing failed"
+	$apt install -y --no-install-recommends $missing || die "apt-get install$missing failed ($hint)"
 	changed "installed the packages$missing"
 fi
 

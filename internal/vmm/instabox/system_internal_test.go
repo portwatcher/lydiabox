@@ -67,7 +67,7 @@ printf old >/usr/local/bin/lydiabox-guest
 printf new >/data/.lydiabox/bin/lydiabox-guest
 chmod 0755 /usr/local/bin/lydiabox-guest /data/.lydiabox/bin/lydiabox-guest
 chown -R 1000:1000 /data
-! dpkg-query -W bubblewrap 2>/dev/null
+! command -v bwrap
 ! test -e /usr/local/bin/lbx`)
 
 	run := func(tarPath, hash string) (string, string, int) {
@@ -122,13 +122,12 @@ chown -R 1000:1000 /data
 	}
 	clean()
 	checks := root(`set -e
-dpkg-query -W -f '${Status}\n' bubblewrap
 command -v bwrap
 readlink /usr/local/bin/lbx /usr/local/bin/git-credential-lydiabox
 cat /usr/local/bin/lydiabox-guest; echo
 git config --system --get credential.helper
 cat ` + instaboximage.MarkerPath)
-	want := "install ok installed\n/usr/bin/bwrap\n/usr/local/bin/lydiabox-guest\n/usr/local/bin/lydiabox-guest\nnew\n" +
+	want := "/usr/bin/bwrap\n/usr/local/bin/lydiabox-guest\n/usr/local/bin/lydiabox-guest\nnew\n" +
 		"/usr/local/bin/lydiabox-guest git-cred\n" + b.SHA256
 	if checks != want {
 		t.Fatalf("machine state:\n%s\nwant:\n%s", checks, want)

@@ -556,10 +556,13 @@ that the core of the cell expects, with no new snapshot.
      `/usr/local/bin/git-credential-lydiabox` to
      `/usr/local/bin/lydiabox-guest`, and
      `git config --system credential.helper "/usr/local/bin/lydiabox-guest git-cred"`.
-  4. Install the Debian packages that are missing (now: `bubblewrap`)
-     with `apt-get install -y --no-install-recommends`
-     (`DEBIAN_FRONTEND=noninteractive`). `apt-get update` runs only when a
-     package is missing. A failure stops the script with an `ERROR:` line.
+  4. Install the programs that are missing (now: `bwrap` of the package
+     `bubblewrap`) with `apt-get install -y --no-install-recommends`
+     (`DEBIAN_FRONTEND=noninteractive`). The check is the program on
+     `PATH`, not the package database. `apt-get update` runs only when a
+     program is missing. A failure stops the script with an `ERROR:` line.
+     On an InstaBox machine `apt-get` does not run (see Limits), so there
+     this step can only find that nothing is missing.
 - When it takes effect. The script never restarts supervisord, the
   desktop, or the guest daemon, and it changes nothing below `/data`
   except its own temporary files. A new entry point, a new wrapper, or a
@@ -578,8 +581,8 @@ that the core of the cell expects, with no new snapshot.
   error when the change fails. A new image file needs a `COPY` line in the
   Dockerfile, a row in `Files`, a name in the `go:embed` line, and a line
   in `Dockerfile.dockerignore` (the tests check the Dockerfile and the
-  ignore file). A new package goes to `deploy/rootfs/Dockerfile` and to
-  `packages` in the script. Any change of a bundle file gives a new
+  ignore file). A new program goes to `deploy/rootfs/Dockerfile` and to
+  `programs` in the script. Any change of a bundle file gives a new
   SHA-256, so every machine runs the script one time more.
 - To check a machine by hand (`instabox exec` or the web terminal):
 
@@ -587,7 +590,7 @@ that the core of the cell expects, with no new snapshot.
   cat /etc/lydiabox/system.sha256
   readlink /usr/local/bin/lbx /usr/local/bin/git-credential-lydiabox
   sha256sum /usr/local/bin/lydiabox-guest /data/.lydiabox/bin/lydiabox-guest
-  dpkg-query -W bubblewrap
+  command -v bwrap
   ```
 
   The record of the tenant skips the probe of a machine that had the
@@ -595,11 +598,18 @@ that the core of the cell expects, with no new snapshot.
   after a release that changes the bundle or the guest binary.
 - Limits. The bundle does not upgrade Chrome, Xfce, the harness CLIs
   (`claude`, `codex`, `opencode`), or the shared libraries of the
-  machine. A step for a specific need can be added. `apt-get` on a machine
-  uses the image's package sources and package database, but the import
-  keeps the machine's shared libraries, so a package with new library
-  dependencies can fail or install libraries that the machine does not
-  load. Test a new package step in a machine first.
+  machine. A step for a specific need can be added, but not a step
+  that needs `apt-get`: on an InstaBox machine `apt-get` stops with a
+  segmentation fault. The import keeps the template's `libapt-private`
+  (apt 3.0.3) and the package database of the template, and the image's
+  `apt-get` (Ubuntu 24.04) cannot use them. Seen on 2026-11-19 on a
+  machine of the template `agent-browser` 2026-11-14.2815: `apt-get
+  update` gives `libapt-private.so.0.0: no version information available`
+  and `Segmentation fault`; `dpkg-query -W bubblewrap` finds no package
+  although `/usr/bin/bwrap` is there. So a program that an old snapshot
+  does not have comes only with a new machine from a new snapshot, or as
+  a file in the bundle. The agent in the machine cannot install Debian
+  packages either.
 - Tests: `internal/vmm/instabox/system_test.go` (fake API: a current
   marker costs one probe, a new bundle is installed and recorded, a
   failure is logged once for each process, the order after the guest
