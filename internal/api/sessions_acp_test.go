@@ -57,9 +57,11 @@ func TestSessionsACP(t *testing.T) {
 		!strings.Contains(cmd, "--mcp lydiabox=http://127.0.0.1:8910/mcp") || !strings.Contains(cmd, "--mcp lydiabox-connectors=") {
 		t.Fatalf("bridge command %q", cmd)
 	}
-	resp, _ = e.do(t, http.MethodPost, "/api/v1/sessions", map[string]any{"harness": "shell", "workspaceDir": "/home/agent", "engine": "acp"})
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("shell with acp = %d", resp.StatusCode)
+	for _, h := range []string{"shell", "antigravity"} {
+		resp, _ = e.do(t, http.MethodPost, "/api/v1/sessions", map[string]any{"harness": h, "workspaceDir": "/home/agent", "engine": "acp"})
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s with acp = %d", h, resp.StatusCode)
+		}
 	}
 
 	c := e.dialEvents(t, ctx, s.ID)

@@ -18,8 +18,15 @@ func checkEngine(h, engine string) (string, error) {
 	case "", EnginePTY:
 		return EnginePTY, nil
 	case EngineACP:
-		if h == Shell {
+		switch h {
+		case Shell:
 			return "", fmt.Errorf("%w: a shell runs only in a terminal", ErrBadRequest)
+		case Antigravity:
+			// agy acp (1.5.9) offers only Google's built-in models and
+			// ignores the custom gateway model (no --model flag; the CLI
+			// settings key is not read), so it cannot use the model that
+			// LydiaBox binds (docs/harness-formats.md, "ACP agents").
+			return "", fmt.Errorf("%w: the Antigravity ACP agent cannot use the LydiaBox model gateway; run Antigravity in the terminal", ErrBadRequest)
 		}
 		return EngineACP, nil
 	}

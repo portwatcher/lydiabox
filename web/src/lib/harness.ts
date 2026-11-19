@@ -16,9 +16,10 @@ export function harnessLabel(id: string): string {
 /**
  * Harnesses whose sessions run in the chat view through their ACP agent
  * (engine "acp"). The others run in a terminal; their chat view reads the
- * transcript and types into the terminal.
+ * transcript and types into the terminal. Antigravity's ACP agent cannot
+ * use the LydiaBox model gateway (docs/harness-formats.md, "ACP agents").
  */
-export const acpHarnesses: readonly HarnessID[] = ["claude-code", "codex", "dsh", "antigravity", "opencode"];
+export const acpHarnesses: readonly HarnessID[] = ["claude-code", "codex", "dsh", "opencode"];
 
 /** The engine of a new or continued session of a harness in a view. */
 export function engineFor(harness: HarnessID, view: "chat" | "terminal"): "acp" | "pty" {

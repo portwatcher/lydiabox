@@ -50,5 +50,6 @@ describe("permission requests", () => {
     expect(engineFor("codex", "chat")).toBe("acp");
     expect(engineFor("codex", "terminal")).toBe("pty");
     expect(engineFor("shell", "chat")).toBe("pty");
+    expect(engineFor("antigravity", "chat")).toBe("pty");
   });
 });
