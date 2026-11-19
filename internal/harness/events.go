@@ -28,6 +28,9 @@ const (
 	EventTurnEnd = "turn_end"
 	// EventError is an error that the harness recorded.
 	EventError = "error"
+	// EventPermission is a request of an ACP agent to run a tool; the user
+	// answers it with one of its options.
+	EventPermission = "permission"
 )
 
 // Generic kinds of a tool, for icons and rendering.
@@ -68,6 +71,27 @@ type Event struct {
 	Result *ToolResult `json:"result,omitempty"`
 	Plan   []PlanStep  `json:"plan,omitempty"`
 	Usage  *TurnUsage  `json:"usage,omitempty"`
+	// Permission is set on EventPermission.
+	Permission *Permission `json:"permission,omitempty"`
+}
+
+// Permission is a request of an ACP agent to run a tool.
+type Permission struct {
+	ID         string             `json:"id"`
+	Title      string             `json:"title"`
+	ToolCallID string             `json:"toolCallId,omitempty"`
+	Options    []PermissionOption `json:"options"`
+	// Outcome is the ID of the chosen option, "cancelled", or "" while the
+	// request waits.
+	Outcome string `json:"outcome,omitempty"`
+}
+
+// PermissionOption is one answer to a permission request. Kind is
+// allow_once, allow_always, reject_once, or reject_always.
+type PermissionOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
 }
 
 // ToolCall describes the call of one tool.
