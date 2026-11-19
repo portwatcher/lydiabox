@@ -198,11 +198,11 @@ func (b *Bridge) setup(ctx context.Context) error {
 			return b.conn.Call(ictx, "session/new", map[string]any{"cwd": b.opts.Cwd, "mcpServers": b.mcpServers()}, &res)
 		case init.AgentCapabilities.LoadSession:
 			b.mu.Lock()
-			b.replay = true
+			b.replay, b.ev.replay = true, true
 			b.mu.Unlock()
 			defer func() {
 				b.mu.Lock()
-				b.replay = false
+				b.replay, b.ev.replay = false, false
 				b.mu.Unlock()
 			}()
 			return b.conn.Call(ictx, "session/load", map[string]any{"sessionId": sessionID, "cwd": b.opts.Cwd, "mcpServers": b.mcpServers()}, &res)

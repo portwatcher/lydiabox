@@ -270,6 +270,8 @@ func TestToolKindMapping(t *testing.T) {
 	for _, tc := range []struct{ acp, name, summary, want string }{
 		{"execute", "Run tests", "go test ./...", harness.ToolShell},
 		{"execute", "Run lbx", "lbx browser open https://x", harness.ToolBrowser},
+		{"execute", "curl -sS https://browser.example/a", "curl -sS https://browser.example/a", harness.ToolShell},
+		{"execute", "mcp__lydiabox__browser_open", "browser_open https://x", harness.ToolBrowser},
 		{"read", "Read file", "", harness.ToolRead},
 		{"delete", "Delete x", "", harness.ToolEdit},
 		{"fetch", "Fetch", "", harness.ToolWeb},

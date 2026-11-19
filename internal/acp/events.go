@@ -20,6 +20,7 @@ type events struct {
 
 	turn    int
 	last    string // key of the last added event, to append chunks
+	replay  bool   // session/load replays the history: no durations
 	starts  map[string]time.Time
 	nextKey int
 }
@@ -131,6 +132,74 @@ type toolUpdate struct {
 	Locations  []struct{ Path string } `json:"locations"`
 	RawInput   json.RawMessage         `json:"rawInput"`
 	RawOutput  json.RawMessage         `json:"rawOutput"`
+	Meta       *toolMeta               `json:"_meta"`
+}
+
+// toolMeta holds the command output chunks of codex-acp: a client that
+// declares no terminal capability gets the output of a command only in
+// `_meta.terminal_output_delta` (Zed: `terminal_output`), not in content
+// or rawOutput.
+type toolMeta struct {
+	TerminalOutput      *terminalChunk `json:"terminal_output"`
+	TerminalOutputDelta *terminalChunk `json:"terminal_output_delta"`
+}
+
+type terminalChunk struct {
+	Data string `json:"data"`
+}
+
+// mcpCall is the rawInput of a codex-acp MCP tool call (title
+// "mcp.<server>.<tool>").
+type mcpCall struct {
+	Server    string          `json:"server"`
+	Tool      string          `json:"tool"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+// codexMCP returns the MCP call of a rawInput that has only the keys
+// server, tool, and arguments.
+func codexMCP(raw json.RawMessage) (mcpCall, bool) {
+	var keys map[string]json.RawMessage
+	if json.Unmarshal(raw, &keys) != nil || len(keys) > 3 {
+		return mcpCall{}, false
+	}
+	for k := range keys {
+		if k != "server" && k != "tool" && k != "arguments" {
+			return mcpCall{}, false
+		}
+	}
+	var c mcpCall
+	if json.Unmarshal(raw, &c) != nil || c.Server == "" || c.Tool == "" {
+		return mcpCall{}, false
+	}
+	return c, true
+}
+
+// emptyJSON reports an absent, null, or empty JSON value.
+func emptyJSON(raw json.RawMessage) bool {
+	s := strings.TrimSpace(string(raw))
+	return s == "" || s == "null" || s == "{}" || s == "[]"
+}
+
+// addImage adds a data: URL to the result once, within the limits.
+func addImage(r *harness.ToolResult, url string) {
+	if len(r.Images) >= harness.MaxToolImages || len(url) > harness.MaxToolImage {
+		return
+	}
+	for _, img := range r.Images {
+		if img == url {
+			return
+		}
+	}
+	r.Images = append(r.Images, url)
+}
+
+// appendOutput appends a command output chunk, up to MaxToolOutput.
+func appendOutput(r *harness.ToolResult, data string) {
+	if data == "" || len(r.Output) >= harness.MaxToolOutput {
+		return
+	}
+	r.Output = harness.Clip(r.Output+data, harness.MaxToolOutput)
 }
 
 // acpKinds maps ACP tool kinds to harness tool kinds.
@@ -140,9 +209,14 @@ var acpKinds = map[string]string{
 }
 
 // toolKind combines the ACP kind and the tool name: computer, browser, and
-// MCP tools keep their own kind.
+// MCP tools keep their own kind. A name with spaces is a title (codex-acp
+// uses the command line), so a known ACP kind decides for it: a "/" or
+// "browser" in a command line does not make it an MCP or browser call.
 func toolKind(acpKind, name, summary string) string {
 	byName := harness.ToolKind(name)
+	if _, known := acpKinds[acpKind]; known && strings.ContainsAny(strings.TrimSpace(name), " \t\n") {
+		byName = ""
+	}
 	switch byName {
 	case harness.ToolComputer, harness.ToolBrowser, harness.ToolMCP, harness.ToolPlan, harness.ToolAgent:
 		return byName
@@ -163,8 +237,8 @@ func (l *events) tool(u toolUpdate) {
 		return
 	}
 	key := "tool:" + u.ToolCallID
-	e, ok := l.get(key)
-	if !ok {
+	e, seen := l.get(key)
+	if !seen {
 		e = harness.Event{Key: key, Kind: harness.EventTool, Time: l.now().UTC(),
 			Tool: &harness.ToolCall{ID: u.ToolCallID}, Result: &harness.ToolResult{CallID: u.ToolCallID, Status: harness.StatusPending}}
 		l.starts[u.ToolCallID] = e.Time
@@ -184,7 +258,18 @@ func (l *events) tool(u toolUpdate) {
 	if u.Name != nil && *u.Name != "" {
 		tc.Name = *u.Name
 	}
-	if len(u.RawInput) > 0 && string(u.RawInput) != "null" && string(u.RawInput) != "{}" {
+	if mcp, ok := codexMCP(u.RawInput); ok {
+		// The name has the form of the other harnesses (mcp__server__tool),
+		// and the summary and input show the arguments, not the wrapper.
+		tc.Name = "mcp__" + mcp.Server + "__" + mcp.Tool
+		tc.Summary = mcp.Tool
+		if !emptyJSON(mcp.Arguments) {
+			if s := adapters.ToolSummary(mcp.Arguments); s != "" {
+				tc.Summary = harness.Clip(mcp.Tool+" "+s, 400)
+			}
+			tc.Input = harness.Clip(adapters.PrettyInput(mcp.Arguments), harness.MaxToolInput)
+		}
+	} else if !emptyJSON(u.RawInput) {
 		if s := adapters.ToolSummary(u.RawInput); s != "" {
 			tc.Summary = s
 		}
@@ -215,11 +300,8 @@ func (l *events) tool(u toolUpdate) {
 				tc.Path = c.Path
 			}
 		case "content":
-			if c.Content.Type == "image" && c.Content.Data != "" && strings.HasPrefix(c.Content.MimeType, "image/") &&
-				len(r.Images) < harness.MaxToolImages {
-				if url := "data:" + c.Content.MimeType + ";base64," + c.Content.Data; len(url) <= harness.MaxToolImage {
-					r.Images = append(r.Images, url)
-				}
+			if c.Content.Type == "image" && c.Content.Data != "" && strings.HasPrefix(c.Content.MimeType, "image/") {
+				addImage(&r, "data:"+c.Content.MimeType+";base64,"+c.Content.Data)
 			} else if t := c.Content.text(); t != "" {
 				out = append(out, t)
 			}
@@ -228,14 +310,19 @@ func (l *events) tool(u toolUpdate) {
 	if len(out) > 0 {
 		r.Output = harness.Clip(strings.Join(out, "\n"), harness.MaxToolOutput)
 	}
+	if u.Meta != nil {
+		for _, c := range []*terminalChunk{u.Meta.TerminalOutput, u.Meta.TerminalOutputDelta} {
+			if c != nil {
+				appendOutput(&r, c.Data)
+			}
+		}
+	}
 	if len(u.RawOutput) > 0 && string(u.RawOutput) != "null" {
 		if r.Output == "" {
 			r.Output = harness.Clip(strings.TrimSpace(adapters.OutputText(u.RawOutput)), harness.MaxToolOutput)
 		}
 		for _, img := range adapters.Images(u.RawOutput) {
-			if len(r.Images) < harness.MaxToolImages {
-				r.Images = append(r.Images, img)
-			}
+			addImage(&r, img)
 		}
 	}
 	if u.Status != nil {
@@ -247,7 +334,9 @@ func (l *events) tool(u toolUpdate) {
 		default:
 			r.Status = harness.StatusPending
 		}
-		if r.Status != harness.StatusPending {
+		// A replayed call, or a call whose first report is its end, has no
+		// duration: its start time is not known.
+		if r.Status != harness.StatusPending && !l.replay && seen {
 			if start, ok := l.starts[u.ToolCallID]; ok {
 				r.DurationMs = l.now().Sub(start).Milliseconds()
 			}
