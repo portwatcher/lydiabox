@@ -7,7 +7,7 @@ import type { ToolItem } from "./chatState";
 import { CodeDiff } from "./CodeDiff";
 import { ContextMeter } from "./ContextMeter";
 import { GenerationStats } from "./GenerationStats";
-import { TerminalHandoff, DesktopHandoff } from "./HandoffBanner";
+import { DesktopHandoff, SetupHandoff, TerminalHandoff } from "./HandoffBanner";
 import { Markdown, parseBlocks, safeHref } from "./Markdown";
 import { PlanCard } from "./PlanCard";
 import { splitSource } from "./SourceCards";
@@ -96,6 +96,7 @@ describe("status, handoff, and starters", () => {
   it("names every state in words", () => {
     expect(html(createElement(AgentStatus, { state: "attention" }))).toContain("Needs your input");
     expect(html(createElement(AgentStatus, { state: "offline" }))).toContain("Not running");
+    expect(html(createElement(AgentStatus, { state: "setup" }))).toContain("Needs setup");
     expect(html(createElement(AgentStatus, { state: "working", since: Date.now() - 5000 }))).toMatch(/Working.*\ds/);
   });
 
@@ -103,6 +104,11 @@ describe("status, handoff, and starters", () => {
     const t = html(createElement(TerminalHandoff, { prompt: "Do you want to proceed?", onOpenTerminal: () => undefined }));
     expect(t).toContain("Open terminal");
     expect(t).toContain("Do you want to proceed?");
+    const setup = html(createElement(SetupHandoff, { harness: "Antigravity", prompt: "Terms of Service & Data Use", held: true, onOpenTerminal: () => undefined }));
+    expect(setup).toContain("Finish the Antigravity setup in the terminal");
+    expect(setup).toContain("Terms of Service &amp; Data Use");
+    expect(setup).toContain("Your message is sent when the setup is done.");
+    expect(setup).toContain("Open terminal");
     const d = html(createElement(MemoryRouter, null, createElement(DesktopHandoff)));
     expect(d).toContain('href="/desktop"');
   });

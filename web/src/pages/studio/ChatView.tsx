@@ -7,7 +7,7 @@ import type { Model, Session } from "../../api/types";
 import { AgentStatus } from "../../components/agent/AgentStatus";
 import { AgentTimeline } from "../../components/agent/AgentTimeline";
 import { ContextMeter } from "../../components/agent/ContextMeter";
-import { DesktopHandoff, TerminalHandoff } from "../../components/agent/HandoffBanner";
+import { DesktopHandoff, SetupHandoff, TerminalHandoff } from "../../components/agent/HandoffBanner";
 import { PlanCard } from "../../components/agent/PlanCard";
 import { PromptComposer } from "../../components/agent/PromptComposer";
 import { StarterPrompts } from "../../components/agent/StarterPrompts";
@@ -18,6 +18,7 @@ import { useToast } from "../../components/Toast";
 import { Banner, Button } from "../../components/ui";
 import { VmWakeButton } from "../../components/VmPower";
 import { useSystem } from "../../hooks/useSystem";
+import { harnessLabel } from "../../lib/harness";
 
 interface ChatViewProps {
   session: Session;
@@ -46,6 +47,9 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   const live = status ? status.live : session.live;
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // A message sent while the terminal shows a setup screen waits here
+  // until the harness is at its prompt.
+  const [held, setHeld] = useState(false);
   const [sentAt, setSentAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -84,9 +88,11 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
       setAnnounce(lastReply(lastTurn).slice(0, 400));
     } else if (state === "attention" && prevState.current !== "attention") {
       setAnnounce("The agent waits for your answer in the terminal.");
+    } else if (state === "setup" && prevState.current !== "setup") {
+      setAnnounce(`Finish the ${harnessLabel(session.harness)} setup in the terminal.`);
     }
     prevState.current = state;
-  }, [state, lastTurn]);
+  }, [state, lastTurn, session.harness]);
 
   // Follow new output while the view is at the bottom.
   const scroller = useRef<HTMLDivElement>(null);
@@ -110,8 +116,14 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!text) {
+      setHeld(false);
       return;
     }
+    if (state === "setup") {
+      setHeld(true);
+      return;
+    }
+    setHeld(false);
     setSending(true);
     try {
       await sessions.input(session.id, text);
@@ -124,7 +136,19 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
     } finally {
       setSending(false);
     }
-  }, [draft, session.id, toast]);
+  }, [draft, session.id, state, toast]);
+
+  // The setup is done: the held message goes out.
+  useEffect(() => {
+    if (held && state === "idle" && !sending) {
+      void send();
+    }
+  }, [held, state, sending, send]);
+  useEffect(() => {
+    if (!live) {
+      setHeld(false);
+    }
+  }, [live]);
 
   const interrupt = async () => {
     setSentAt(0);
@@ -167,6 +191,8 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
     );
   } else if (empty && !synced) {
     body = <LoadingView label="Loading the conversation…" />;
+  } else if (empty && state === "setup") {
+    body = <SetupHandoff harness={harnessLabel(session.harness)} prompt={status?.prompt ?? ""} held={held} onOpenTerminal={onOpenTerminal} />;
   } else if (empty && live) {
     body = <StarterPrompts onPick={pick} />;
   } else if (empty) {
@@ -213,7 +239,7 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
             onSubmit={() => void send()}
             working={working}
             onInterrupt={() => void interrupt()}
-            sending={sending}
+            sending={sending || held}
             placeholder={empty ? "Describe a task" : "Reply to the agent"}
           />
         ) : (

@@ -17,6 +17,10 @@ const (
 	StateIdle = "idle"
 	// StateAttention: the terminal is quiet and shows an approval prompt.
 	StateAttention = "attention"
+	// StateSetup: before the first event, the terminal shows a first-run
+	// screen (terms, folder trust, sign-in method) that only the user can
+	// answer. The program does not read prompts until then.
+	StateSetup = "setup"
 	// StateOffline: the session has no running terminal.
 	StateOffline = "offline"
 )
@@ -30,7 +34,8 @@ type EventStatus struct {
 	Live      bool   `json:"live"`
 	// Synced reports that the events of the transcript were read once.
 	Synced bool `json:"synced"`
-	// Prompt is the approval prompt line that the terminal shows.
+	// Prompt is the approval prompt or setup screen line that the
+	// terminal shows.
 	Prompt string `json:"prompt,omitempty"`
 	// Error is the last read error, or why the ACP agent ended.
 	Error string `json:"error,omitempty"`
@@ -132,6 +137,20 @@ func (m *Manager) SubscribeEvents(tenantID, id string) (*EventSub, EventUpdate, 
 	hub.mu.Unlock()
 	m.hubsMu.Unlock()
 	return sub, first, func() { m.unsubscribeEvents(key, hub, sub) }, nil
+}
+
+// hasEvents reports whether a watched event stream of the session has
+// events. A session that nobody watches counts as one without events.
+func (m *Manager) hasEvents(tenantID, id string) bool {
+	m.hubsMu.Lock()
+	hub := m.hubs[liveKey(tenantID, id)]
+	m.hubsMu.Unlock()
+	if hub == nil {
+		return false
+	}
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	return len(hub.list) > 0
 }
 
 func (m *Manager) unsubscribeEvents(key string, hub *eventHub, sub *EventSub) {
@@ -251,7 +270,12 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 	if live && room != nil {
 		act := room.Activity()
 		quiet := act.LastOutput.IsZero() || time.Since(act.LastOutput) > 2*m.eventPoll()
+		h.mu.Lock()
+		first := len(h.list) == 0
+		h.mu.Unlock()
 		switch {
+		case first && act.Setup != "":
+			status.State, status.Prompt = StateSetup, act.Setup
 		case quiet && act.Prompt != "":
 			status.State, status.Prompt = StateAttention, act.Prompt
 		case !quiet:

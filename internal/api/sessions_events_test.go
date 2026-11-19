@@ -168,3 +168,33 @@ func TestSessionsEventStreamHistoryAndErrors(t *testing.T) {
 		c.CloseNow()
 	}
 }
+
+// A first-run screen (here the Antigravity terms) before the first event
+// is not "idle", and a prompt sent to it is refused, not lost.
+func TestSessionsEventStreamSetupScreen(t *testing.T) {
+	e := newSessionsEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, body := e.do(t, http.MethodPost, "/api/v1/sessions", map[string]any{"harness": "claude-code",
+		"workspaceDir": adapterstest.Workspace, "cols": 100, "rows": 30})
+	var s harness.Session
+	if resp.StatusCode != 201 || json.Unmarshal(body, &s) != nil {
+		t.Fatalf("create = %d %s", resp.StatusCode, body)
+	}
+	pty := e.runner.Last()
+	c := e.dialEvents(t, ctx, s.ID)
+	defer c.CloseNow()
+
+	pty.Emit([]byte("\x1b[2J\x1b[H\x1b[1mTerms of Service & Data Use\x1b[0m\r\n> Accept\r\n  Decline\r\n"))
+	m := waitStream(t, ctx, c, "setup", func(m streamMsg) bool { return m.Type == "status" && m.State == harness.StateSetup })
+	if m.Prompt != "Terms of Service & Data Use" {
+		t.Fatalf("prompt = %q", m.Prompt)
+	}
+	resp, body = e.do(t, http.MethodPost, "/api/v1/sessions/"+url.PathEscape(s.ID)+"/input", map[string]any{"text": "Hello"})
+	if resp.StatusCode != http.StatusConflict || !strings.Contains(string(body), "Terminal view") {
+		t.Fatalf("input = %d %s", resp.StatusCode, body)
+	}
+	if got := pty.Input(); len(got) != 0 {
+		t.Fatalf("pty input = %q", got)
+	}
+}

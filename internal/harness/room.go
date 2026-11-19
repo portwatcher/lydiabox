@@ -284,6 +284,9 @@ func (r *Room) Write(p []byte) error {
 	}
 	r.writeMu.Lock()
 	defer r.writeMu.Unlock()
+	r.mu.Lock()
+	r.act.input()
+	r.mu.Unlock()
 	_, err := pty.Write(p)
 	return err
 }

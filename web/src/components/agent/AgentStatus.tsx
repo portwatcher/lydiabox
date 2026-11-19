@@ -1,4 +1,4 @@
-import { CircleCheck, Hand, Moon } from "lucide-react";
+import { CircleCheck, Hand, Moon, SquareTerminal } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AgentState } from "../../api/events";
 import { Spinner, cx } from "../ui";
@@ -8,6 +8,7 @@ const labels: Record<AgentState, string> = {
   working: "Working",
   idle: "Ready",
   attention: "Needs your input",
+  setup: "Needs setup",
   offline: "Not running",
 };
 
@@ -15,6 +16,7 @@ const tones: Record<AgentState, string> = {
   working: "border-info/40 text-info",
   idle: "border-success/40 text-success",
   attention: "border-warning/50 text-warning",
+  setup: "border-warning/50 text-warning",
   offline: "border-base-content/20 text-base-content/70",
 };
 
@@ -38,6 +40,8 @@ export function AgentStatus({ state, since }: { state: AgentState; since?: numbe
         </>
       ) : state === "attention" ? (
         <Hand aria-hidden className="size-3.5" />
+      ) : state === "setup" ? (
+        <SquareTerminal aria-hidden className="size-3.5" />
       ) : state === "idle" ? (
         <CircleCheck aria-hidden className="size-3.5" />
       ) : (
