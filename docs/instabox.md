@@ -454,8 +454,11 @@ that is not an InstaBox size, a GPU, and a UDP port.
 ### Guest binary upgrade
 
 The machine runs the guest binary of the cell, so one release of the
-cell upgrades the guest of every machine. A new snapshot is necessary
-only for changes outside the guest binary.
+cell upgrades the guest of every machine. The
+[system upgrade](#system-upgrade) brings the image's own files, links,
+and packages to existing machines. A new snapshot is necessary only for
+other changes (for example a new Chrome, Xfce, or harness CLI), and only
+new machines get it.
 
 - The cell finds its linux guest binary as the other drivers do
   (`LYDIABOX_GUEST_BINARY`, next to `lydiabox`, the runtime `bin`
@@ -496,6 +499,115 @@ only for changes outside the guest binary.
 - Only the guest binary goes to the machine on this path. It holds no
   secret.
 
+### System upgrade
+
+InstaBox has no operation that replaces the root disk of a machine and
+keeps `/data`. A machine keeps the system files of the snapshot that made
+it, but changes to the root disk that a command makes in the machine
+stay. So the driver brings the system files of each machine to the state
+that the core of the cell expects, with no new snapshot.
+
+- The system bundle is in the `lydiabox` binary (`go:embed`,
+  `deploy/instabox/system.go`). It holds the image's own small files that
+  `deploy/instabox/Dockerfile` copies (the entry point, the guest and Xfce
+  wrappers, the supervisord configuration, `guest.env.example`, and the
+  Codex, Claude Code, and panel settings in
+  `/usr/local/share/lydiabox/etc`) and the root script
+  `deploy/instabox/system-upgrade.sh`. The table `Files` in `system.go`
+  gives the destination path and mode of each file. A test compares it
+  with the `COPY` lines of the Dockerfile. The bundle is a tar archive
+  that the cell makes in memory with sorted names, a fixed time, and owner
+  `0:0`. Its identity is the SHA-256 of that archive.
+- The marker `/etc/lydiabox/system.sha256` on the root disk holds the
+  SHA-256 of the last bundle that was installed with success. The marker
+  is on the root disk because it tells the state of the root disk.
+- When it runs. The probe of the guest binary upgrade (one `exec`) also
+  prints the marker and the SHA-256 of `/usr/local/bin/lydiabox-guest`.
+  The driver installs the bundle when the marker is not the bundle's
+  SHA-256, or when the image path does not have the guest binary that the
+  wrapper starts. It does this after the guest binary step (so that it
+  copies the new binary) and also when the cell has no guest binary. The
+  record of the tenant keeps a hash of the machine ID, the bundle, and the
+  cell's guest binary; then a later attach makes no API call for the
+  system upgrade. A machine from a snapshot has no marker, so its first
+  attach installs the bundle one time; the script then changes almost
+  nothing.
+- How. The driver uploads the archive to
+  `/data/.lydiabox/.system-bundle.upload` (mode `0600`). Then one `exec`
+  (time limit 5 minutes) runs `sudo -n`: root copies the upload into a
+  new directory below `/run` that only root can write (`mktemp -d`),
+  checks the SHA-256 of that copy, unpacks it there, and runs
+  `system-upgrade.sh`. Root writes the marker only when the script
+  succeeds. The temporary directory and the upload are removed in every
+  case. The `exec` continues when the caller of the attach stops waiting,
+  so that `apt-get` is not stopped in the middle.
+- Steps of `system-upgrade.sh`, in this order. Each step checks first
+  and changes a file only when it is not correct (write
+  `NAME.lydiabox-new`, then `mv -f`). A second run changes nothing. Each
+  change prints a `changed: ...` line, and the driver logs these lines.
+  1. Install the bundle files at their destinations (owner root, the mode
+     of the table).
+  2. When `/data/.lydiabox/bin/lydiabox-guest` is executable and differs
+     from `/usr/local/bin/lydiabox-guest`, copy it to the image path. The
+     rename keeps the inode of a running daemon. Then `lbx`,
+     `git-credential-lydiabox`, and the git credential helper run the
+     guest of the cell.
+  3. The links `/usr/local/bin/lbx` and
+     `/usr/local/bin/git-credential-lydiabox` to
+     `/usr/local/bin/lydiabox-guest`, and
+     `git config --system credential.helper "/usr/local/bin/lydiabox-guest git-cred"`.
+  4. Install the Debian packages that are missing (now: `bubblewrap`)
+     with `apt-get install -y --no-install-recommends`
+     (`DEBIAN_FRONTEND=noninteractive`). `apt-get update` runs only when a
+     package is missing. A failure stops the script with an `ERROR:` line.
+- When it takes effect. The script never restarts supervisord, the
+  desktop, or the guest daemon, and it changes nothing below `/data`
+  except its own temporary files. A new entry point, a new wrapper, or a
+  new supervisord configuration takes effect at the next start of the
+  machine (stop and start). The entry point copies the harness and panel
+  settings from `/usr/local/share/lydiabox/etc` to `/etc` at that start
+  too. A copied guest binary, a link, and a package are ready at once.
+- Logs: `instabox: upgraded the system files of the machine ...
+  sha256=<12 hex> changes=...` (`INFO`). A failure (probe, upload, hash,
+  script) gives one `WARN` line with the last lines of the script output.
+  The attach continues, no marker is written, and the cell does not try
+  again until its next start: a failed `apt-get` can take minutes. Only an
+  account error stops the attach.
+- To add a step, add it at the end of `system-upgrade.sh`: check first,
+  change only when necessary, print `changed: ...`, and exit with an
+  error when the change fails. A new image file needs a `COPY` line in the
+  Dockerfile, a row in `Files`, a name in the `go:embed` line, and a line
+  in `Dockerfile.dockerignore` (the tests check the Dockerfile and the
+  ignore file). A new package goes to `deploy/rootfs/Dockerfile` and to
+  `packages` in the script. Any change of a bundle file gives a new
+  SHA-256, so every machine runs the script one time more.
+- To check a machine by hand (`instabox exec` or the web terminal):
+
+  ```bash
+  cat /etc/lydiabox/system.sha256
+  readlink /usr/local/bin/lbx /usr/local/bin/git-credential-lydiabox
+  sha256sum /usr/local/bin/lydiabox-guest /data/.lydiabox/bin/lydiabox-guest
+  dpkg-query -W bubblewrap
+  ```
+
+  The record of the tenant skips the probe of a machine that had the
+  bundle. So a removed marker has an effect only at the first attach
+  after a release that changes the bundle or the guest binary.
+- Limits. The bundle does not upgrade Chrome, Xfce, the harness CLIs
+  (`claude`, `codex`, `opencode`), or the shared libraries of the
+  machine. A step for a specific need can be added. `apt-get` on a machine
+  uses the image's package sources and package database, but the import
+  keeps the machine's shared libraries, so a package with new library
+  dependencies can fail or install libraries that the machine does not
+  load. Test a new package step in a machine first.
+- Tests: `internal/vmm/instabox/system_test.go` (fake API: a current
+  marker costs one probe, a new bundle is installed and recorded, a
+  failure is logged once for each process, the order after the guest
+  install) and `make instabox-system-test` (the real command and script
+  as UID 1000 with `sudo` in an Ubuntu container: an old guest binary, no
+  `lbx` link, no `bubblewrap`; a second run changes nothing; a bad archive
+  and a failed `apt-get` write no marker).
+
 ### Operator command
 
 ```bash
@@ -518,9 +630,12 @@ key, API key).
   account errors, a deleted machine, a self-pause, a guest restart after
   changed settings, and the guest binary upgrade (`upgrade_test.go`: the
   same binary, a new machine, a started machine, live PTYs, a failed
-  upload or install, and an arm64 binary). The shell commands of the
-  upgrade are played by the test; they were run once by hand in a Debian
-  container, not on a real machine.
+  upload or install, and an arm64 binary), and the system upgrade
+  (`system_test.go`, [System upgrade](#system-upgrade)). The shell
+  commands of the guest upgrade are played by the test; they were run
+  once by hand in a Debian container, not on a real machine. The command
+  and script of the system upgrade run in an Ubuntu container with
+  `make instabox-system-test`, not on a real machine yet.
 - `internal/cli` (`TestInstaboxCellEndToEnd`): `lydiabox up` as a cell on a
   UNIX socket, the driver selected by `auto`, and the fake port proxy
   (token check, wake of a self-paused machine, refusal of a paused one):

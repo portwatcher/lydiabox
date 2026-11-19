@@ -286,7 +286,7 @@ and a configured issuer, audience, and key set.
 
 | Reason | Steps |
 | :--- | :--- |
-| Upgrade or move of a cell | `lbx-cellhost` sends `SIGTERM`. The cell closes the guest link, releases its InstaBox activity lease, and exits. The machine continues; its idle pause applies. The new cell attaches to the same machine (implemented and tested against the fake API) and installs its guest binary there ([instabox.md](instabox.md#guest-binary-upgrade)). |
+| Upgrade or move of a cell | `lbx-cellhost` sends `SIGTERM`. The cell closes the guest link, releases its InstaBox activity lease, and exits. The machine continues; its idle pause applies. The new cell attaches to the same machine (implemented and tested against the fake API) and installs its guest binary and its system bundle there ([instabox.md](instabox.md#guest-binary-upgrade), [system upgrade](instabox.md#system-upgrade)). |
 | Suspend a tenant | `lbx-control` calls `POST /api/v1/vm/stop` on the cell, which stops the machine with a clean shutdown. Then `SIGTERM`. The data stays. |
 | Delete a tenant | Suspend. Revoke connector tokens. `lbx-control` deletes the machine and its snapshots through the InstaBox API (or runs `lydiabox instabox destroy -confirm <machine ID>` with the cell environment), then the backups, the cell data directory, and the registry entry. It destroys the wrapped master key last. |
 
@@ -298,7 +298,9 @@ sends `SIGKILL`.
 The core implements the contract above. The driver also upgrades the
 guest binary of each machine to the cell's own at attach, and restarts
 the guest daemon only when no terminal or harness session runs
-([instabox.md](instabox.md#guest-binary-upgrade)). These parts are not in
+([instabox.md](instabox.md#guest-binary-upgrade)). It also brings the
+system files of each machine to the cell's own bundle, with no new
+snapshot ([instabox.md](instabox.md#system-upgrade)). These parts are not in
 the core yet; the control plane or a later task must add them:
 
 1. State changes from webhooks. The cell reads the machine state itself

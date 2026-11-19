@@ -108,9 +108,14 @@ passwordless `sudo` (limits).
 
 Root filesystem upgrades: **not stated** how to replace the root disk of
 an existing machine and keep `/data`. A restore replaces `/data` too
-(snapshots). Until InstaBox gives a way, change the root through `exec`
-(for example `apt-get`), or make a new machine from the new snapshot and
-move the data with the backup of
+(snapshots). So the driver changes the root through `exec`: at attach it
+installs the system bundle of the cell (the image's own files, the guest
+binary of the image path, the `lbx` links, missing packages such as
+`bubblewrap`) with `sudo -n` when the marker
+`/etc/lydiabox/system.sha256` names another bundle
+([instabox.md](instabox.md#system-upgrade)). For a larger change (Chrome,
+Xfce, the harness CLIs), add a step to the bundle, or make a new machine
+from the new snapshot and move the data with the backup of
 [§6.2](#62-mitigations).
 
 ## 3. `vmm.Driver` mapping
