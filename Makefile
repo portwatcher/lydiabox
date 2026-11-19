@@ -20,7 +20,7 @@ WEBUI_DIST := internal/webui/dist
 export CGO_ENABLED := 0
 
 .PHONY: all build build-host build-guest webui release test vet lint fmt web-build rootfs guest-image guest-image-slim virtiofsd clean
-.PHONY: instabox-image instabox-image-test
+.PHONY: instabox-image instabox-image-test instabox-system-test
 
 all: build
 
@@ -71,7 +71,7 @@ lint: vet
 	@if command -v staticcheck >/dev/null 2>&1; then CGO_ENABLED=0 staticcheck ./...; \
 	else echo "staticcheck not installed; skipped (go install honnef.co/go/tools/cmd/staticcheck@latest)"; fi
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck deploy/rootfs/build-artifacts.sh deploy/rootfs/setup-guest.sh deploy/rootfs/install-harnesses.sh deploy/rootfs/lydiabox-init deploy/initramfs/init deploy/virtiofsd/build.sh; fi
-	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/instabox/build.sh deploy/instabox/test.sh deploy/instabox/test-checks.sh deploy/instabox/lydiabox-instabox-entry deploy/instabox/lydiabox-instabox-guest deploy/instabox/lydiabox-instabox-xfce deploy/instabox/machine-model/model-init; fi
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/instabox/build.sh deploy/instabox/test.sh deploy/instabox/test-checks.sh deploy/instabox/lydiabox-instabox-entry deploy/instabox/lydiabox-instabox-guest deploy/instabox/lydiabox-instabox-xfce deploy/instabox/machine-model/model-init deploy/instabox/system-upgrade.sh; fi
 
 # Builds web/ (Phase 5) and copies the bundle into internal/webui/dist, which
 # go:embed picks up on the next `make build`.
@@ -101,6 +101,8 @@ guest-image-slim:
 # LydiaBox image for InstaBox (deploy/instabox, docs/instabox.md), linux/amd64:
 #   make instabox-image          build $(INSTABOX_IMAGE) and print the import command
 #   make instabox-image-test     container test of $(INSTABOX_IMAGE) (skips without Docker)
+#   make instabox-system-test    runs the system upgrade (deploy/instabox/system-upgrade.sh)
+#                                in an Ubuntu container (needs Docker and network)
 # INSTABOX_IMAGE_FLAGS passes build.sh flags, for example --slim or --push.
 INSTABOX_IMAGE       ?= lydiabox/instabox:latest
 INSTABOX_IMAGE_FLAGS ?=
@@ -110,6 +112,9 @@ instabox-image:
 
 instabox-image-test:
 	deploy/instabox/test.sh --image $(INSTABOX_IMAGE)
+
+instabox-system-test:
+	LYDIABOX_TEST_DOCKER=1 go test -count=1 -run TestSystemUpgradeInDocker -v ./internal/vmm/instabox/
 
 # virtiofsd from source as a static musl binary, dist/virtiofsd-linux-<arch>
 # (upstream has no linux/arm64 build). Install it into runtime/bin with

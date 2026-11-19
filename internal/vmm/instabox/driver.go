@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	instaboximage "github.com/lydiabox/lydiabox/deploy/instabox"
 	ib "github.com/lydiabox/lydiabox/internal/instabox"
 	"github.com/lydiabox/lydiabox/internal/vmm"
 	"github.com/lydiabox/lydiabox/internal/vmm/link"
@@ -94,8 +95,14 @@ type Options struct {
 	// binary. When a machine has another guest binary, the driver
 	// installs this one (upgrade.go). Empty: no guest upgrade.
 	GuestBinary string
-	Logger      *slog.Logger
-	Now         func() time.Time
+	// NoSystemUpgrade turns the system upgrade off (system.go). By
+	// default the driver installs the system bundle of this build
+	// (deploy/instabox) on machines that have another one.
+	NoSystemUpgrade bool
+	// SystemBundle replaces the bundle of this build (tests).
+	SystemBundle *instaboximage.Bundle
+	Logger       *slog.Logger
+	Now          func() time.Time
 }
 
 // Driver implements vmm.Driver on InstaBox machines.
@@ -108,6 +115,11 @@ type Driver struct {
 	// guestOnce reads the host's guest binary (guest) once.
 	guestOnce sync.Once
 	guest     *hostGuest
+	// systemOnce makes the system bundle (system) once; systemFailed
+	// holds the system plans that failed in this process (guarded by mu).
+	systemOnce   sync.Once
+	system       *instaboximage.Bundle
+	systemFailed map[string]bool
 
 	mu      sync.Mutex
 	tenants map[string]*tenant
@@ -175,7 +187,7 @@ func New(opts Options) (*Driver, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	d := &Driver{opts: opts, tenants: map[string]*tenant{}, kick: make(chan struct{}, 1)}
+	d := &Driver{opts: opts, tenants: map[string]*tenant{}, kick: make(chan struct{}, 1), systemFailed: map[string]bool{}}
 	d.links = link.NewLinks(d.linkOptions)
 	return d, nil
 }

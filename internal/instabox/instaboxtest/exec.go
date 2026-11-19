@@ -336,3 +336,17 @@ func (s *Server) RenameFile(id, from, to string) bool {
 	m.files[path.Clean(to)] = f
 	return true
 }
+
+// RemoveFile removes a file of a machine, as `rm -f` in the machine does.
+// It reports whether the file existed.
+func (s *Server) RemoveFile(id, p string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.lookup(id)
+	if m == nil {
+		return false
+	}
+	_, ok := m.files[path.Clean(p)]
+	delete(m.files, path.Clean(p))
+	return ok
+}

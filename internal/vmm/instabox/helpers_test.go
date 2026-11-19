@@ -162,7 +162,7 @@ func (e *env) driver(t *testing.T, mutate ...func(*vmmib.Options)) *vmmib.Driver
 	opts := vmmib.Options{Client: e.client(t, 0), Store: e.store, Snapshot: e.snapshot, IdlePause: 30 * time.Minute,
 		LinkMinBackoff: 50 * time.Millisecond, LinkMaxBackoff: 200 * time.Millisecond, LinkKeepAlive: time.Second,
 		LinkWakeTimeout: 10 * time.Second, PollInterval: time.Hour, BlockTime: time.Minute,
-		Logger: slog.New(slog.DiscardHandler)}
+		Logger: slog.New(slog.DiscardHandler), NoSystemUpgrade: true}
 	for _, m := range mutate {
 		m(&opts)
 	}

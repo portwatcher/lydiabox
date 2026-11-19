@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	instaboximage "github.com/lydiabox/lydiabox/deploy/instabox"
 	ib "github.com/lydiabox/lydiabox/internal/instabox"
 )
 
@@ -33,9 +34,12 @@ const (
 	guestUploadPath = "/data/.lydiabox/bin/.lydiabox-guest.upload"
 )
 
-// probeGuest prints the state of the guest binary in one exec:
+// probeMachine prints the state of the guest binary and of the system
+// files in one exec:
 //
 //	file H    the SHA-256 of the binary that the wrapper starts next
+//	image H   the SHA-256 of the binary of the image path (system.go)
+//	system H  the content of the system marker ("" when it is missing)
 //	env 0|1   0: guest.env is missing, so the wrapper waits and starts
 //	          that binary later
 //	daemon H  the SHA-256 of the binary of the running guest daemon
@@ -46,10 +50,13 @@ const (
 // of the daemon ends it. The desktop programs (their own sessions with no
 // terminal) and the video encoder are not counted: a restart does not end
 // the desktop programs, and the daemon starts the encoder again.
-const probeGuest = `b=` + guestImagePath + `
+const probeMachine = `i=$(sha256sum ` + guestImagePath + ` 2>/dev/null | cut -c1-64)
 o=` + guestOverridePath + `
-if [ -x "$o" ]; then b=$o; fi
-echo "file $(sha256sum "$b" 2>/dev/null | cut -c1-64)"
+f=$i
+if [ -x "$o" ]; then f=$(sha256sum "$o" 2>/dev/null | cut -c1-64); fi
+echo "file $f"
+echo "image $i"
+echo "system $(head -n 1 ` + instaboximage.MarkerPath + ` 2>/dev/null | cut -c1-64)"
 if [ -r ` + guestEnvPath + ` ]; then echo "env 1"; else echo "env 0"; fi
 p=$(pgrep -o -u 1000 -f 'lydiabox-guest [s]erve' || true)
 if [ -n "$p" ]; then
@@ -79,9 +86,11 @@ type hostGuest struct {
 	hash string
 }
 
-// guestState is the answer of probeGuest.
+// guestState is the answer of probeMachine.
 type guestState struct {
 	file   string
+	image  string
+	system string
 	env    bool
 	daemon bool
 	// running is the hash of the daemon's binary ("" when unknown).
@@ -99,6 +108,10 @@ func parseGuestState(out string) (guestState, error) {
 		switch key {
 		case "file":
 			st.file = val
+		case "image":
+			st.image = val
+		case "system":
+			st.system = val
 		case "env":
 			st.env = val == "1"
 		case "daemon":
@@ -106,13 +119,13 @@ func parseGuestState(out string) (guestState, error) {
 		case "ptys":
 			n, err := strconv.Atoi(val)
 			if err != nil {
-				return st, fmt.Errorf("instabox: guest probe: bad PTY count %q", val)
+				return st, fmt.Errorf("instabox: machine probe: bad PTY count %q", val)
 			}
 			st.ptys = n
 		}
 	}
-	if !seen["file"] || !seen["env"] || (st.daemon && !seen["ptys"]) {
-		return st, fmt.Errorf("instabox: guest probe: unexpected output %q", out)
+	if !seen["file"] || !seen["image"] || !seen["system"] || !seen["env"] || (st.daemon && !seen["ptys"]) {
+		return st, fmt.Errorf("instabox: machine probe: unexpected output %q", out)
 	}
 	return st, nil
 }
@@ -174,19 +187,40 @@ type guestUpgrade struct {
 	restart bool
 }
 
+// probe runs probeMachine. Only an account error (closed gate) is
+// returned; on any other failure it logs one line and returns nil, and the
+// upgrades wait for a later attach.
+func (d *Driver) probe(ctx context.Context, tid, id string) (*guestState, error) {
+	res, err := d.opts.Client.Exec(ctx, id, ib.ExecRequest{Cmd: probeMachine, TimeoutSeconds: 60, NoHistory: true})
+	if err == nil && res.ExitCode != 0 {
+		err = fmt.Errorf("exit %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	var st guestState
+	if err == nil {
+		st, err = parseGuestState(res.Stdout)
+	}
+	if err != nil {
+		var acc *AccountError
+		if err = d.fail(tid, err); errors.As(err, &acc) {
+			return nil, err
+		}
+		d.opts.Logger.Warn("instabox: guest and system upgrade: probe; the machine keeps its guest and system files for now",
+			"tenant", tid, "machine", id, "err", err)
+		return nil, nil
+	}
+	return &st, nil
+}
+
 // upgradeGuest installs the host's guest binary on the machine when the
-// machine has another one. It never restarts the daemon itself; it says
-// if a restart is safe. Only an account error (closed gate) is returned:
-// any other failure is logged, and the next attach tries again.
-func (d *Driver) upgradeGuest(ctx context.Context, tid, id string, rec Record) (guestUpgrade, error) {
-	hg := d.readHostGuest()
-	if hg == nil {
+// machine has another one. st is the probe (nil: no probe; then it does
+// nothing). It never restarts the daemon itself; it says if a restart is
+// safe. Only an account error (closed gate) is returned: any other
+// failure is logged, and the next attach tries again.
+func (d *Driver) upgradeGuest(ctx context.Context, tid, id string, hg *hostGuest, st *guestState) (guestUpgrade, error) {
+	if hg == nil || st == nil {
 		return guestUpgrade{}, nil
 	}
 	up := guestUpgrade{key: guestKey(id, hg.hash)}
-	if rec.GuestSHA256 == up.key {
-		return guestUpgrade{}, nil
-	}
 	warn := func(msg string, err error) (guestUpgrade, error) {
 		var acc *AccountError
 		if err = d.fail(tid, err); errors.As(err, &acc) {
@@ -195,17 +229,6 @@ func (d *Driver) upgradeGuest(ctx context.Context, tid, id string, rec Record) (
 		d.opts.Logger.Warn("instabox: guest upgrade: "+msg+"; the machine keeps its guest until the next attach",
 			"tenant", tid, "machine", id, "err", err)
 		return guestUpgrade{}, nil
-	}
-	res, err := d.opts.Client.Exec(ctx, id, ib.ExecRequest{Cmd: probeGuest, TimeoutSeconds: 60, NoHistory: true})
-	if err != nil {
-		return warn("probe", err)
-	}
-	if res.ExitCode != 0 {
-		return warn("probe", fmt.Errorf("exit %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr)))
-	}
-	st, err := parseGuestState(res.Stdout)
-	if err != nil {
-		return warn("probe", err)
 	}
 	if st.file != hg.hash {
 		if err := d.installGuest(ctx, id, hg); err != nil {

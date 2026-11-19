@@ -129,19 +129,49 @@ func (d *Driver) attach(ctx context.Context, tid string, m *ib.Machine) error {
 	return err
 }
 
-// prepareGuest upgrades the guest binary (upgrade.go) and writes the
-// guest settings, then restarts the guest daemon once when one of them
-// needs it. It reports whether it restarted the daemon: the link must then
-// connect again. The binary is installed before guest.env is written, so
-// that the wrapper of a new machine starts the new binary at once.
+// prepareGuest upgrades the guest binary (upgrade.go), writes the guest
+// settings, and upgrades the system files (system.go), then restarts the
+// guest daemon once when the binary or the settings need it. It reports
+// whether it restarted the daemon: the link must then connect again. The
+// binary is installed before guest.env is written, so that the wrapper of
+// a new machine starts the new binary at once. The system upgrade comes
+// after the binary, so that it copies the new binary to the image path;
+// it never needs a restart. One probe serves both upgrades.
 func (d *Driver) prepareGuest(ctx context.Context, tid, id string, rec Record, sec recordSecrets) (bool, error) {
-	up, err := d.upgradeGuest(ctx, tid, id, rec)
+	hg := d.readHostGuest()
+	needGuest := hg != nil && rec.GuestSHA256 != guestKey(id, hg.hash)
+	sys := d.planSystem(id, hg, rec)
+	var st *guestState
+	if needGuest || sys != nil {
+		var err error
+		if st, err = d.probe(ctx, tid, id); err != nil {
+			return false, err
+		}
+		if st == nil && sys != nil {
+			d.noteSystemFailed(sys)
+		}
+	}
+	gst := st
+	if !needGuest {
+		gst = nil
+	}
+	up, err := d.upgradeGuest(ctx, tid, id, hg, gst)
 	if err != nil {
 		return false, err
 	}
 	envHash, envRestart, err := d.ensureGuestEnv(ctx, tid, id, rec, sec)
 	if err != nil {
 		return false, err
+	}
+	sysKey := ""
+	if st != nil {
+		next := st.file
+		if up.installed {
+			next = hg.hash
+		}
+		if sysKey, err = d.upgradeSystem(ctx, tid, id, sys, st, next); err != nil {
+			return false, err
+		}
 	}
 	restarted := false
 	if envRestart || up.restart {
@@ -166,7 +196,7 @@ func (d *Driver) prepareGuest(ctx context.Context, tid, id string, rec Record, s
 		}
 	}
 	guestDone := up.done || (restarted && up.installed)
-	if envHash == "" && !guestDone {
+	if envHash == "" && !guestDone && sysKey == "" {
 		return restarted, nil
 	}
 	_, _, err = d.update(ctx, tid, func(r *Record, _ *recordSecrets) {
@@ -175,6 +205,9 @@ func (d *Driver) prepareGuest(ctx context.Context, tid, id string, rec Record, s
 		}
 		if guestDone {
 			r.GuestSHA256 = up.key
+		}
+		if sysKey != "" {
+			r.SystemSHA256 = sysKey
 		}
 	})
 	return restarted, err

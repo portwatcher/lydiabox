@@ -31,9 +31,10 @@ const (
 	envPath      = "/data/.lydiabox/guest.env"
 )
 
-// guestImage plays the shell commands of the guest upgrade in the fake
-// machines: the probe, the install, and the restart. The binary that a
-// daemon runs is the one that the wrapper found when the daemon started.
+// guestImage plays the shell commands of the guest and system upgrades in
+// the fake machines: the probe, the install, the restart, and the system
+// run (system_test.go). The binary that a daemon runs is the one that the
+// wrapper found when the daemon started.
 type guestImage struct {
 	e     *env
 	image []byte // /usr/local/bin/lydiabox-guest of the snapshot
@@ -43,10 +44,18 @@ type guestImage struct {
 	boots   map[string]int    // machine -> runner boots when running was set
 	probes  int
 	failMv  bool
+	// The system state: the image path binary and the marker of each
+	// machine (snapshot values when missing), and the events in order.
+	imagePath  map[string]string
+	marker     map[string]string
+	snapMarker string
+	failSystem bool
+	events     []string
 }
 
 func newGuestImage(e *env, image []byte) *guestImage {
-	g := &guestImage{e: e, image: image, running: map[string]string{}, boots: map[string]int{}}
+	g := &guestImage{e: e, image: image, running: map[string]string{}, boots: map[string]int{},
+		imagePath: map[string]string{}, marker: map[string]string{}}
 	e.mu.Lock()
 	e.onExec = g.exec
 	e.mu.Unlock()
@@ -63,7 +72,33 @@ func (g *guestImage) next(id string) string {
 	if b, mode, ok := g.e.fake.File(id, overridePath); ok && mode&0o100 != 0 {
 		return hashOf(b)
 	}
+	return g.imageHash(id)
+}
+
+// imageHash is the hash of the image path binary of a machine.
+func (g *guestImage) imageHash(id string) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if h, ok := g.imagePath[id]; ok {
+		return h
+	}
 	return hashOf(g.image)
+}
+
+// markerOf is the system marker of a machine.
+func (g *guestImage) markerOf(id string) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if m, ok := g.marker[id]; ok {
+		return m
+	}
+	return g.snapMarker
+}
+
+func (g *guestImage) event(s string) {
+	g.mu.Lock()
+	g.events = append(g.events, s)
+	g.mu.Unlock()
 }
 
 // daemon returns the hash of the running daemon's binary, or "".
@@ -71,10 +106,11 @@ func (g *guestImage) daemon(id string) string {
 	if _, _, ok := g.e.fake.File(id, envPath); !ok {
 		return "" // the wrapper waits for guest.env
 	}
+	next := g.next(id)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if n := g.e.runner.Boots(id); n != g.boots[id] {
-		g.running[id], g.boots[id] = g.next(id), n
+		g.running[id], g.boots[id] = next, n
 	}
 	return g.running[id]
 }
@@ -88,7 +124,8 @@ func (g *guestImage) exec(id string, req instaboxtest.ExecRequest) (instaboxtest
 		g.probes++
 		g.mu.Unlock()
 		_, _, env := g.e.fake.File(id, envPath)
-		out := fmt.Sprintf("file %s\nenv %d\n", g.next(id), map[bool]int{false: 0, true: 1}[env])
+		out := fmt.Sprintf("file %s\nimage %s\nsystem %s\nenv %d\n", g.next(id), g.imageHash(id), g.markerOf(id),
+			map[bool]int{false: 0, true: 1}[env])
 		if d := g.daemon(id); d != "" {
 			n := 0
 			for _, p := range g.e.runner.PTYs(id) {
@@ -99,7 +136,10 @@ func (g *guestImage) exec(id string, req instaboxtest.ExecRequest) (instaboxtest
 			out += fmt.Sprintf("daemon %s\nptys %d\n", d, n)
 		}
 		return instaboxtest.ExecResult{Stdout: out}, true
+	case strings.Contains(req.Cmd, "lydiabox-system"):
+		return g.runSystem(id, req), true
 	case strings.Contains(req.Cmd, "mv -f"):
+		g.event("install guest")
 		m := hashArg.FindStringSubmatch(req.Cmd)
 		b, _, ok := g.e.fake.File(id, uploadPath)
 		g.mu.Lock()
@@ -163,9 +203,13 @@ func withGuest(path string, log *logBuf) func(*vmmib.Options) {
 	return func(o *vmmib.Options) {
 		o.GuestBinary = path
 		if log != nil {
-			o.Logger = slog.New(slog.NewTextHandler(log, nil))
+			o.Logger = slogText(log)
 		}
 	}
+}
+
+func slogText(log *logBuf) *slog.Logger {
+	return slog.New(slog.NewTextHandler(log, nil))
 }
 
 func (e *env) restarts() int {

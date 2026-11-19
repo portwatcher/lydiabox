@@ -37,6 +37,10 @@ type Record struct {
 	// GuestSHA256 is a hash of the machine ID and the host's guest binary
 	// when the machine runs that binary (upgrade.go).
 	GuestSHA256 string `json:"guestSha256,omitempty"`
+	// SystemSHA256 is a hash of the machine ID, the system bundle, and the
+	// host's guest binary when the machine has that bundle and its image
+	// path has that guest binary (system.go).
+	SystemSHA256 string `json:"systemSha256,omitempty"`
 }
 
 // recordSecrets are the encrypted part of a record.
