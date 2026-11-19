@@ -132,9 +132,15 @@ type Wirer interface {
 	Env(b Binding) map[string]string
 }
 
-// All returns one wirer per harness in display order.
+// All returns one wirer per harness in display order. Each also keeps the
+// LydiaBox block in the global instruction file of its harness
+// (instructions.go).
 func All() []Wirer {
-	return []Wirer{claudeWirer{}, codexWirer{}, dshWirer{}, antigravityWirer{}, opencodeWirer{}}
+	ws := []Wirer{claudeWirer{}, codexWirer{}, dshWirer{}, antigravityWirer{}, opencodeWirer{}}
+	for i, w := range ws {
+		ws[i] = withInstructions(w)
+	}
+	return ws
 }
 
 // For returns the wirer of harness.
