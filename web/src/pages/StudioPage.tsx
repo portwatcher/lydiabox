@@ -18,8 +18,10 @@ import { SessionList } from "./studio/SessionList";
 import { SessionModelMenu } from "./studio/SessionModelMenu";
 import { deleteText, deletesWithoutConfirm, listDisagrees, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
+import { ChatView } from "./studio/ChatView";
 import { TerminalView } from "./studio/TerminalView";
-import { TranscriptView } from "./studio/TranscriptView";
+import { ViewSwitch } from "./studio/ViewSwitch";
+import type { SessionViewMode } from "./studio/ViewSwitch";
 
 const CELL = { width: 7.8, height: 17 };
 
@@ -27,6 +29,8 @@ export default function StudioPage() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const selectedId = params.get("session");
+  // Harness sessions open in the chat view; the terminal is one switch away.
+  const viewMode: SessionViewMode = params.get("view") === "terminal" ? "terminal" : "chat";
   const [filter, setFilter] = useState<SessionFilter>({ harness: "", workspace: "" });
   const [harnesses, setHarnesses] = useState<HarnessID[]>([]);
   const [workspaces, setWorkspaces] = useState<string[]>([]);
@@ -95,6 +99,8 @@ export default function StudioPage() {
     () => listed?.find((s) => s.id === selectedId) ?? (known && known.id === selectedId ? known : null),
     [listed, selectedId, known],
   );
+  const selectedSession = useRef(selected);
+  selectedSession.current = selected;
 
   const select = useCallback(
     (id: string | null, replace = false) => {
@@ -120,6 +126,38 @@ export default function StudioPage() {
       setRoom((current) => (current?.id === selected.id ? current : { key: Date.now(), id: selected.id }));
     }
   }, [selected, room?.id]);
+
+  const setViewMode = useCallback(
+    (mode: SessionViewMode) => {
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (mode === "terminal") {
+            next.set("view", "terminal");
+          } else {
+            next.delete("view");
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+
+  // A provisional session got its native ID: follow it to the new ID.
+  const adoptId = useCallback(
+    (id: string) => {
+      const current = selectedSession.current;
+      if (current) {
+        setKnown({ ...current, id });
+      }
+      setRoom((current) => (current ? { key: current.key, id } : current));
+      select(id, true);
+      reloadList();
+    },
+    [select, reloadList],
+  );
 
   const attachedId = room?.id ?? null;
   const showTerminal = room !== null && attachedId === selectedId;
@@ -250,6 +288,7 @@ export default function StudioPage() {
               {selected ? sessionName(selected) : selectedId}
             </h1>
             {selected ? <Badge tone="accent">{harnessLabel(selected.harness)}</Badge> : null}
+            {selected && selected.harness !== "shell" && showTerminal ? <ViewSwitch value={viewMode} onChange={setViewMode} /> : null}
             {selected && selected.harness !== "shell" ? (
               <SessionModelMenu value={modelOf(selected)} models={models} onChange={(m) => void changeModel(selected, m)} disabled={modelBusy} />
             ) : null}
@@ -261,7 +300,17 @@ export default function StudioPage() {
           </div>
         ) : null}
         <div className="min-h-0 flex-1">
-          {showTerminal && room ? (
+          {selected && selected.harness !== "shell" && !(viewMode === "terminal" && showTerminal) ? (
+            <ChatView
+              key={selected.id}
+              session={selected}
+              models={models}
+              onOpenTerminal={() => setViewMode("terminal")}
+              onResume={() => void resume(selected)}
+              resumeBlocked={startBlocked}
+              onAdopt={adoptId}
+            />
+          ) : showTerminal && room ? (
             <TerminalView
               key={room.key}
               sessionId={room.id}
@@ -271,8 +320,6 @@ export default function StudioPage() {
                 termSize.current = { cols, rows };
               }}
             />
-          ) : selected && selected.harness !== "shell" ? (
-            <TranscriptView session={selected} onResume={() => void resume(selected)} resumeBlocked={startBlocked} />
           ) : selected ? (
             <StateView
               icon={SquareTerminal}
