@@ -83,7 +83,7 @@ check_harnesses() {
 		echo "SKIP ($current): the image has no harness CLIs (slim)"
 		return
 	fi
-	for h in claude codex; do
+	for h in claude codex node; do
 		[ "$(in_ctr "readlink -f \"\$(command -v $h)\"")" = "$(in_ctr "readlink -f /usr/bin/$h")" ] ||
 			fail "$h on PATH is not the image's /usr/bin/$h"
 	done

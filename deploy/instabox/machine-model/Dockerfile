@@ -19,7 +19,8 @@
 #   passes no HOME.
 # - The template's /etc/codex/config.toml (with InstaBox's MCP servers)
 #   and its /usr/local/bin/claude, codex, and opencode links to /opt/npm
-#   can stay over the image's files.
+#   can stay over the image's files. So does the template's own Node.js
+#   in /usr/local/bin (a stub here that prints v22.0.0-template).
 # - /data/home is InstaBox's own home with the template's files
 #   (.claude.json with InstaBox's MCP servers, skills, AGENTS.md); with
 #   INSTABOX_MODEL_OLD_LAYOUT=1, /home/agent links to it as in an image of
@@ -62,7 +63,9 @@ RUN set -eux; \
 	mkdir -p /etc/codex /etc/claude-code; \
 	printf '[mcp_servers.instabox]\ncommand = "/usr/local/bin/instabox-mcp"\nargs = ["mcp"]\n' >/etc/codex/config.toml; \
 	printf '{"env":{"DISABLE_AUTOUPDATER":"1"}}\n' >/etc/claude-code/managed-settings.json; \
-	for h in claude codex opencode; do ln -sfn "/opt/npm/bin/$h" "/usr/local/bin/$h"; done
+	for h in claude codex opencode; do ln -sfn "/opt/npm/bin/$h" "/usr/local/bin/$h"; done; \
+	printf '#!/bin/sh\necho v22.0.0-template\n' >/usr/local/bin/node; \
+	chmod 0755 /usr/local/bin/node
 
 # The template's shared libraries and dpkg database win over the image's.
 RUN rm -rf /var/lib/dpkg

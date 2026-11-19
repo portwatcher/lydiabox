@@ -152,8 +152,12 @@ own_file "$share/etc/codex-config.toml" /etc/codex/config.toml
 own_file "$share/etc/claude-managed-settings.json" /etc/claude-code/managed-settings.json
 own_file "$share/etc/xfce4-panel.xml" /etc/xdg/xfce4/panel/default.xml
 # The template links these to its own copies in /opt/npm (other versions,
-# updated by the machine user); /usr/local/bin is first in PATH.
-for h in claude codex opencode dsh; do
+# updated by the machine user); /usr/local/bin is first in PATH. The
+# template also has its own Node.js in /usr/local/bin (v22 on a machine,
+# where the image has v24): without the links the image's harness CLIs
+# (#!/usr/bin/env node) run on the template's Node.js, which the image
+# test does not cover.
+for h in claude codex opencode dsh node npm npx corepack; do
 	own_link "/usr/bin/$h" "/usr/local/bin/$h"
 done
 

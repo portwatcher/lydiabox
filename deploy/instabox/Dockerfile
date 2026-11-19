@@ -57,7 +57,8 @@ RUN set -eux; \
 
 # Harness and desktop settings that replace the machine template's; the
 # entry point installs them at each start and links claude, codex,
-# opencode, and dsh in /usr/local/bin to the image's CLIs
+# opencode, dsh, and Node.js (node, npm, npx, corepack) in /usr/local/bin
+# to the image's programs
 # (docs/instabox.md, "Supplier files and environment"):
 # - /etc/codex/config.toml: the template's adds InstaBox's MCP servers.
 # - /etc/claude-code/managed-settings.json: the template's sets

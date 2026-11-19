@@ -247,8 +247,8 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
   copies the home seed once without replacing files; sets the image's
   `/etc/codex/config.toml`, `/etc/claude-code/managed-settings.json`, and
   `/etc/xdg/xfce4/panel/default.xml` (from `/usr/local/share/lydiabox/etc`)
-  and links `/usr/local/bin/claude`, `codex`, `opencode`, and `dsh` to
-  `/usr/bin` when they differ, keeping the template's version once as
+  and links `/usr/local/bin/claude`, `codex`, `opencode`, `dsh`, `node`,
+  `npm`, `npx`, and `corepack` to `/usr/bin` when they differ, keeping the template's version once as
   `FILE.instabox-template` and logging each change; prepares
   `/tmp/.X11-unix` and `/run/user/1000`; and runs supervisord with
   `/etc/lydiabox/instabox-supervisord.conf` and a defined environment
@@ -295,6 +295,7 @@ only, no value of a credential was read):
 | `/etc/codex/config.toml` with `[mcp_servers.instabox]` (`env_vars` `INSTABOX_API_KEY`, `INSTABOX_API_URL`, `INSTABOX_MCP_ALLOW_DELETE`) and `[mcp_servers.open-computer-use]`, read by Codex in every home | Codex in LydiaBox loaded both MCP servers (`codex mcp list`) | The entry point sets the image's file at each start (`deploy/instabox/codex-config.toml`: only `check_for_update_on_startup = false`); the template's is kept as `/etc/codex/config.toml.instabox-template` |
 | `/etc/claude-code/managed-settings.json` (`env.DISABLE_AUTOUPDATER=1`) | Claude Code did not update itself | The entry point sets the image's file with the same setting |
 | `/usr/local/bin/claude`, `codex`, `opencode` linked to `/opt/npm` (Claude Code 2.1.288, Codex 0.160.0, updated by the machine user); `/usr/local/bin` is first in `PATH` | LydiaBox ran these instead of the image's (2.1.325, 0.169.0) | The entry point links them (and `dsh`) to the image's CLIs in `/usr/bin` |
+| `/usr/local/bin/node` (v22.23.3 on a machine of 2026-11-19; the image has v24.22.3 in `/usr/bin`), with `npm`, `npx`, `corepack` | The image's harness CLIs (`#!/usr/bin/env node`) ran on the template's Node.js; they worked, but the image test runs them on the image's | The entry point links `node`, `npm`, `npx`, and `corepack` to `/usr/bin` too |
 | The user manager's session bus (`/run/user/1000/bus`) starts `xfconfd` with `HOME=/data/home` | Xfce read and wrote its settings in `/data/home/.config/xfce4`, also after `/home/agent` moved | Xfce runs on its own bus with `HOME=/home/agent` |
 | Unit `instabox-image.service`: `EnvironmentFile=/etc/instabox/image.env` (the image `ENV`) and systemd's `INVOCATION_ID`, `JOURNAL_STREAM`, `SYSTEMD_EXEC_PID`, `MEMORY_PRESSURE_WATCH`, `MEMORY_PRESSURE_WRITE` | All reached supervisord, the guest daemon, and every PTY | The entry point starts supervisord with `env -i` and a defined list |
 | supervisord's `SUPERVISOR_ENABLED`, `SUPERVISOR_GROUP_NAME`, `SUPERVISOR_PROCESS_NAME`, `SUPERVISOR_SERVER_URL`; the daemon's `LYDIABOX_GUEST_LISTEN`, `LYDIABOX_GUEST_*_ROOT`, `LYDIABOX_WEBRTC_UDP_PORT`, `LYDIABOX_DATA_ROOT`, `DEBIAN_FRONTEND` | Reached every PTY | The guest daemon gives PTYs only `ptymanager.Inherited` variables (below) |
@@ -358,7 +359,8 @@ desktop, and harness checks:
   `dbus-run-session` that fails as on the machine, the user manager's
   session bus at `/run/user/1000/bus` with `HOME=/data/home`, the
   template's `/etc/codex/config.toml` (with an InstaBox MCP server) and
-  `/usr/local/bin/claude`, `codex`, `opencode` links to `/opt/npm`, no
+  `/usr/local/bin/claude`, `codex`, `opencode` links to `/opt/npm`, a
+  `/usr/local/bin/node` of the template, no
   `HOME`, systemd's variables and supplier
   variables (`ANTHROPIC_API_KEY`, `INSTABOX_API_KEY`, `CLAUDE_CONFIG_DIR`,
   `CODEX_HOME`, `XDG_CONFIG_HOME`, test values) in the unit's
