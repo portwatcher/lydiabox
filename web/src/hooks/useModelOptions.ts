@@ -12,6 +12,19 @@ import type { Model } from "../api/types";
  */
 export type ModelListState = "loading" | "loaded" | "unavailable" | "absent";
 
+/** While the list is empty or the gateway is down, pickers load it again at this interval. */
+export const EMPTY_POLL_MS = 10_000;
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+/** Tells mounted model pickers that the catalog changed (sign-in, removal, new key). */
+export function announceModelsChanged(): void {
+  for (const l of [...listeners]) {
+    l();
+  }
+}
+
 /**
  * Model IDs for pickers. Falls back to an empty list when the models
  * subsystem is not available, so pickers accept free text instead.
@@ -19,6 +32,15 @@ export type ModelListState = "loading" | "loaded" | "unavailable" | "absent";
 export function useModelOptions(enabled = true): { models: Model[]; state: ModelListState } {
   const [list, setList] = useState<Model[]>([]);
   const [state, setState] = useState<ModelListState>("loading");
+  const [generation, setGeneration] = useState(0);
+
+  useEffect(() => {
+    const listener = () => setGeneration((g) => g + 1);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -39,7 +61,22 @@ export function useModelOptions(enabled = true): { models: Model[]; state: Model
         setState(availabilityOf(err) === "unavailable" ? "unavailable" : "absent");
       });
     return () => controller.abort();
-  }, [enabled]);
+  }, [enabled, generation]);
+
+  // A subscription that was just signed in lists its models some seconds
+  // later; an empty list therefore loads again until models appear.
+  const waiting = enabled && (state === "unavailable" || (state === "loaded" && list.length === 0));
+  useEffect(() => {
+    if (!waiting) {
+      return;
+    }
+    const id = setInterval(() => {
+      if (typeof document === "undefined" || !document.hidden) {
+        setGeneration((g) => g + 1);
+      }
+    }, EMPTY_POLL_MS);
+    return () => clearInterval(id);
+  }, [waiting]);
 
   return { models: list, state };
 }
