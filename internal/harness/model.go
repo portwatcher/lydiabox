@@ -6,6 +6,22 @@ import (
 	"strings"
 )
 
+// GatewayProvider is the provider name of the LydiaBox model gateway in
+// the harness configs (wire.ProviderID): opencode's provider and dsh's
+// pi-ai route. A model of this provider is a gateway model ID.
+const GatewayProvider = "lydiabox"
+
+// GatewayModel returns a model as the session list shows it: a gateway
+// model ID without the "lydiabox/" provider prefix that opencode and dsh
+// record ("lydiabox/codex/gpt-6.1-sol" becomes "codex/gpt-6.1-sol").
+// Other models are returned as they are.
+func GatewayModel(model string) string {
+	if m, ok := strings.CutPrefix(model, GatewayProvider+"/"); ok && m != "" {
+		return m
+	}
+	return model
+}
+
 // ModelMemory is implemented by wirings that keep the last model of each
 // harness (*magpie.Bindings). A session start with a model makes it the
 // default of its harness: the next new session preselects it, and the

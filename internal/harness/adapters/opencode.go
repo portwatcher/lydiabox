@@ -12,17 +12,14 @@ import (
 // GatewayProvider is the opencode provider of the LydiaBox model gateway
 // (wire.ProviderID): the magpie wirer writes it, and its model IDs are
 // gateway model IDs.
-const GatewayProvider = "lydiabox"
+const GatewayProvider = harness.GatewayProvider
 
 // ocModel returns the model of an opencode message as the other harnesses
 // report it: a gateway model ID without the opencode provider prefix
 // ("codex/gpt-6.1-sol", not "lydiabox/codex/gpt-6.1-sol"), or
 // "<provider>/<model>" for another provider.
 func ocModel(provider, model string) string {
-	if provider == GatewayProvider && model != "" {
-		return model
-	}
-	return strings.Trim(provider+"/"+model, "/")
+	return harness.GatewayModel(strings.Trim(provider+"/"+model, "/"))
 }
 
 // OpenCode reads sst/opencode sessions from its SQLite database or legacy

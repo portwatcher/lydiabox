@@ -79,6 +79,9 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 		if cur, ok := byID[s.ID]; ok {
 			return cur
 		}
+		// A guest binary or a discovery cache of an older version can
+		// still report the opencode or dsh provider prefix.
+		s.Model = GatewayModel(s.Model)
 		byID[s.ID] = &s
 		order = append(order, s.ID)
 		return &s
@@ -128,7 +131,7 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 			s.Title = sm.Title
 		}
 		if s.Model == "" {
-			s.Model = sm.Model
+			s.Model = GatewayModel(sm.Model)
 		}
 		if s.WorkspaceDir == "" {
 			s.WorkspaceDir = sm.WorkspaceDir
@@ -157,7 +160,7 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 			s.Title = ls.title
 		}
 		if s.Model == "" {
-			s.Model = ls.model
+			s.Model = GatewayModel(ls.model)
 		}
 	}
 	m.mu.Unlock()

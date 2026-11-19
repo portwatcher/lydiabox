@@ -166,7 +166,8 @@ func (d DSH) scan(home, rel string) (*harness.SessionMeta, error) {
 				usage.OutputTokens += a.Usage.Output
 			}
 			if a.Message.Source.Model != "" {
-				s.Model = strings.Trim(a.Message.Source.Provider+"/"+a.Message.Source.Model, "/")
+				// The overlay route "lydiabox" carries gateway model IDs.
+				s.Model = harness.GatewayModel(strings.Trim(a.Message.Source.Provider+"/"+a.Message.Source.Model, "/"))
 			}
 			if a.Message.text() != "" {
 				msgs++
