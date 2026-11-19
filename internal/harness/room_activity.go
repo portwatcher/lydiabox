@@ -67,7 +67,10 @@ func (a *activity) setup() string {
 	if len(a.fresh) == 0 {
 		return a.setupAtInput
 	}
-	return lastMatchLine(setupRe, a.fresh)
+	if line := lastMatchLine(setupRe, a.fresh); line != "" {
+		return line
+	}
+	return lastMatchLine(setupStepRe, a.fresh)
 }
 
 // Activity is what the output of a terminal shows about its program.
@@ -99,14 +102,18 @@ var (
 	// approvalRe matches the approval prompts of the five harnesses and
 	// of common confirmations.
 	// setupRe matches the first-run screens of the harnesses that wait for
-	// the user before the program reads a prompt: the Antigravity terms,
-	// the folder trust of Claude Code, Codex, and Antigravity, and the
-	// sign-in and theme screens.
+	// the user before the program reads a prompt: the Antigravity welcome,
+	// color scheme, and terms, the folder trust of Claude Code, Codex, and
+	// Antigravity, and the sign-in and theme screens.
 	setupRe = regexp.MustCompile(`(?i)(terms of service\s*(?:&|and)\s*data use|` +
+		`welcome to antigravity cli|choose your color scheme|` +
 		`do you trust the (?:files|contents) (?:in|of) this (?:folder|directory)|do you trust this folder|` +
 		`yes, i trust this folder|is this a project you created or one you trust|allow codex to work in this folder|` +
 		`how would you like to authenticate|select login method|sign in with chatgpt|choose the text style)`)
-	approvalRe = regexp.MustCompile(`(?i)(do you want to (?:proceed|make this edit|create|run|allow|apply)[^\n]*\?|would you like to (?:run|make|apply|allow)[^\n]*\?|allow (?:once|always|command|this (?:command|action|edit))|permission required|requires? (?:your )?approval|approve this[^\n]*|\(y/n\)|\[y/n\]|yes, and don't ask again)`)
+	// setupStepRe matches the key footer of an Antigravity onboarding step
+	// whose title is not known; it counts only without a setupRe match.
+	setupStepRe = regexp.MustCompile(`(?i)↑\s*/\s*↓\s*navigate\s*[·•]\s*enter\s+confirm`)
+	approvalRe  = regexp.MustCompile(`(?i)(do you want to (?:proceed|make this edit|create|run|allow|apply)[^\n]*\?|would you like to (?:run|make|apply|allow)[^\n]*\?|allow (?:once|always|command|this (?:command|action|edit))|permission required|requires? (?:your )?approval|approve this[^\n]*|\(y/n\)|\[y/n\]|yes, and don't ask again)`)
 )
 
 // screenText strips the escape sequences of terminal output. Cursor moves
