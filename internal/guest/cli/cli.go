@@ -4,6 +4,7 @@
 //
 //	cmd_serve.go    Phase 2: guest daemon (rpc, ptymanager, x11, webrtc, mcp, credproxy)
 //	cmd_gitcred.go  Phase 4: git credential helper over vsock
+//	cmd_lbx.go      browser and computer use from the shell (lbx)
 package cli
 
 import (
@@ -84,7 +85,9 @@ func Main(ctx context.Context, argv0 string, args []string, env Env) int {
 
 func run(ctx context.Context, c Command, args []string, env Env) int {
 	if err := c.Run(ctx, env, args); err != nil {
-		fmt.Fprintf(env.Stderr, "lydiabox-guest %s: %v\n", c.Name, err)
+		if !errors.Is(err, errReported) {
+			fmt.Fprintf(env.Stderr, "lydiabox-guest %s: %v\n", c.Name, err)
+		}
 		return 1
 	}
 	return 0
