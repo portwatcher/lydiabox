@@ -89,9 +89,12 @@ ARG OPENCODE_PACKAGE=opencode-ai
 ARG DSH_INSTALL="npm install -g --no-fund --no-audit @deepseek-ai/dsh"
 ARG ANTIGRAVITY_INSTALL="curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin"
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=Etc/UTC
+# bubblewrap: Codex's background app server checks for it on PATH at each
+# start (also when the session runs with
+# --dangerously-bypass-approvals-and-sandbox) and shows a warning without it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	xvfb xorg xfce4 xfce4-terminal dbus dbus-x11 fonts-noto-cjk ffmpeg blender \
-	git gh curl jq ripgrep python3 python3-pip python3-venv \
+	git gh curl jq ripgrep python3 python3-pip python3-venv bubblewrap \
 	supervisor sudo ca-certificates gnupg wget xdg-utils iproute2 iputils-ping procps less \
 	vim-tiny unzip zip openssh-client build-essential software-properties-common \
 	&& rm -rf /var/lib/apt/lists/*

@@ -61,6 +61,7 @@ host side of the vsock tunnel calls `Supervisor.InjectHeaders`, which sets
 | Titles | `.codex/session_index.jsonl` (`id`, `thread_name`) | Verified |
 | Start / resume | `codex --dangerously-bypass-approvals-and-sandbox [--model m]`, `codex resume <id> --dangerously-bypass-approvals-and-sandbox [prompt]`. The flag sets sandbox `danger-full-access` and approval `never` ("YOLO mode"); MCP tool calls are approved too (`mcp_permission_prompt_is_auto_approved`) | Verified (Codex 0.169.0 source and TUI) |
 | Config | `model`, `model_provider`, `[model_providers.lydiabox]` (`name`, `base_url`, `env_key`, `wire_api = "responses"`), `[mcp_servers.<name>] url` and `default_tools_approval_mode = "approve"` | Verified (`wire_api` accepts only `responses` now; `codex mcp get` 0.169.0 reads the approval key) |
+| bubblewrap | Codex's background app server (`codex app-server --managed-daemon`) checks for `bwrap` on PATH at each start, also in bypass mode, and shows a startup warning without it; the image installs `bubblewrap` | Verified (Codex 0.169.0) |
 
 ## dsh (DeepSeek Harness, `@deepseek-ai/dsh`)
 

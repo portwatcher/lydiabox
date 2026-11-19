@@ -268,7 +268,7 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
 ### 4.5 Computer Use, Desktop Streaming & Takeover (`internal/guest/*`)
 
 1. **Guest Desktop Stack (`deploy/rootfs/Dockerfile`)**:
-   - Base: `ubuntu:24.04`. Install `xvfb`, `xorg`, `xfce4`, `xfce4-terminal`, `dbus-x11`, `fonts-noto-cjk`, `ffmpeg`, `google-chrome-stable` (or `chromium` on `arm64`), `blender`, `git`, `gh`, `curl`, `jq`, `ripgrep`, `python3`, `nodejs`, `npm`, plus the 5 Harness CLIs (`@anthropic-ai/claude-code`, `@openai/codex`, `opencode-ai`, `dsh`, `antigravity` wrapper/installer).
+   - Base: `ubuntu:24.04`. Install `xvfb`, `xorg`, `xfce4`, `xfce4-terminal`, `dbus-x11`, `fonts-noto-cjk`, `ffmpeg`, `google-chrome-stable` (or `chromium` on `arm64`), `blender`, `git`, `gh`, `curl`, `jq`, `ripgrep`, `python3`, `nodejs`, `npm`, `bubblewrap` (Codex checks for `bwrap` on PATH at each start), plus the 5 Harness CLIs (`@anthropic-ai/claude-code`, `@openai/codex`, `opencode-ai`, `dsh`, `antigravity` wrapper/installer).
    - Start `Xvfb :0 -screen 0 1920x1080x24` + `startxfce4` under user `agent` (`uid=1000`, `$HOME=/home/agent`).
 2. **Pure-Go X11 Controller & Takeover Lock (`internal/guest/x11`)**:
    - Connect via `xgb.NewConnDisplay(":0")` and initialize `xtest.Init(conn)`.
