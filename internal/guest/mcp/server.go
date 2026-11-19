@@ -1,7 +1,7 @@
 // Package mcp is the guest Computer Use MCP server: JSON-RPC 2.0 over HTTP
 // POST on http://127.0.0.1:8910/mcp (the Streamable HTTP transport with JSON
-// responses) with screenshot, mouse, keyboard, app launch, Chrome CDP, and
-// Blender tools. The host relays the same tools over the guest RPC
+// responses) with screenshot, mouse, keyboard, app launch, browser (package
+// browser), Chrome CDP, and Blender tools. The host relays the same tools over the guest RPC
 // (mcp.call) through Server.CallTool.
 package mcp
 
@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/lydiabox/lydiabox/internal/guest/browser"
 	"github.com/lydiabox/lydiabox/internal/version"
 )
 
@@ -53,14 +54,18 @@ type Apps interface {
 type Server struct {
 	desktop Desktop
 	apps    Apps
+	browser *browser.Browser
 	tools   map[string]tool
 	order   []string
 }
 
 // NewServer returns a server for desktop and apps.
-func NewServer(desktop Desktop, apps Apps) *Server {
+func NewServer(desktop Desktop, apps Apps, opts ...Option) *Server {
 	s := &Server{desktop: desktop, apps: apps, tools: map[string]tool{}}
-	for _, t := range s.toolSet() {
+	for _, o := range opts {
+		o(s)
+	}
+	for _, t := range append(s.toolSet(), s.browserTools()...) {
 		s.tools[t.Name] = t
 		s.order = append(s.order, t.Name)
 	}
@@ -226,8 +231,10 @@ func (s *Server) dispatch(ctx context.Context, method string, params json.RawMes
 			"protocolVersion": ver,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 			"serverInfo":      map[string]any{"name": "lydiabox-computer-use", "version": version.Get().Version},
-			"instructions": "Screen coordinates are pixels of the 1920x1080 guest desktop. Take a screenshot before " +
-				"acting. While the user has taken over the desktop, input tools wait up to 30 s and then report it.",
+			"instructions": "For web pages, use the browser_* tools: they drive the visible desktop Chrome. Call " +
+				"browser_snapshot to get element refs, then act by ref. For other applications, use the computer_* " +
+				"tools: screen coordinates are pixels of the 1920x1080 guest desktop; take a screenshot before acting. " +
+				"While the user has taken over the desktop, input tools wait up to 30 s and then report it.",
 		}, nil
 	case "ping":
 		return map[string]any{}, nil

@@ -173,3 +173,42 @@ func TestTakeoverBlocksAgentAndInjectsUserInput(t *testing.T) {
 		t.Fatal("invalid mode accepted")
 	}
 }
+
+func TestActFollowsTakeoverAndPublishes(t *testing.T) {
+	c := NewController(Options{Dial: func() (Backend, error) { return NewFake(10, 10), nil }, TakeoverWait: 30 * time.Millisecond})
+	events, cancel := c.Events().Subscribe()
+	defer cancel()
+	ran := 0
+	act := func() error { ran++; return nil }
+	if err := c.Act(context.Background(), AgentAction{Action: "click", Tool: "browser_click"}, act); err != nil || ran != 1 {
+		t.Fatalf("act: %v ran %d", err, ran)
+	}
+	var ev AgentAction
+	if err := json.Unmarshal(<-events, &ev); err != nil || ev.Type != "agent_action" || ev.Tool != "browser_click" || ev.Timestamp.IsZero() {
+		t.Fatalf("event %+v %v", ev, err)
+	}
+	if err := c.Act(context.Background(), AgentAction{}, act); err != nil || len(events) != 0 {
+		t.Fatalf("an action without a name published an event: %v", err)
+	}
+	if _, err := c.SetMode(rpc.ModeTakeover, "user"); err != nil {
+		t.Fatal(err)
+	}
+	<-events // mode
+	if err := c.Act(context.Background(), AgentAction{Action: "click"}, act); !errors.Is(err, ErrTakeover) || ran != 2 {
+		t.Fatalf("act during takeover: %v ran %d", err, ran)
+	}
+	c.Observe(AgentAction{Action: "screenshot", Tool: "browser_snapshot"})
+	if err := json.Unmarshal(<-events, &ev); err != nil || ev.Action != "screenshot" {
+		t.Fatalf("observe during takeover %+v", ev)
+	}
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		_, _ = c.SetMode(rpc.ModeObserver, "user")
+	}()
+	if err := c.Act(context.Background(), AgentAction{}, act); err != nil || ran != 3 {
+		t.Fatalf("act after handback: %v ran %d", err, ran)
+	}
+	if err := c.Act(context.Background(), AgentAction{Action: "x"}, func() error { return errors.New("boom") }); err == nil {
+		t.Fatal("fn error lost")
+	}
+}
