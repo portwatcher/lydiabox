@@ -398,7 +398,8 @@ Cloudflare Realtime TURN key for the desktop stream (`-turn=false` skips
 it). It stores the tokens encrypted in the state database. Run it again to
 change the emails; `lydiabox cloudflare status` shows the setup and
 `lydiabox cloudflare teardown` deletes it. `lydiabox up` downloads the
-pinned `cloudflared` on first use.
+pinned `cloudflared` on first use. The Connectors page shows the remote access
+state, or these steps with copy buttons while it is off.
 
 - With a tunnel, `lydiabox up` listens on `127.0.0.1:8080`, so that every
   request goes through Cloudflare Access. To also serve the LAN, set
@@ -430,8 +431,10 @@ pinned `cloudflared` on first use.
 
 ## Models and sessions
 
-`lydiabox up` runs magpie on `127.0.0.1:3425` (`LYDIABOX_MAGPIE_ADDR`). Add providers, routing
-groups, and the default model of each harness in the Models page. Upstream
+`lydiabox up` runs magpie on `127.0.0.1:3425` (`LYDIABOX_MAGPIE_ADDR`). Add providers and routing
+groups in the Models page; it also shows the health of each provider, the
+models with the harnesses that used them last, and the token use and cost
+that sessions report. A session chooses its model. Upstream
 keys stay in `$LYDIABOX_DATA_DIR/state/magpie`. Inside the VM, harnesses
 use the gateway at `http://127.0.0.1:3425` with a placeholder token; the
 host side of the tunnel replaces it with a revocable gateway key.

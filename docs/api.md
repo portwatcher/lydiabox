@@ -928,7 +928,8 @@ include key values, only `hasKey`.
 
 A binding is the last model of a harness: every session start with a model
 sets it (section 8). The web UI has no page to edit bindings; it reads them
-to preselect the model of a new session.
+to preselect the model of a new session and shows them on the model cards
+of the Models page.
 
 ```json
 Provider:     { "id": "openai", "kind": "openai", "name": "OpenAI", "baseUrl": "", "enabled": true, "hasKey": true,
