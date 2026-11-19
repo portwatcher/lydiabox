@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -289,8 +290,17 @@ func TestAgentFor(t *testing.T) {
 			t.Fatalf("%s: %v %+v", h, err, a)
 		}
 	}
-	if a, _ := AgentFor(harness.ClaudeCode, "opus"); a.Env["ANTHROPIC_MODEL"] != "opus" {
+	lookPath = func(p string) (string, error) { return "/usr/bin/" + p, nil }
+	t.Cleanup(func() { lookPath = exec.LookPath })
+	if a, _ := AgentFor(harness.ClaudeCode, "opus"); a.Env["ANTHROPIC_MODEL"] != "opus" || a.Env["CLAUDE_CODE_EXECUTABLE"] != "/usr/bin/claude" {
 		t.Errorf("claude env %v", a.Env)
+	}
+	if a, _ := AgentFor(harness.Codex, ""); a.Env["CODEX_PATH"] != "/usr/bin/codex" {
+		t.Errorf("codex env %v", a.Env)
+	}
+	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	if a, _ := AgentFor(harness.ClaudeCode, ""); len(a.Env) != 0 {
+		t.Errorf("claude env without claude on PATH: %v", a.Env)
 	}
 	if a, _ := AgentFor(harness.DSH, "deepseek-v4"); !strings.Contains(strings.Join(a.Command, " "), "DSH_MODEL=deepseek-v4") {
 		t.Errorf("dsh command %v", a.Command)
