@@ -733,7 +733,15 @@ method gives the events of the plain transcript). The host keeps one reader
 per session for every client: it reads every second while the session has a
 terminal and every 4 seconds without one, and only the new lines of a
 growing JSONL transcript are parsed. The first read may start or resume the
-machine (`provider` mode, like the transcript); later reads do not. Shell
+machine (`provider` mode, like the transcript); later reads do not. In the
+`provider` mode the host keeps a copy of the events of each session in its
+state database (the newest events inside 4 MiB of JSON per session; older
+events are cut). The first message then holds that copy at once, before the
+read that starts or resumes the machine, and the status has `cached: true`.
+When the first read of the guest is complete, the client gets the changed
+and new events when the order of the copy is the start of the guest order;
+otherwise (an event was removed, the order differs, or the copy was cut) it
+gets a `reset` with the guest events. Shell
 sessions and unknown harnesses get `error` `not_found` and a close `1008`.
 
 Server → client (text frames):
@@ -741,7 +749,7 @@ Server → client (text frames):
 ```json
 { "type": "events", "reset": true, "events": [ … ] }
 { "type": "events", "events": [ … ] }
-{ "type": "status", "sessionId": "codex:019a…", "state": "working", "live": true, "synced": true, "prompt": "", "error": "" }
+{ "type": "status", "sessionId": "codex:019a…", "state": "working", "live": true, "synced": true, "cached": false, "prompt": "", "error": "" }
 { "type": "pong", "id": 7 }
 ```
 
@@ -800,7 +808,10 @@ Texts are cut at 32 KiB, tool inputs at 8 KiB, outputs at 12 KiB.
 `sessionId` is the ID that the session has now: a session started without
 a native ID gets one after the harness writes its transcript. `synced` is
 `true` after the first read (also when the harness has no transcript yet);
-`error` is the last read error (for example a stopped VM).
+`cached` is `true` while the events are the stored copy and the guest was
+not read yet (`provider` mode; it stays `true` when the read fails, and the
+copy stays on the screen); `error` is the last read error (for example a
+stopped VM).
 
 ### `POST /api/v1/sessions/{id}/input`
 

@@ -72,6 +72,10 @@ of a hosted machine) instead of a JuiceFS volume. LydiaBox then:
   when it is paused or stopped (`503` after 90 s without an answer);
 - shows the Studio session list from the last scan while the machine is
   paused or stopped, and marks it as cached;
+- keeps a copy of the last known events of each session in the host state
+  database (prompts, replies, tool input and output; no credentials), so
+  that an opened session shows its conversation at once while the machine
+  starts or resumes;
 - answers `/webdav` and `/s3` with `501`;
 - backs up the host state database to S3 only when the S3 settings are
   present (it logs one warning at start when they are absent).
