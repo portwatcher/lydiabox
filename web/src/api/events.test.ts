@@ -27,10 +27,18 @@ describe("parseEventsMessage", () => {
     expect(msg.events[2].result).toEqual({ callId: "c1", status: "error", output: "boom", images: ["data:image/png;base64,AA"], durationMs: 12 });
   });
 
+  it("decodes the stored-copy flag of the status", () => {
+    const cached = parseEventsMessage({ type: "status", sessionId: "codex:1", state: "offline", live: false, synced: false, cached: true });
+    expect(cached).toMatchObject({ type: "status", synced: false, cached: true });
+    const fresh = parseEventsMessage({ type: "status", sessionId: "codex:1", state: "idle", live: true, synced: true });
+    expect(fresh).toMatchObject({ type: "status", synced: true, cached: false });
+    expect(parseEventsMessage({ type: "status", cached: "yes" })).toMatchObject({ cached: false });
+  });
+
   it("maps unknown tool kinds and states to safe defaults", () => {
     expect(decodeEvent({ key: "t", kind: "tool_call", tool: { kind: "laser" } })?.tool?.kind).toBe("other");
     const status = parseEventsMessage({ type: "status", sessionId: "codex:1", state: "dancing", live: true, synced: true });
-    expect(status).toMatchObject({ type: "status", state: "offline", live: true, synced: true, prompt: "" });
+    expect(status).toMatchObject({ type: "status", state: "offline", live: true, synced: true, cached: false, prompt: "" });
     expect(parseEventsMessage({ type: "nope" })).toBeNull();
     expect(parseEventsMessage(null)).toBeNull();
   });
@@ -55,7 +63,7 @@ describe("EventsClient", () => {
     sockets[0].receiveJson({ type: "events", reset: true, events: [{ key: "a", kind: "assistant", text: "x" }] });
     sockets[0].receiveJson({ type: "status", sessionId: "codex:abc", state: "working", live: true, synced: true });
     expect(got).toEqual([{ reset: true, events: [expect.objectContaining({ key: "a", text: "x" })] }]);
-    expect(statuses[0]).toEqual({ sessionId: "codex:abc", state: "working", live: true, synced: true, prompt: "", error: "", engine: "", agent: "", mode: "", queued: 0 });
+    expect(statuses[0]).toEqual({ sessionId: "codex:abc", state: "working", live: true, synced: true, cached: false, prompt: "", error: "", engine: "", agent: "", mode: "", queued: 0 });
     sockets[0].receiveJson({ type: "error", code: "not_found", message: "gone" });
     sockets[0].serverClose(1008);
     expect(errors).toEqual(["not_found"]);

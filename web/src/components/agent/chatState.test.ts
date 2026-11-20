@@ -15,7 +15,7 @@ describe("chatReducer", () => {
     expect(s.byKey.a.text).toBe("1b");
     s = chatReducer(s, { type: "events", reset: true, events: [ev({ key: "z", kind: "user" })] });
     expect(s.order).toEqual(["z"]);
-    s = chatReducer(s, { type: "status", status: { sessionId: "x", state: "idle", live: true, synced: true, prompt: "", error: "", engine: "", agent: "", mode: "", queued: 0 } });
+    s = chatReducer(s, { type: "status", status: { sessionId: "x", state: "idle", live: true, synced: true, cached: false, prompt: "", error: "", engine: "", agent: "", mode: "", queued: 0 } });
     expect(s.status?.state).toBe("idle");
     expect(chatReducer(s, { type: "clear" })).toBe(emptyChat);
   });

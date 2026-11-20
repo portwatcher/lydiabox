@@ -87,6 +87,8 @@ export interface EventStatus {
   state: AgentState;
   live: boolean;
   synced: boolean;
+  /** The events are the copy that the host stored; the guest was not read yet (provider storage mode). */
+  cached: boolean;
   prompt: string;
   error: string;
   /** "acp" while a chat agent runs the session. */
@@ -205,6 +207,7 @@ export function parseEventsMessage(message: unknown): EventsMessage | null {
         state: oneOf(message.state, ["working", "idle", "attention", "setup", "offline"] as const) ?? "offline",
         live: bool(message, "live"),
         synced: bool(message, "synced"),
+        cached: bool(message, "cached"),
         prompt: str(message, "prompt"),
         error: str(message, "error"),
         engine: str(message, "engine"),
@@ -277,6 +280,7 @@ export class EventsClient {
           state: msg.state,
           live: msg.live,
           synced: msg.synced,
+          cached: msg.cached,
           prompt: msg.prompt,
           error: msg.error,
           engine: msg.engine,
