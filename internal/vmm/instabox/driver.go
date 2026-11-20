@@ -51,6 +51,10 @@ const (
 	// DefaultReadyProbe bounds one guest probe: a request through the
 	// port of a paused machine waits up to 45 s for the wake.
 	DefaultReadyProbe = 60 * time.Second
+	// DefaultProviderTimeout bounds one start or resume at InstaBox
+	// (vmm.Capabilities.ProviderTimeout). A resume usually takes 2 to 9 s,
+	// but 60 s, 115 s, and 200 s were measured.
+	DefaultProviderTimeout = 10 * time.Minute
 	// LeaseID is the activity lease that the cell holds.
 	LeaseID = "lydiabox-cell"
 	// guestEnvPath is the settings file that the image's entry point reads.
@@ -77,6 +81,8 @@ type Options struct {
 	// minutes).
 	LeaseTTL   time.Duration
 	LeaseRenew time.Duration
+	// ProviderTimeout bounds one start or resume (default 10 minutes).
+	ProviderTimeout time.Duration
 	// BlockTime is how long an account error stops new attempts (default
 	// 30 s).
 	BlockTime time.Duration
@@ -173,6 +179,9 @@ func New(opts Options) (*Driver, error) {
 	if opts.BlockTime <= 0 {
 		opts.BlockTime = DefaultBlockTime
 	}
+	if opts.ProviderTimeout <= 0 {
+		opts.ProviderTimeout = DefaultProviderTimeout
+	}
 	if opts.LinkMinBackoff <= 0 {
 		// A reconnect through the port wakes an idle-paused machine; the
 		// watcher looks first.
@@ -197,7 +206,7 @@ func (d *Driver) Name() string { return DriverName }
 
 // Capabilities implements vmm.CapabilityReporter.
 func (d *Driver) Capabilities() vmm.Capabilities {
-	return vmm.Capabilities{Remote: true, SelfPause: true, ReadyProbeTimeout: DefaultReadyProbe}
+	return vmm.Capabilities{Remote: true, SelfPause: true, ReadyProbeTimeout: DefaultReadyProbe, ProviderTimeout: d.opts.ProviderTimeout}
 }
 
 func (d *Driver) tenant(tid string) *tenant {

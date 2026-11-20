@@ -97,6 +97,13 @@ type Capabilities struct {
 	// ReadyProbeTimeout bounds one guest readiness probe after a boot or
 	// a resume (default 5 s). A remote guest link can need longer.
 	ReadyProbeTimeout time.Duration
+	// ProviderTimeout bounds the provider part of one boot of a remote VM:
+	// the create and boot, or the resume (a cloud provider can need
+	// minutes). The guest-ready wait that follows has its own bound
+	// (Options.BootTimeout). A boot that reaches this bound does not stop
+	// the machine. Zero: Options.BootTimeout bounds the full boot (the
+	// local behavior).
+	ProviderTimeout time.Duration
 }
 
 // CapabilityReporter is implemented by a driver whose VM is not local.

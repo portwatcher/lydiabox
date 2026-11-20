@@ -487,6 +487,17 @@ that is not an InstaBox size, a GPU, and a UDP port.
   The next line `guest link up` has `connect`, the time of the link's
   successful dial and handshake. A slow resume is therefore visible as a
   large `took` (InstaBox) or a large `connect` (port proxy).
+- The driver logs at info level when it asks for a start or resume (with
+  the `operation`) or wakes an idle-paused machine, so the log shows the
+  start of the wait. A start or resume has a bound of 10 minutes
+  (`Options.ProviderTimeout`, `vmm.Capabilities.ProviderTimeout`; measured
+  resumes took 2 to 9 s, sometimes 60 s, 115 s, and 200 s). The guest-ready
+  wait after it has its own 120 s. At the bound the driver logs the warning
+  `instabox: the machine did not run before the bound ended; InstaBox can
+  still bring it up` with `action`, `operation`, and `waited`, and the VM
+  status shows `the VM provider did not resume the machine in 10 minutes;
+  ...`. The cell does not stop or pause the machine then; the state
+  watcher reports `RUNNING` when InstaBox finishes, and the error clears.
 - A resume that InstaBox could not do with the memory
   (`runtime.processesPreserved: false`) logs the warning `instabox: the
   resume did not keep the processes; the machine booted fresh`. The
