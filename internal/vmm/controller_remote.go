@@ -20,6 +20,8 @@ package vmm
 //     Capabilities.ProviderTimeout bounds that part of a boot, and a boot
 //     that fails never stops the machine (cleanupFailedBoot). When the
 //     machine runs later, Observe adopts it and clears the last error.
+//     A pause has the same bound and runs to its end (pause.go); after a
+//     failed pause, a machine that runs gets its guest link again.
 
 // Observe records a power change that the driver saw but did not make
 // (for example a provider pause or resume). The change is ignored while
@@ -38,9 +40,17 @@ func (c *Controller) Observe(tid string, st State) {
 	}
 	defer t.trans.Unlock()
 	c.setState(tid, t, st)
-	if st == StateRunning {
-		// The machine runs: an earlier failed boot (for example a resume
-		// that took longer than the provider bound) is no longer true.
+	if st == StateRunning || st == StatePaused {
+		// The machine runs or is paused: an earlier failed boot or pause
+		// (for example a resume or a pause that took longer than the
+		// provider bound) is no longer true.
 		c.clearError(t)
+	}
+	if st == StatePaused || st == StateStopped {
+		// The next wake resumes or boots the machine, which attaches the
+		// guest link.
+		c.mu.Lock()
+		t.relink = false
+		c.mu.Unlock()
 	}
 }

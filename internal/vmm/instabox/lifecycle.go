@@ -195,6 +195,19 @@ func (d *Driver) bringUp(ctx context.Context, tid, id string) (m *ib.Machine, er
 		if err != nil {
 			return nil, d.fail(tid, err)
 		}
+		if suspending(m) {
+			// A suspend runs (for example a pause that ended at its bound):
+			// wait for it, then resume the machine.
+			if !waited {
+				waited = true
+				d.opts.Logger.Info("instabox: waiting for the suspend of the machine", "tenant", tid, "operation", *m.OperationID)
+			}
+			opID = *m.OperationID
+			if err := d.waitSettled(ctx, m); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		var op *ib.Operation
 		switch m.State {
 		case ib.StateRunning:
@@ -290,8 +303,11 @@ func (d *Driver) waitSettled(ctx context.Context, m *ib.Machine) error {
 
 // Pause implements vmm.Driver: it closes the link and pauses the machine
 // with its memory. A paused machine does not wake on use; Resume brings
-// it back.
-func (d *Driver) Pause(ctx context.Context, tid string) error {
+// it back. It logs the suspend that it asks for (info), how long the
+// machine took to pause, and, on an error, the operation and the time it
+// waited (warning). After an error the link stays closed; the controller
+// attaches it again when the machine still runs (vmm pause.go).
+func (d *Driver) Pause(ctx context.Context, tid string) (err error) {
 	t := d.tenant(tid)
 	t.op.Lock()
 	defer t.op.Unlock()
@@ -300,14 +316,32 @@ func (d *Driver) Pause(ctx context.Context, tid string) error {
 		return err
 	}
 	d.detach(tid)
+	start, opID := time.Now(), ""
+	defer func() {
+		if err != nil {
+			d.opts.Logger.Warn("instabox: the machine did not pause", "tenant", tid, "machine", id, "operation", opID,
+				"waited", time.Since(start).Round(time.Millisecond), "err", err)
+		}
+	}()
 	for {
 		m, err := d.opts.Client.GetMachine(ctx, id)
 		if err != nil {
 			return d.fail(tid, err)
 		}
+		if suspending(m) {
+			opID = *m.OperationID
+			if err := d.waitSettled(ctx, m); err != nil {
+				return err
+			}
+			continue
+		}
 		switch m.State {
 		case ib.StateSuspended:
 			d.setReported(tid, vmm.StatePaused)
+			if opID != "" {
+				d.opts.Logger.Info("instabox: machine paused", "tenant", tid, "operation", opID,
+					"took", time.Since(start).Round(time.Millisecond))
+			}
 			return nil
 		case ib.StateRunning:
 			op, err := d.opts.Client.PauseMachine(ctx, id)
@@ -318,16 +352,23 @@ func (d *Driver) Pause(ctx context.Context, tid string) error {
 				continue
 			}
 			if err == nil {
+				opID = op.ID
+				d.opts.Logger.Info("instabox: asked for a suspend of the machine", "tenant", tid, "machine", id, "operation", op.ID)
 				_, err = d.opts.Client.WaitOperation(ctx, op)
 			}
 			if err != nil {
 				return d.fail(tid, err)
 			}
 			d.setReported(tid, vmm.StatePaused)
+			d.opts.Logger.Info("instabox: machine paused", "tenant", tid, "operation", opID,
+				"took", time.Since(start).Round(time.Millisecond))
 			return nil
 		case ib.StateStopped, ib.StateError, ib.StateDeleted:
 			return fmt.Errorf("%w: pause while the machine is %s", vmm.ErrConflict, m.State)
 		default:
+			if m.OperationID != nil && *m.OperationID != "" {
+				opID = *m.OperationID
+			}
 			if err := d.waitSettled(ctx, m); err != nil {
 				return err
 			}

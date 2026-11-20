@@ -158,6 +158,10 @@ var ErrStopped = api.ErrVMStopped
 // by its deadline while the boot continues (it wraps ErrUnavailable).
 var ErrStarting = api.ErrVMStarting
 
+// ErrPausing is returned by Hibernate when the caller's context ends while
+// the pause continues.
+var ErrPausing = api.ErrVMPausing
+
 // ValidTenantID checks that a tenant ID is safe in file names, interface
 // names, and container names: 1 to 64 letters, digits, '-', or '_'.
 func ValidTenantID(id string) error {

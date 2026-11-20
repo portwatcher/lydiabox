@@ -498,6 +498,18 @@ that is not an InstaBox size, a GPU, and a UDP port.
   status shows `the VM provider did not resume the machine in 10 minutes;
   ...`. The cell does not stop or pause the machine then; the state
   watcher reports `RUNNING` when InstaBox finishes, and the error clears.
+- A pause logs `instabox: asked for a suspend of the machine` (info, with
+  the `operation`) and `instabox: machine paused` with `took`. During a
+  suspend InstaBox shows the machine as `running` with `desiredState:
+  suspended` and the `operationId` (measured: up to 4 min 20 s); the
+  driver reports such a machine as `PAUSED`, and a start or resume waits
+  for the suspend first (`instabox: waiting for the suspend of the
+  machine`). The pause has the same 10-minute bound and does not stop when
+  the HTTP request ends. A failed pause logs the warning `instabox: the
+  machine did not pause` with `operation`, `waited`, and the error. When
+  the machine still runs after it, the cell attaches the guest link again
+  and the state stays `RUNNING`; when InstaBox still suspends it, the
+  state is `PAUSED`.
 - A resume that InstaBox could not do with the memory
   (`runtime.processesPreserved: false`) logs the warning `instabox: the
   resume did not keep the processes; the machine booted fresh`. The

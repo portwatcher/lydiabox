@@ -170,7 +170,15 @@ func (s *Server) lifecycle(action string) http.HandlerFunc {
 			op = s.startOp(m, "stop", "stopping", "stopped")
 		case "suspend/running":
 			m.autoSuspendedAt = nil
-			op = s.startOp(m, "suspend", "suspending", "suspended")
+			if s.opts.SuspendDelay > 0 {
+				// Like the real service during a slow suspend: the machine
+				// shows "running" with desiredState "suspended" and the
+				// operation until the suspend ends.
+				op = s.startOp(m, "suspend", "running", "suspended")
+				op.doneAt = op.createdAt.Add(s.opts.SuspendDelay)
+			} else {
+				op = s.startOp(m, "suspend", "suspending", "suspended")
+			}
 		case "stop/suspended":
 			apiErr(w, http.StatusConflict, "operation_conflict", "resume it first, then stop it, or delete it", nil)
 			return
@@ -178,10 +186,13 @@ func (s *Server) lifecycle(action string) http.HandlerFunc {
 			apiErr(w, http.StatusConflict, "operation_conflict", "cannot "+action+" a "+m.state+" sandbox", nil)
 			return
 		}
-		if action != "stop" {
-			m.desiredState = "running"
-		} else {
+		switch action {
+		case "stop":
 			m.desiredState = "stopped"
+		case "suspend":
+			m.desiredState = "suspended"
+		default:
+			m.desiredState = "running"
 		}
 		writeJSON(w, http.StatusAccepted, op.json(m))
 	}

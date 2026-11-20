@@ -34,6 +34,10 @@ type Options struct {
 	OpDelay time.Duration
 	// ResumeDelay, when set, is how long a resume runs instead.
 	ResumeDelay time.Duration
+	// SuspendDelay, when set, is how long a suspend runs instead. The
+	// machine then shows the state "running" with desiredState
+	// "suspended" until the suspend ends, like the real service.
+	SuspendDelay time.Duration
 	// MaxMachines and MaxSnapshots are the plan limits (0: no limit).
 	MaxMachines  int
 	MaxSnapshots int

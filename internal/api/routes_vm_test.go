@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeVM struct {
@@ -16,6 +17,8 @@ type fakeVM struct {
 	stopArgs []bool
 	// stopCtxErr is the context error that Stop saw.
 	stopCtxErr error
+	// slowPause makes Hibernate wait for its context.
+	slowPause bool
 }
 
 func (f *fakeVM) VMStatus(context.Context, string) (VMStatus, error) {
@@ -34,7 +37,12 @@ func (f *fakeVM) Start(ctx context.Context, _ string) error {
 	return nil
 }
 
-func (f *fakeVM) Hibernate(context.Context, string) error {
+func (f *fakeVM) Hibernate(ctx context.Context, _ string) error {
+	if f.slowPause {
+		// The pause continues after the route's wait.
+		<-ctx.Done()
+		return ErrVMPausing
+	}
 	if f.state != VMRunning {
 		return fmt.Errorf("%w: hibernate while %s", ErrVMConflict, f.state)
 	}
@@ -161,5 +169,20 @@ func TestVMStopOutlivesTheClient(t *testing.T) {
 	ts.Config.Handler.ServeHTTP(rec, req)
 	if len(vm.stopArgs) != 1 || vm.stopCtxErr != nil || vm.state != VMStopped {
 		t.Fatalf("stop calls %v, ctx err %v, state %s", vm.stopArgs, vm.stopCtxErr, vm.state)
+	}
+}
+
+// A pause that continues after the route's wait gives 202 with the status.
+func TestVMHibernateAnswersWhileThePauseContinues(t *testing.T) {
+	vm := &fakeVM{state: VMRunning, slowPause: true}
+	srv, err := NewServer(Options{Addr: "127.0.0.1:0", Auth: NewAuthenticator("0123456789abcdef0123"), TenantID: "default"},
+		VMRoutes{Controller: vm, HibernateWait: 50 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	if code, out := vmDo(t, ts, "POST", "/api/v1/vm/hibernate", ""); code != http.StatusAccepted || out["state"] != VMRunning {
+		t.Fatalf("hibernate %d %v", code, out)
 	}
 }

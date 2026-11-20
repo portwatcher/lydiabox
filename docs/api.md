@@ -558,11 +558,15 @@ machine whose guest does not answer after the provider part is paused
 | :--- | :--- | :--- |
 | `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
 | `POST /api/v1/vm/wake` | Explicit start (`Start`): ends a user stop, then boots from `STOPPED` or resumes from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `503 vm_starting` with `Retry-After` when the start continues after 75 s (section 1); the error of the boot when it fails |
-| `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause. The processes keep their memory; a live terminal detaches (`paused`, see section 8) and attaches again after the wake. A wake asked for during the pause waits for it and then resumes the VM | `200 VMStatus` (`PAUSED`) |
+| `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause. The processes keep their memory; a live terminal detaches (`paused`, see section 8) and attaches again after the wake. A wake asked for during the pause waits for it and then resumes the VM. A pause that started runs to its end: a client that goes away or a proxy that ends the request does not stop it. The pause has the provider bound of a start (`instabox`: 10 minutes; a local VM: 120 s) | `200 VMStatus` (`PAUSED`) when the pause ends within 75 s; else `202 VMStatus` with `state: RUNNING` and `transition: pausing` while the pause continues (the status shows `PAUSED` when it ends); the error of the pause when it fails. After a failed pause the state is `PAUSED` when the provider paused the machine, else `RUNNING` with the guest connected again |
 | `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot`. The stop runs to its end when the client goes away (limit 3 minutes) | `200 VMStatus` (`STOPPED`) |
 
 `409 conflict` when the transition is not possible (for example hibernate
-or stop while `STOPPED`). A user action that needs the guest (a new session,
+or stop while `STOPPED`). The web UI shows a `202` answer of `hibernate` as
+"Hibernating" until the status is `PAUSED`. When a proxy ends a `hibernate`
+or `stop` request without an answer (`502`, `504`, `524`, or a cut
+connection), the web UI reads the VM status: while it shows the transition
+or the end state, the page shows the status and no failure. A user action that needs the guest (a new session,
 opening a terminal, a file operation) wakes the VM itself; the UI does not
 need to call `wake` first. Automatic requests (polls, reconnects) never wake
 a paused VM: `docs/design.md` section 4.3 has the full table.
