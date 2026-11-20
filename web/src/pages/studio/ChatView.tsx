@@ -19,6 +19,7 @@ import { Banner, Button } from "../../components/ui";
 import { VmWakeButton } from "../../components/VmPower";
 import { useSystem } from "../../hooks/useSystem";
 import { harnessLabel, setupStepsOf } from "../../lib/harness";
+import { historyFailed } from "./chatHistory";
 
 interface ChatViewProps {
   session: Session;
@@ -183,7 +184,7 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   let body;
   if (error && empty) {
     body = <StateView title="Session not found">{error}</StateView>;
-  } else if (empty && !synced && status?.error) {
+  } else if (empty && status && historyFailed(status, vmState)) {
     body = (
       <StateView title="History not loaded" action={vmState === "STOPPED" ? <VmWakeButton variant="primary" /> : undefined}>
         {status.error}
