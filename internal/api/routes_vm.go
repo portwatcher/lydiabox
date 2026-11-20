@@ -66,6 +66,12 @@ var ErrVMStopped = fmt.Errorf("%w: the VM was stopped; start it to use it", ErrV
 // (httpx.NoteVMStarting), and the client sends the request again.
 var ErrVMStarting = fmt.Errorf("%w: the VM is still starting; send the request again when it runs", ErrVMUnavailable)
 
+// ErrVMPausing marks a hibernate request that stopped its wait while the
+// pause continues (the VM provider can need minutes for a pause).
+// POST /api/v1/vm/hibernate then answers 202 with the VM status, whose
+// transition is "pausing" until the VM is PAUSED.
+var ErrVMPausing = errors.New("vm: the pause continues")
+
 // VMController is the VM power API (*vmm.Controller implements it).
 type VMController interface {
 	VMStatusSource
@@ -73,6 +79,8 @@ type VMController interface {
 	// Start is an explicit start: it also starts a VM that the user
 	// stopped (EnsureRunning does not).
 	Start(ctx context.Context, tenantID string) error
+	// Hibernate pauses the VM. The pause continues when ctx ends; Hibernate
+	// then returns ErrVMPausing.
 	Hibernate(ctx context.Context, tenantID string) error
 	Stop(ctx context.Context, tenantID string, force bool) error
 }
@@ -87,9 +95,16 @@ const WakeTimeout = RequestWakeWait
 // start or resume (docs/api.md section 1).
 const RequestWakeWait = 75 * time.Second
 
+// HibernateWait bounds the wait of POST /api/v1/vm/hibernate. A pause
+// that takes longer continues: the route then answers 202 with the VM
+// status (transition "pausing").
+const HibernateWait = RequestWakeWait
+
 // VMRoutes serves /api/v1/vm/* (docs/api.md section 7).
 type VMRoutes struct {
 	Controller VMController
+	// HibernateWait replaces the default HibernateWait (tests).
+	HibernateWait time.Duration
 }
 
 // RegisterRoutes implements RouteRegistrar.
@@ -117,7 +132,19 @@ func (v VMRoutes) wake(w http.ResponseWriter, r *http.Request) {
 
 func (v VMRoutes) hibernate(w http.ResponseWriter, r *http.Request) {
 	tid := tenant.FromContext(r.Context())
-	if err := v.Controller.Hibernate(r.Context(), tid); err != nil {
+	wait := v.HibernateWait
+	if wait <= 0 {
+		wait = HibernateWait
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), wait)
+	defer cancel()
+	err := v.Controller.Hibernate(ctx, tid)
+	if errors.Is(err, ErrVMPausing) {
+		// The pause continues; the status shows it until the VM is PAUSED.
+		httpx.WriteJSON(w, http.StatusAccepted, v.Controller.Status(tid))
+		return
+	}
+	if err != nil {
 		writeVMError(w, err)
 		return
 	}

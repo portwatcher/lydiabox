@@ -11,7 +11,9 @@ import (
 // for the driver calls and the guest-ready wait. A remote driver with
 // Capabilities.ProviderTimeout has two: ProviderTimeout for the provider
 // part (create and boot, or resume), then BootTimeout for the guest-ready
-// wait. During the full boot the state stays BOOTING.
+// wait. During the full boot the state stays BOOTING. A boot clears the
+// error of an earlier failed transition at its start. A pause (pause.go)
+// has the same provider bound.
 
 // cleanupTimeout bounds the driver calls after a failed boot.
 const cleanupTimeout = 30 * time.Second
@@ -19,15 +21,25 @@ const cleanupTimeout = 30 * time.Second
 // ProviderTimeoutError is the error of a remote boot that reached
 // Capabilities.ProviderTimeout. The provider can still bring the machine
 // up; the controller does not stop it, and the state watcher adopts it
-// when it runs. It wraps ErrUnavailable.
+// when it runs. It is also the error of a pause that reached its bound
+// (Action "pause"). It wraps ErrUnavailable.
 type ProviderTimeoutError struct {
-	// Action is "start" or "resume".
+	// Action is "start", "resume", or "pause".
 	Action string
 	// Bound is the provider bound that ended.
 	Bound time.Duration
+	// Local is true for a local VM (no provider).
+	Local bool
 }
 
 func (e *ProviderTimeoutError) Error() string {
+	switch {
+	case e.Action == "pause" && e.Local:
+		return fmt.Sprintf("the VM did not pause in %s", humanDuration(e.Bound))
+	case e.Action == "pause":
+		return fmt.Sprintf("the VM provider did not pause the machine in %s; LydiaBox shows the machine as paused when the provider completes the pause",
+			humanDuration(e.Bound))
+	}
 	return fmt.Sprintf("the VM provider did not %s the machine in %s; the machine can still start, and LydiaBox uses it when it runs",
 		e.Action, humanDuration(e.Bound))
 }
@@ -89,11 +101,31 @@ func (c *Controller) bootLocked(tid string, t *tenantVM) error {
 		// A Stop came after this wake was asked for.
 		return ErrStopped
 	}
+	// The error of an earlier failed transition is old now: the status of
+	// this boot shows only its own error.
+	c.clearError(t)
 	pctx, cancel := context.WithTimeout(context.Background(), c.providerBound())
 	defer cancel()
 	st, err := c.opts.Driver.State(pctx, tid)
 	if err != nil {
 		return fmt.Errorf("vmm: read VM state: %w", err)
+	}
+	c.mu.Lock()
+	relink := t.relink
+	c.mu.Unlock()
+	if relink && (st == StateRunning || st == StateBooting) {
+		// A failed pause closed the guest link of a remote machine that
+		// runs: the driver's resume attaches it again (and waits for a
+		// transition at the provider).
+		c.setState(tid, t, StateBooting)
+		if err := c.opts.Driver.Resume(pctx, tid); err != nil {
+			c.setState(tid, t, StateRunning)
+			if pt := c.providerTimeout(pctx, "resume"); pt != nil {
+				return pt
+			}
+			return fmt.Errorf("vmm: attach the guest link: %w", err)
+		}
+		st = StateRunning
 	}
 	// before is the state that a failed remote boot goes back to: the
 	// next wake then calls the driver again.
@@ -153,7 +185,7 @@ func (c *Controller) bootLocked(tid string, t *tenantVM) error {
 		return err
 	}
 	c.mu.Lock()
-	t.pausing = false
+	t.pausing, t.relink = false, false
 	c.mu.Unlock()
 	c.setState(tid, t, StateRunning)
 	return nil

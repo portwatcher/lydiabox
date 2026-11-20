@@ -80,6 +80,10 @@ type tenantVM struct {
 	timer     *time.Timer
 	pausing   bool
 	stopping  bool
+	// relink is set after a failed pause of a remote VM that still runs:
+	// the pause closed the guest link, so the next wake attaches it again
+	// (bootLocked) before the VM is used.
+	relink bool
 	// held is set by Stop (from its start) and cleared by Start: a VM
 	// that the user stopped is not woken on demand (EnsureRunning).
 	// holdMu orders the changes of held with their writes to Options.Holds;
@@ -194,7 +198,7 @@ func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
 		c.mu.Unlock()
 		return ErrStopped
 	}
-	if t.state == StateRunning && !t.pausing && t.boot == nil {
+	if t.state == StateRunning && !t.pausing && t.boot == nil && !t.relink {
 		c.mu.Unlock()
 		return nil
 	}
@@ -286,46 +290,6 @@ func (c *Controller) idleExpired(tid string) {
 	if err != nil && !errors.Is(err, ErrConflict) {
 		c.opts.Logger.Warn("idle hibernate failed", "tenant", tid, "err", err)
 	}
-}
-
-// Hibernate flushes guest filesystems and pauses the VM.
-func (c *Controller) Hibernate(ctx context.Context, tid string) error {
-	return c.hibernate(ctx, tid, false)
-}
-
-func (c *Controller) hibernate(ctx context.Context, tid string, onlyIfIdle bool) error {
-	c.mu.Lock()
-	t := c.tenant(tid)
-	c.mu.Unlock()
-	t.trans.Lock()
-	defer t.trans.Unlock()
-	c.mu.Lock()
-	st, leases := t.state, len(t.leases)
-	c.mu.Unlock()
-	if st != StateRunning {
-		return fmt.Errorf("%w: hibernate while %s", ErrConflict, st)
-	}
-	if onlyIfIdle && leases > 0 {
-		return fmt.Errorf("%w: leases appeared", ErrConflict)
-	}
-	// While the pause runs, the VM is not used: a wake waits for the pause
-	// and then resumes the VM, and Paused reports true.
-	c.mu.Lock()
-	t.pausing = true
-	c.mu.Unlock()
-	defer func() {
-		c.mu.Lock()
-		t.pausing = false
-		c.mu.Unlock()
-	}()
-	c.flush(ctx, tid)
-	if err := c.opts.Driver.Pause(ctx, tid); err != nil {
-		c.recordError(t, err)
-		return fmt.Errorf("vmm: pause: %w", err)
-	}
-	c.setState(tid, t, StatePaused)
-	c.clearError(t)
-	return nil
 }
 
 func (c *Controller) flush(ctx context.Context, tid string) error {

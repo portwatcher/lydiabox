@@ -306,6 +306,9 @@ func (d *Driver) fail(tid string, err error) error {
 func mapState(m *ib.Machine) vmm.State {
 	switch m.State {
 	case ib.StateRunning:
+		if suspending(m) {
+			return vmm.StatePaused
+		}
 		return vmm.StateRunning
 	case ib.StateCreating, ib.StateStarting, ib.StateResuming:
 		return vmm.StateBooting
@@ -314,6 +317,15 @@ func mapState(m *ib.Machine) vmm.State {
 	}
 	// stopping, stopped, error, deleting, deleted
 	return vmm.StateStopped
+}
+
+// suspending reports whether InstaBox suspends a machine that still shows
+// the state running: during a suspend, the machine keeps "running" with
+// desiredState "suspended" and the operation ID until the suspend ends
+// (this can take minutes).
+func suspending(m *ib.Machine) bool {
+	return m.State == ib.StateRunning && m.DesiredState == ib.StateSuspended &&
+		m.OperationID != nil && *m.OperationID != ""
 }
 
 // Close stops the watcher and the activity leases, and closes the links.
