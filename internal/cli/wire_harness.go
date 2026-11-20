@@ -68,9 +68,9 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 		return nil, err
 	}
 	if mopts.EventCache != nil && d.VM != nil && d.VM.hooks != nil {
-		// The provider or the idle timer can pause the machine: before a
-		// pause or stop of the host, the changed sessions get a new copy.
-		d.VM.BeforeFlush(mgr.FillEventCacheBeforePause)
+		// Before a pause or stop of the host, the watched sessions write
+		// their changed copies from memory (no guest call).
+		d.VM.BeforeFlush(mgr.SaveEventCopiesBeforePause)
 	}
 
 	// A pause ends the live terminals at once with "paused", also where the

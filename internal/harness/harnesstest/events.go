@@ -185,10 +185,18 @@ func (d *EventDiscovery) Reads(source string) int {
 func (d *EventDiscovery) Discover(_ context.Context, _ string, harnesses []string) (harness.Discovered, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.running {
+		d.calls++
+	}
 	out := harness.Discovered{Sessions: map[string][]harness.SessionMeta{}, Errors: map[string]error{}, Cached: !d.running}
 	for h, metas := range d.sessions {
 		if len(harnesses) == 0 || slices.Contains(harnesses, h) {
 			out.Sessions[h] = slices.Clone(metas)
+		}
+	}
+	if d.running {
+		for h, err := range d.DiscoverErrs {
+			out.Errors[h] = err
 		}
 	}
 	return out, nil
@@ -211,6 +219,7 @@ func (d *EventDiscovery) Transcript(context.Context, string, string, string) (ha
 func (d *EventDiscovery) Events(ctx context.Context, _, h, id string, after int, wake bool) (harness.EventPage, error) {
 	source := harness.SessionID(h, id)
 	d.mu.Lock()
+	d.calls++
 	if wake {
 		d.wakes++
 	}

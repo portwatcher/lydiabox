@@ -330,29 +330,3 @@ func TestEventCacheFillStops(t *testing.T) {
 		t.Fatalf("the fill read %d sessions after the pause, wakes %d", n, e.disc.Wakes())
 	}
 }
-
-// TestEventCacheBeforePause fills the copies through the guest while the
-// controller does not serve the machine (a pause in progress), without a
-// wake.
-func TestEventCacheBeforePause(t *testing.T) {
-	p := newProviderEnv(t)
-	p.running.Store(false)
-	cache := &harnesstest.EventCache{}
-	mgr, err := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(), Files: p.guest.FS, Discovery: p.disc,
-		Store: &harnesstest.Store{}, Logger: quiet(), EventCache: cache})
-	if err != nil {
-		t.Fatal(err)
-	}
-	mgr.FillEventCacheBeforePause(context.Background(), tenant)
-	stamps, err := cache.ListSessionEventsStamps(context.Background(), tenant)
-	if err != nil || len(stamps) == 0 {
-		t.Fatalf("stamps = %+v, %v", stamps, err)
-	}
-	if p.guest.Waker.Wakes() != 0 {
-		t.Fatal("the fill before a pause woke the machine")
-	}
-	// Without a cache nothing happens.
-	off, _ := harness.NewManager(harness.ManagerOptions{Adapters: adapters.All(), Files: p.guest.FS, Discovery: p.disc,
-		Store: &harnesstest.Store{}, Logger: quiet()})
-	off.FillEventCacheBeforePause(context.Background(), tenant)
-}

@@ -47,6 +47,9 @@ type eventCopies struct {
 	mu      sync.Mutex
 	gens    map[string]uint64 // by liveKey(tenant, source)
 	filling map[string]bool   // tenants with a background fill
+	// pending holds, by tenant, the sessions that fillSoon added and the
+	// time of the call.
+	pending map[string]map[string]time.Time
 }
 
 func (c *eventCopies) gen(tenantID, source string) uint64 {
@@ -182,14 +185,15 @@ func (h *eventHub) saver(ctx context.Context) {
 }
 
 // save writes the events of the hub when they changed after the last write.
-// A copy that the guest did not confirm yet is not written again.
-func (h *eventHub) save(ctx context.Context) {
+// A copy that the guest did not confirm yet is not written again. It
+// reports whether it wrote the copy.
+func (h *eventHub) save(ctx context.Context) bool {
 	h.saveMu.Lock()
 	defer h.saveMu.Unlock()
 	h.mu.Lock()
 	if !h.dirty || h.cached || h.copyOf == "" {
 		h.mu.Unlock()
-		return
+		return false
 	}
 	list, source, gen := slices.Clone(h.ev.list), h.copyOf, h.gen
 	h.dirty = false
@@ -199,7 +203,9 @@ func (h *eventHub) save(ctx context.Context) {
 		h.mu.Lock()
 		h.dirty = true
 		h.mu.Unlock()
+		return false
 	}
+	return true
 }
 
 // putEventCopy writes the copy of source unless a delete came after gen.
@@ -242,8 +248,9 @@ func (m *Manager) dropEventCopy(tenantID, source string) {
 	}
 }
 
-// saveHubs writes the changed copies of the watched sessions of a tenant.
-func (m *Manager) saveHubs(ctx context.Context, tenantID string) {
+// saveHubs writes the changed copies of the watched sessions of a tenant
+// from memory (no guest call). It returns the number of copies written.
+func (m *Manager) saveHubs(ctx context.Context, tenantID string) int {
 	m.hubsMu.Lock()
 	var hubs []*eventHub
 	for _, h := range m.hubs {
@@ -252,8 +259,64 @@ func (m *Manager) saveHubs(ctx context.Context, tenantID string) {
 		}
 	}
 	m.hubsMu.Unlock()
+	n := 0
 	for _, h := range hubs {
-		h.save(ctx)
+		if h.save(ctx) {
+			n++
+		}
+	}
+	return n
+}
+
+// copyKeep returns the sessions whose copy a fresh discovery keeps: every
+// session that the discovery found, every session stored as running, and
+// every live session. It returns nil (keep all copies) unless the discovery
+// read all harnesses without an error.
+func (m *Manager) copyKeep(tenantID string, f Filter, found Discovered, stored []store.SessionMeta) map[string]bool {
+	if m.opts.EventCache == nil || f.Harness != "" || found.Cached || len(found.Errors) > 0 {
+		return nil
+	}
+	keep := map[string]bool{}
+	for name, metas := range found.Sessions {
+		for _, sm := range metas {
+			keep[SessionID(name, sm.NativeID)] = true
+		}
+	}
+	for _, sm := range stored {
+		if sm.Status == StatusRunning {
+			keep[SessionID(sm.Harness, sm.SessionID)] = true
+		}
+	}
+	m.mu.Lock()
+	for _, ls := range m.live {
+		if ls.tenantID == tenantID {
+			keep[SessionID(ls.harness, ls.nativeID)] = true
+		}
+	}
+	m.mu.Unlock()
+	return keep
+}
+
+// pruneEventCopies removes the copies of the sessions that keep does not
+// have and that no hub watches: their transcript is gone, so the copy can
+// never be shown again. This bounds the number of stored copies.
+func (m *Manager) pruneEventCopies(ctx context.Context, tenantID string, keep map[string]bool) {
+	stamps, err := m.opts.EventCache.ListSessionEventsStamps(ctx, tenantID)
+	if err != nil {
+		m.log.Warn("list the stored session events", "err", err)
+		return
+	}
+	n := 0
+	for _, s := range stamps {
+		source := SessionID(s.Harness, s.SessionID)
+		if keep[source] || m.watched(tenantID, source) {
+			continue
+		}
+		m.dropEventCopy(tenantID, source)
+		n++
+	}
+	if n > 0 {
+		m.log.Info("removed the event copies of sessions that discovery no longer finds", "copies", n)
 	}
 }
 

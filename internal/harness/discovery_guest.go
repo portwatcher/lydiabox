@@ -76,12 +76,6 @@ func (g *GuestDiscovery) Discover(ctx context.Context, tenantID string, harnesse
 	return g.cached(ctx, tenantID, harnesses)
 }
 
-// peekDiscover runs discovery in the guest without the Running check and
-// without a wake (guestPeeker); it also renews the cached result.
-func (g *GuestDiscovery) peekDiscover(ctx context.Context, tenantID string, harnesses []string) (Discovered, error) {
-	return g.fresh(ctx, tenantID, harnesses)
-}
-
 func (g *GuestDiscovery) fresh(ctx context.Context, tenantID string, harnesses []string) (Discovered, error) {
 	timeout := g.Timeout
 	if timeout <= 0 {

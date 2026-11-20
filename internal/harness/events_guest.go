@@ -25,12 +25,6 @@ func (g *GuestDiscovery) Events(ctx context.Context, tenantID, harness, nativeID
 	case !wake && g.Running != nil && !g.Running(tenantID):
 		return EventPage{}, fmt.Errorf("%w: the machine does not run", ErrUnavailable)
 	}
-	return g.peekEvents(ctx, tenantID, harness, nativeID, after)
-}
-
-// peekEvents reads session events in the guest without the Running check
-// and without a wake (guestPeeker).
-func (g *GuestDiscovery) peekEvents(ctx context.Context, tenantID, harness, nativeID string, after int) (EventPage, error) {
 	var page EventPage
 	err := g.Guest.FSCall(ctx, tenantID, rpc.MethodHarnessEvents, rpc.HarnessEventsParams{Harness: harness, ID: nativeID, After: after}, &page)
 	if rpc.IsCode(err, rpc.CodeNoMethod) {

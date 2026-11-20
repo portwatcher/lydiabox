@@ -111,6 +111,9 @@ type ManagerOptions struct {
 	// between two writes of the copy of a watched session (default 15s).
 	EventCache     EventCache
 	EventCopyDelay time.Duration
+	// EventFillDelay is the wait between the detach or end of a terminal
+	// and the fill of its copy (default 3s).
+	EventFillDelay time.Duration
 }
 
 // extra is the JSON stored in sessions_meta.extra_json.
@@ -397,6 +400,9 @@ func (m *Manager) exited(ls *liveSession, code int) {
 	if !deleted {
 		ls.endedAt = time.Now().UTC()
 		m.persist(context.Background(), ls, StatusExited)
+		if !ls.provisional {
+			m.fillSoon(ls.tenantID, id)
+		}
 	}
 	m.log.Info("harness session exited", "session", id, "code", code)
 }
@@ -434,6 +440,11 @@ func (m *Manager) detached(ls *liveSession) {
 	}
 	_ = ls.pty.Close()
 	m.log.Info("harness terminal detached; the session stays running", "session", id)
+	if !ls.provisional {
+		// A fill reads the guest only while the machine runs: after a
+		// pause it does nothing.
+		m.fillSoon(ls.tenantID, id)
+	}
 }
 
 // lookupLive returns the live session for an API ID (following aliases).

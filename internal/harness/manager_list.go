@@ -177,7 +177,7 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	if len(names) > 0 && !found.Cached {
-		m.fillAfterDiscovery(tenantID, discovered)
+		m.fillAfterDiscovery(tenantID, discovered, m.copyKeep(tenantID, f, found, stored))
 	}
 	res := SessionList{Sessions: out, Cached: found.Cached}
 	if found.Cached && !found.CachedAt.IsZero() {
