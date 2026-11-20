@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { availabilityOf, describeError } from "./errors";
-import { ApiError, HttpClient, NetworkError, buildUrl, isErrorEnvelope } from "./http";
+import { ApiError, HttpClient, NetworkError, STARTING_LIMIT_MS, buildUrl, isErrorEnvelope } from "./http";
 import { buildUploadForm } from "./files";
 import { sessions } from "./domains";
 
@@ -53,13 +53,14 @@ describe("HttpClient", () => {
     expect(availabilityOf(err)).toBe("unavailable");
   });
 
-  it("sends the request again while the VM still starts (503 with Retry-After)", async () => {
-    const starting = () =>
-      jsonResponse(503, { error: { code: "unavailable", message: "the VM is still starting" } }, { "Retry-After": "5" });
+  const vmStarting = () =>
+    jsonResponse(503, { error: { code: "vm_starting", message: "the VM is still starting" } }, { "Retry-After": "5" });
+
+  it("sends a vm_starting answer again after Retry-After", async () => {
     const fetch = vi
       .fn<(input: string, init?: RequestInit) => Promise<Response>>()
-      .mockResolvedValueOnce(starting())
-      .mockResolvedValueOnce(starting())
+      .mockResolvedValueOnce(vmStarting())
+      .mockResolvedValueOnce(vmStarting())
       .mockResolvedValueOnce(jsonResponse(200, { entries: [] }));
     const waits: number[] = [];
     const client = new HttpClient(fetch, async (ms) => {
@@ -70,18 +71,45 @@ describe("HttpClient", () => {
     expect(waits).toEqual([5000, 5000]);
   });
 
-  it("does not send a 503 without Retry-After again", async () => {
-    const fetch = vi.fn(async () => jsonResponse(503, { error: { code: "unavailable", message: "the VM provider did not resume the machine in 10 minutes" } }));
+  it("does not send cell_starting with Retry-After again", async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse(503, { error: { code: "cell_starting", message: "the agent computer is starting" } }, { "Retry-After": "5" }),
+    );
+    const client = new HttpClient(fetch, async () => undefined);
+    const err = await client.get("/api/v1/status").catch((e: unknown) => e);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 503, code: "cell_starting", message: "the agent computer is starting", retryAfter: 5 });
+  });
+
+  it("does not send a 503 unavailable again", async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse(503, { error: { code: "unavailable", message: "the VM provider did not resume the machine in 10 minutes" } }, { "Retry-After": "5" }),
+    );
     const client = new HttpClient(fetch, async () => undefined);
     const err = await client.get("/x").catch((e: unknown) => e);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(err).toMatchObject({ status: 503, code: "unavailable" });
   });
 
+  it("gives the vm_starting error after the limit", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetch = vi.fn(async () => vmStarting());
+      const client = new HttpClient(fetch, async (ms) => {
+        vi.advanceTimersByTime(ms);
+      });
+      const err = await client.get("/x").catch((e: unknown) => e);
+      expect(err).toMatchObject({ status: 503, code: "vm_starting" });
+      expect(availabilityOf(err)).toBe("unavailable");
+      expect(fetch).toHaveBeenCalledTimes(STARTING_LIMIT_MS / 5000 + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops the wait for a start when the request is aborted", async () => {
-    const fetch = vi.fn(async () =>
-      jsonResponse(503, { error: { code: "unavailable", message: "starting" } }, { "Retry-After": "5" }),
-    );
+    const fetch = vi.fn(async () => vmStarting());
     const controller = new AbortController();
     const client = new HttpClient(fetch);
     const pending = client.get("/x", undefined, controller.signal).catch((e: unknown) => e);
@@ -90,6 +118,12 @@ describe("HttpClient", () => {
     const err = await pending;
     expect(err).toBeInstanceOf(DOMException);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("describes a vm_starting answer of an upload", () => {
+    expect(describeError(new ApiError(503, "vm_starting", "the VM is still starting", 5), "Upload stopped")).toBe(
+      "Upload stopped. The VM is still starting. Try again when it runs.",
+    );
   });
 
   it("reads Retry-After on 429", async () => {

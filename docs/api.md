@@ -59,7 +59,8 @@ Status legend:
 | 499 | `canceled` | The client closed the request before the answer (`GET /api/v1/sessions` while the guest discovery waits, a File API request while the machine wakes); the client does not see it |
 | 500 | `internal` | Unexpected server error. The server logs one `request failed` line at error level with the route, the status, and the cause (credentials removed) |
 | 501 | `not_implemented` | Route exists but the subsystem is not in this build |
-| 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running. An expected state (the VM is not running, the user stopped it, or the VM still starts) is logged at info level (`request refused`); other `503` answers are logged like a `500`. With `Retry-After: 5`: the VM still starts (see below) |
+| 503 | `unavailable` | A dependency (VM, magpie, WebDAV backend) is not running. An expected state (the VM is not running, the user stopped it, or the VM still starts) is logged at info level (`request refused`); other `503` answers are logged like a `500` |
+| 503 | `vm_starting` | The request stopped its wait for a VM start, and the start continues (see below). Always with `Retry-After: 5`; logged at info level |
 | 504 | `timeout` | The VM did not reach `RUNNING` in time (`POST /api/v1/vm/wake`, only when the boot itself ends by its bound) |
 
 A request that needs the VM (a file operation in the `provider` mode, a new
@@ -67,12 +68,15 @@ or resumed session, a transcript, a purge, input to a session, and `POST
 /api/v1/vm/wake`) waits at most 75 s for a start or resume, because a proxy
 in front of LydiaBox (Cloudflare) ends a request without a response after
 100 s. When the start continues after this wait, the answer is `503
-unavailable` with `Retry-After: 5` and a message that says that the VM
+vm_starting` with `Retry-After: 5` and a message that says that the VM
 still starts. The start itself continues with its own bound (section 7), and
 the state stays `BOOTING`. A client sends the request again after
-`Retry-After`; the web UI does this by itself, so a page waits for the start
-and does not show a failure. A `503` without `Retry-After` is a final
-answer.
+`Retry-After`; the web UI does this by itself (up to 15 minutes), so a page
+waits for the start and does not show a failure. The web UI sends only
+`vm_starting` again: another `503`, also one with `Retry-After` such as
+`cell_starting` of LydiaBox Cloud, is a final answer for that request. An
+upload (`POST /api/v1/fs/{root}/upload`) is not sent again; the page says
+that the VM still starts.
 
 ## 2. Authentication
 
@@ -278,7 +282,7 @@ Two roots exist. Where they are depends on the storage mode
   `STOPPED` machine, but not a machine that the user stopped: that request
   fails at once with `503 unavailable` ("the VM was stopped; start it to use
   these files"). When the machine does not answer within 75 s while its
-  start continues, the request fails with `503 unavailable` and
+  start continues, the request fails with `503 vm_starting` and
   `Retry-After: 5` ("the VM is still starting; send the request again when
   it runs", section 1). Invalid paths fail with `400` without
   a wake. The guest applies the same path rules with its own `os.Root`
@@ -553,7 +557,7 @@ machine whose guest does not answer after the provider part is paused
 | Route | Effect | Response |
 | :--- | :--- | :--- |
 | `GET /api/v1/vm/status` | Read state | `200 VMStatus` |
-| `POST /api/v1/vm/wake` | Explicit start (`Start`): ends a user stop, then boots from `STOPPED` or resumes from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `503` with `Retry-After` when the start continues after 75 s (section 1); the error of the boot when it fails |
+| `POST /api/v1/vm/wake` | Explicit start (`Start`): ends a user stop, then boots from `STOPPED` or resumes from `PAUSED`; concurrent calls share one boot | `200 VMStatus` once `RUNNING`; `503 vm_starting` with `Retry-After` when the start continues after 75 s (section 1); the error of the boot when it fails |
 | `POST /api/v1/vm/hibernate` | Flush filesystems (`sync`) and pause. The processes keep their memory; a live terminal detaches (`paused`, see section 8) and attaches again after the wake. A wake asked for during the pause waits for it and then resumes the VM | `200 VMStatus` (`PAUSED`) |
 | `POST /api/v1/vm/stop` | Shutdown; body `{ "force": false, "resetRoot": false }` (optional). The guest filesystems are synced first (30 s limit); without `force` a failed sync aborts with `503`, with `force` the VM is stopped anyway. `resetRoot` (docker driver) then removes the stopped container, so the next boot starts from the image; it also works while `STOPPED`. The `chv` driver answers `409` to `resetRoot`. The stop runs to its end when the client goes away (limit 3 minutes) | `200 VMStatus` (`STOPPED`) |
 

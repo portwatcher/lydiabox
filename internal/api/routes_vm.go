@@ -80,7 +80,7 @@ type VMController interface {
 // WakeTimeout bounds the wait of POST /api/v1/vm/wake. It is shorter than
 // the 100 s after which a proxy in front of LydiaBox (Cloudflare) ends a
 // request without a response. A start that takes longer continues: the
-// route then answers 503 with Retry-After (ErrVMStarting).
+// route then answers 503 vm_starting with Retry-After (ErrVMStarting).
 const WakeTimeout = RequestWakeWait
 
 // RequestWakeWait is the longest time that an HTTP request waits for a VM

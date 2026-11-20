@@ -7,7 +7,7 @@
 // the machine does not hibernate while a transfer runs. A machine that the
 // user stopped is not started: the operation fails with agentfs.ErrStopped.
 // When the machine does not answer within WakeTimeout, the operation fails
-// with agentfs.ErrStarting (HTTP 503 with Retry-After) while the start
+// with agentfs.ErrStarting (HTTP 503 vm_starting) while the start
 // continues, or with agentfs.ErrUnavailable.
 package remotefs
 

@@ -13,7 +13,7 @@ import (
 )
 
 // A 503 of a request that stopped its wait for a VM start (the start
-// continues) gets Retry-After and is logged as an expected state; another
+// continues) gets the code vm_starting, Retry-After, and is logged as an expected state; another
 // 503 gets neither.
 func TestStartingVMAnswersRetryAfter(t *testing.T) {
 	h, buf := newLoggedServer(t, api.RegistrarFunc(func(r api.Router) {
@@ -33,6 +33,9 @@ func TestStartingVMAnswersRetryAfter(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "5" {
 		t.Fatalf("starting: %d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
 	}
+	if !strings.Contains(rec.Body.String(), `"code":"vm_starting"`) {
+		t.Fatalf("starting body %s, want the code vm_starting", rec.Body.String())
+	}
 	if !strings.Contains(buf.String(), `msg="request refused"`) || strings.Contains(buf.String(), "request failed") {
 		t.Fatalf("log of a VM that still starts:\n%s", buf.String())
 	}
@@ -40,5 +43,8 @@ func TestStartingVMAnswersRetryAfter(t *testing.T) {
 	h.ServeHTTP(rec, authed(http.MethodGet, "/api/v1/test/down"))
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "" {
 		t.Fatalf("down: %d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"unavailable"`) {
+		t.Fatalf("down body %s, want the code unavailable", rec.Body.String())
 	}
 }

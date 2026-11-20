@@ -44,6 +44,9 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// VMStarting implements httpx.StartingReporter.
+func (r *statusRecorder) VMStarting() bool { return r.starting.Starting() }
+
 // hintStarting tells the client of a 503 that the VM still starts: the
 // client sends the request again after Retry-After (docs/api.md section 1).
 func (r *statusRecorder) hintStarting(code int) {

@@ -211,7 +211,7 @@ func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
 	case <-ctx.Done():
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			// The caller's bound is shorter than the boot, which continues:
-			// the caller can try again (an HTTP request answers 503 with
+			// the caller can try again (an HTTP request answers 503 vm_starting with
 			// Retry-After).
 			httpx.NoteVMStarting(ctx)
 			return ErrStarting

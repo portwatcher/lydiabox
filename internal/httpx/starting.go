@@ -2,6 +2,7 @@ package httpx
 
 import (
 	"context"
+	"net/http"
 	"sync/atomic"
 )
 
@@ -14,8 +15,8 @@ const RetryAfterStarting = 5
 // while the start continues (the request has a shorter bound than the
 // start). The API's request log puts one note in the context of each
 // request; the VM controller sets it (NoteVMStarting). A 503 response of
-// such a request then gets "Retry-After: 5" and is logged as an expected
-// state, not a fault.
+// such a request then gets the code vm_starting (WriteError) and
+// "Retry-After: 5", and is logged as an expected state, not a fault.
 type StartingNote struct{ set atomic.Bool }
 
 // Starting reports whether NoteVMStarting was called for the request.
@@ -35,4 +36,26 @@ func NoteVMStarting(ctx context.Context) {
 	if n, ok := ctx.Value(startingKey{}).(*StartingNote); ok {
 		n.set.Store(true)
 	}
+}
+
+// StartingReporter is implemented by the API's response recorder: it
+// reports whether NoteVMStarting was called for the request.
+type StartingReporter interface {
+	VMStarting() bool
+}
+
+// vmStarting reports whether the first StartingReporter in the chain of
+// w (through Unwrap) reports a VM start that continues.
+func vmStarting(w http.ResponseWriter) bool {
+	for w != nil {
+		if r, ok := w.(StartingReporter); ok {
+			return r.VMStarting()
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return false
+		}
+		w = u.Unwrap()
+	}
+	return false
 }
