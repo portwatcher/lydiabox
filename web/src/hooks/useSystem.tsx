@@ -6,6 +6,7 @@ import type { Status, VMState, VMStatus } from "../api/types";
 import { useToast } from "../components/Toast";
 import { STATUS_GRACE_MS, statusOutage } from "../lib/outage";
 import type { Outage } from "../lib/outage";
+import { actionContinues, maybeCut } from "../lib/vmAction";
 
 export type VMAction = "wake" | "hibernate" | "stop";
 
@@ -187,6 +188,19 @@ export function SystemProvider({ children }: { children: ReactNode }) {
         if (kind === "missing" || kind === "not_implemented") {
           vmControlRef.current = false;
           setVmControl(false);
+        }
+        // A proxy can end a long hibernate or stop request while the
+        // server continues it: show the VM status, not a failure.
+        if (action !== "wake" && maybeCut(err)) {
+          try {
+            const detail = await vm.status();
+            if (actionContinues(action, detail)) {
+              setVmStatus(detail);
+              return true;
+            }
+          } catch {
+            // The status is not available either: report the failure.
+          }
         }
         toast.error(describeError(err, actionLabels[action]));
         return false;
