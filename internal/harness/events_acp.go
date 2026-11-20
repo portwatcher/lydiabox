@@ -78,6 +78,11 @@ func (h *eventHub) applyBridge(line []byte, lv liveView, status EventStatus) Eve
 		h.mu.Lock()
 		changed := h.upsertLocked([]Event{*msg.Event})
 		h.mu.Unlock()
+		if len(changed) > 0 && (!lv.provisional || status.SessionID != lv.current) {
+			// The copy is of the native session; a provisional one has
+			// none until the bridge reports its native ID.
+			h.markDirty(status.SessionID)
+		}
 		h.publish(false, changed, status)
 	case BridgeStatus:
 		if msg.Status == nil {

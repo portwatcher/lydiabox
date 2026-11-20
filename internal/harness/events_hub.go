@@ -34,6 +34,10 @@ type EventStatus struct {
 	Live      bool   `json:"live"`
 	// Synced reports that the events of the transcript were read once.
 	Synced bool `json:"synced"`
+	// Cached reports that the events are the copy that the host stored
+	// (provider storage mode) and the guest was not read yet: the client
+	// sees them at once while the machine starts or resumes.
+	Cached bool `json:"cached,omitempty"`
 	// Prompt is the approval prompt or setup screen line that the
 	// terminal shows.
 	Prompt string `json:"prompt,omitempty"`
@@ -90,16 +94,37 @@ type eventHub struct {
 	cancel   context.CancelFunc
 
 	mu     sync.Mutex
-	list   []Event
-	index  map[string]int
-	sums   map[string]string
-	cursor int
+	ev     eventList
 	source string
 	status EventStatus
 	subs   map[*EventSub]struct{}
 	// ended is the last status of an ACP bridge that ended, so that its
 	// error stays visible after the session is offline.
 	ended EventStatus
+	// cached reports that ev is the stored copy and the guest was not
+	// read yet (events_cache.go).
+	cached bool
+	// copyOf is the session whose copy the hub writes ("" for none), gen
+	// the cache generation of that session when the hub took it, and
+	// dirty that ev changed after the last write.
+	copyOf string
+	gen    uint64
+	dirty  bool
+	// saveMu serializes the writes of the copy.
+	saveMu sync.Mutex
+}
+
+// eventList is the ordered event list of a hub. cursor is the index after
+// the last event read from the source.
+type eventList struct {
+	list   []Event
+	index  map[string]int
+	sums   map[string]string
+	cursor int
+}
+
+func newEventList() eventList {
+	return eventList{index: map[string]int{}, sums: map[string]string{}}
 }
 
 // SubscribeEvents attaches a client to the event stream of a session. The
@@ -118,22 +143,35 @@ func (m *Manager) SubscribeEvents(tenantID, id string) (*EventSub, EventUpdate, 
 	}
 	key := liveKey(tenantID, id)
 	m.hubsMu.Lock()
+	hub := m.hubs[key]
+	m.hubsMu.Unlock()
+	var pre preload
+	if hub == nil {
+		// The stored copy is read before the first read of the guest,
+		// which can wait for the machine to start or resume.
+		pre = m.preloadEvents(tenantID, id)
+	}
+	m.hubsMu.Lock()
 	if m.hubs == nil {
 		m.hubs = map[string]*eventHub{}
 	}
-	hub := m.hubs[key]
+	hub = m.hubs[key]
 	if hub == nil {
 		ctx, cancel := context.WithCancel(context.Background())
-		hub = &eventHub{m: m, tenantID: tenantID, id: id, cancel: cancel, index: map[string]int{}, sums: map[string]string{},
+		hub = &eventHub{m: m, tenantID: tenantID, id: id, cancel: cancel, ev: newEventList(),
 			subs: map[*EventSub]struct{}{}, status: EventStatus{SessionID: id, State: StateOffline}}
+		hub.takePreload(pre)
 		m.hubs[key] = hub
 		go hub.run(ctx)
+		if m.opts.EventCache != nil {
+			go hub.saver(ctx)
+		}
 	}
 	sub := &EventSub{C: make(chan EventUpdate, eventSubBuffer)}
 	hub.mu.Lock()
 	hub.subs[sub] = struct{}{}
 	status := hub.status
-	first := EventUpdate{Reset: true, Events: append([]Event{}, hub.list...), Status: &status}
+	first := EventUpdate{Reset: true, Events: append([]Event{}, hub.ev.list...), Status: &status}
 	hub.mu.Unlock()
 	m.hubsMu.Unlock()
 	return sub, first, func() { m.unsubscribeEvents(key, hub, sub) }, nil
@@ -150,7 +188,7 @@ func (m *Manager) hasEvents(tenantID, id string) bool {
 	}
 	hub.mu.Lock()
 	defer hub.mu.Unlock()
-	return len(hub.list) > 0
+	return len(hub.ev.list) > 0
 }
 
 func (m *Manager) unsubscribeEvents(key string, hub *eventHub, sub *EventSub) {
@@ -241,6 +279,7 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 		h.clearLocked()
 		h.source = source
 	}
+	cached := h.cached
 	h.mu.Unlock()
 
 	var changed []Event
@@ -248,19 +287,39 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 	if source == "" {
 		status.Synced = true
 	} else {
+		// After a preload the guest events are read into a new list, and
+		// the clients keep the stored copy until the read is complete.
+		target := &h.ev
+		fresh := newEventList()
+		if cached {
+			target = &fresh
+		}
 		var err error
 		var again bool
-		changed, again, err = h.read(ctx, name, nativeID, tick == 0)
+		changed, again, err = h.read(ctx, target, name, nativeID, tick == 0)
 		reset = reset || again
 		switch {
 		case err == nil, errors.Is(err, ErrNotFound):
 			status.Synced = true
+			if cached {
+				again, changed = h.adoptFresh(fresh)
+				reset = reset || again
+				if errors.Is(err, ErrNotFound) {
+					h.m.dropEventCopy(h.tenantID, source)
+				}
+			}
+			if err == nil && (reset || len(changed) > 0) {
+				h.markDirty(source)
+			}
 		case ctx.Err() != nil:
 			return live
 		default:
 			status.Error = err.Error()
 		}
 	}
+	h.mu.Lock()
+	status.Cached = h.cached
+	h.mu.Unlock()
 	switch {
 	case live:
 		h.ended = EventStatus{}
@@ -271,7 +330,7 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 		act := room.Activity()
 		quiet := act.LastOutput.IsZero() || time.Since(act.LastOutput) > 2*m.eventPoll()
 		h.mu.Lock()
-		first := len(h.list) == 0
+		first := len(h.ev.list) == 0
 		h.mu.Unlock()
 		switch {
 		case first && act.Setup != "":
@@ -288,36 +347,49 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 	return live
 }
 
+// clearLocked drops the events of the hub (also a preloaded copy).
 func (h *eventHub) clearLocked() {
-	h.list, h.cursor = nil, 0
-	h.index, h.sums = map[string]int{}, map[string]string{}
+	h.ev = newEventList()
+	h.cached = false
 }
 
-// read reads the events after the cursor (and the last eventTailResend
-// again). again reports that the source shrank and was read from the start.
-func (h *eventHub) read(ctx context.Context, name, nativeID string, wake bool) (changed []Event, again bool, err error) {
+func (h *eventHub) upsertLocked(evs []Event) []Event { return h.ev.upsert(evs) }
+
+// read reads the events after the cursor of l (and the last
+// eventTailResend again) into l, under the hub lock. again reports that the
+// source shrank and was read from the start.
+func (h *eventHub) read(ctx context.Context, l *eventList, name, nativeID string, wake bool) (changed []Event, again bool, err error) {
 	src, ok := h.m.opts.Discovery.(EventSource)
 	if !ok {
 		return nil, false, fmt.Errorf("%w: the session store has no event reader", ErrUnavailable)
 	}
 	h.mu.Lock()
-	after := max(0, h.cursor-eventTailResend)
+	after := max(0, l.cursor-eventTailResend)
 	h.mu.Unlock()
+	return readPages(ctx, &h.mu, l, after, func(ctx context.Context, after int) (EventPage, error) {
+		return src.Events(ctx, h.tenantID, name, nativeID, after, wake)
+	})
+}
+
+// readPages reads pages from after into l (under mu) until the end of the
+// source or maxPagesPerPoll pages.
+func readPages(ctx context.Context, mu *sync.Mutex, l *eventList, after int,
+	next func(ctx context.Context, after int) (EventPage, error)) (changed []Event, again bool, err error) {
 	for range maxPagesPerPoll {
-		page, err := src.Events(ctx, h.tenantID, name, nativeID, after, wake)
+		page, err := next(ctx, after)
 		if err != nil {
 			return changed, again, err
 		}
-		h.mu.Lock()
-		if page.Total < h.cursor && !again {
-			h.clearLocked()
-			h.mu.Unlock()
+		mu.Lock()
+		if page.Total < l.cursor && !again {
+			*l = newEventList()
+			mu.Unlock()
 			again, after, changed = true, 0, nil
 			continue
 		}
-		changed = append(changed, h.upsertLocked(page.Events)...)
-		h.cursor = max(h.cursor, page.Next)
-		h.mu.Unlock()
+		changed = append(changed, l.upsert(page.Events)...)
+		l.cursor = max(l.cursor, page.Next)
+		mu.Unlock()
 		if page.Next >= page.Total || len(page.Events) == 0 {
 			break
 		}
@@ -326,8 +398,8 @@ func (h *eventHub) read(ctx context.Context, name, nativeID string, wake bool) (
 	return changed, again, nil
 }
 
-// upsertLocked adds new events and replaces changed ones; it returns them.
-func (h *eventHub) upsertLocked(evs []Event) []Event {
+// upsert adds new events and replaces changed ones; it returns them.
+func (l *eventList) upsert(evs []Event) []Event {
 	var out []Event
 	for _, e := range evs {
 		b, err := json.Marshal(e)
@@ -335,16 +407,16 @@ func (h *eventHub) upsertLocked(evs []Event) []Event {
 			continue
 		}
 		sum := string(b)
-		if i, ok := h.index[e.Key]; ok {
-			if h.sums[e.Key] == sum {
+		if i, ok := l.index[e.Key]; ok {
+			if l.sums[e.Key] == sum {
 				continue
 			}
-			h.list[i] = e
+			l.list[i] = e
 		} else {
-			h.index[e.Key] = len(h.list)
-			h.list = append(h.list, e)
+			l.index[e.Key] = len(l.list)
+			l.list = append(l.list, e)
 		}
-		h.sums[e.Key] = sum
+		l.sums[e.Key] = sum
 		out = append(out, e)
 	}
 	return out
@@ -358,7 +430,7 @@ func (h *eventHub) publish(reset bool, changed []Event, status EventStatus) {
 	var u EventUpdate
 	switch {
 	case reset:
-		u = EventUpdate{Reset: true, Events: append([]Event{}, h.list...), Status: &status}
+		u = EventUpdate{Reset: true, Events: append([]Event{}, h.ev.list...), Status: &status}
 	case len(changed) > 0 || statusChanged:
 		u = EventUpdate{Events: changed}
 		if statusChanged {

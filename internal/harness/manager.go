@@ -102,6 +102,11 @@ type ManagerOptions struct {
 	EventPoll time.Duration
 	// MCPServers are passed to the ACP agents (wire.DefaultMCPServers).
 	MCPServers []MCPServer
+	// EventCache keeps a host copy of the session events (provider storage
+	// mode only; nil turns it off). EventCopyDelay is the shortest time
+	// between two writes of the copy of a watched session (default 15s).
+	EventCache     EventCache
+	EventCopyDelay time.Duration
 }
 
 // extra is the JSON stored in sessions_meta.extra_json.
@@ -151,6 +156,8 @@ type Manager struct {
 
 	hubsMu sync.Mutex
 	hubs   map[string]*eventHub // by liveKey of the requested session ID
+
+	copies eventCopies
 }
 
 // NewManager validates opts.
@@ -485,6 +492,9 @@ func (m *Manager) Delete(ctx context.Context, tenantID, id string, purge bool) e
 	if err := m.opts.Store.DeleteSessionMeta(ctx, tenantID, harness, nativeID); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
+	// The stored events go with the session, also when the transcript
+	// stays (a dismissal).
+	m.dropEventCopy(tenantID, SessionID(harness, nativeID))
 	if _, ok := m.adapters[harness]; !ok {
 		return nil
 	}

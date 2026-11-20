@@ -52,13 +52,25 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	bindings.DefaultModel = func(ctx context.Context) string { return gatewayDefaultModel(ctx, service) }
 
 	runner, waker := guestRuntime(d)
-	mgr, err := harness.NewManager(harness.ManagerOptions{
+	mopts := harness.ManagerOptions{
 		Adapters: adapters.All(), Files: d.Files, Discovery: sessionDiscovery(d, log), Store: d.Store,
 		Runner: runner, Waker: waker, Wiring: bindings, Logger: d.Logger, // the manager adds component=harness
 		MCPServers: acpMCPServers(),
-	})
+	}
+	if cfg.ProviderStorage() && d.Store != nil {
+		// The session files are on the machine disk: the host keeps a copy
+		// of the events, so a session opens at once while the machine is
+		// paused or stopped.
+		mopts.EventCache = d.Store
+	}
+	mgr, err := harness.NewManager(mopts)
 	if err != nil {
 		return nil, err
+	}
+	if mopts.EventCache != nil && d.VM != nil && d.VM.hooks != nil {
+		// The provider or the idle timer can pause the machine: before a
+		// pause or stop of the host, the changed sessions get a new copy.
+		d.VM.BeforeFlush(mgr.FillEventCacheBeforePause)
 	}
 
 	// A pause ends the live terminals at once with "paused", also where the

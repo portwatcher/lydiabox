@@ -49,9 +49,30 @@ type vmRuntime struct {
 // outside the controller's locks. Add them while wiring, before Start.
 func (v *vmRuntime) OnState(fn func(tenantID string, st vmm.State)) { v.hooks.add(fn) }
 
+// BeforeFlush adds fn to the functions that run before the guest
+// filesystems are synced for a pause or stop. The guest still runs, but
+// the controller does not serve the machine. fn shares the flush time
+// (vmm.FlushTimeout) and must bound itself. Add them while wiring.
+func (v *vmRuntime) BeforeFlush(fn func(ctx context.Context, tenantID string)) {
+	v.hooks.mu.Lock()
+	defer v.hooks.mu.Unlock()
+	v.hooks.flush = append(v.hooks.flush, fn)
+}
+
 type stateHooks struct {
-	mu  sync.Mutex
-	fns []func(string, vmm.State)
+	mu    sync.Mutex
+	fns   []func(string, vmm.State)
+	flush []func(context.Context, string)
+}
+
+// beforeFlush runs the BeforeFlush functions.
+func (h *stateHooks) beforeFlush(ctx context.Context, tid string) {
+	h.mu.Lock()
+	fns := slices.Clone(h.flush)
+	h.mu.Unlock()
+	for _, fn := range fns {
+		fn(ctx, tid)
+	}
 }
 
 func (h *stateHooks) add(fn func(string, vmm.State)) {
@@ -105,7 +126,10 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 			}
 			return err
 		},
-		Flush: guest.Sync,
+		Flush: func(ctx context.Context, tid string) error {
+			hooks.beforeFlush(ctx, tid)
+			return guest.Sync(ctx, tid)
+		},
 		OnStateChange: func(tid string, st vmm.State) {
 			// A stopped VM has no guest connection. A remote VM that boots
 			// or resumes gets a new guest link (the old one ended at the
