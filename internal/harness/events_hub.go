@@ -233,6 +233,11 @@ func (m *Manager) liveInfo(tenantID, id string) (liveView, bool) {
 }
 
 func (h *eventHub) run(ctx context.Context) {
+	// Only the open of the session can wake the machine: the first poll of
+	// the hub. A later poll never wakes it. A pause ends the stream of an
+	// ACP bridge and detaches the terminals, and a hub that asked for a
+	// wake then would undo the pause (docs/design.md section 4.3).
+	wake := true
 	for tick := 0; ; tick++ {
 		if lv, ok := h.m.liveInfo(h.tenantID, h.id); ok && lv.engine == EngineACP && lv.room != nil {
 			// The bridge streams the events; the transcript is read again
@@ -241,9 +246,10 @@ func (h *eventHub) run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			tick = 0
+			tick, wake = 0, false
 		}
-		live := h.poll(ctx, tick)
+		live := h.poll(ctx, tick, wake)
+		wake = false
 		wait := 4 * h.m.eventPoll()
 		if live {
 			wait = h.m.eventPoll()
@@ -257,8 +263,9 @@ func (h *eventHub) run(ctx context.Context) {
 }
 
 // poll reads new events and the terminal state once and sends the changes.
-// It reports whether the session has a live terminal.
-func (h *eventHub) poll(ctx context.Context, tick int) bool {
+// It reports whether the session has a live terminal. wake allows this
+// poll to start or resume the machine (only the first poll of a hub).
+func (h *eventHub) poll(ctx context.Context, tick int, wake bool) bool {
 	m := h.m
 	lv, live := m.liveInfo(h.tenantID, h.id)
 	if live && lv.provisional && tick%3 == 0 {
@@ -278,7 +285,9 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 			// No transcript yet: nothing to read, and the client does not
 			// wait for the machine. The open still wakes it (section 4.3).
 			provisional = true
-			h.wakeOnce(ctx)
+			if wake {
+				h.wakeOnce(ctx)
+			}
 		}
 	}
 	source := ""
@@ -309,7 +318,7 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 		}
 		var err error
 		var again bool
-		changed, again, err = h.read(ctx, target, name, nativeID, tick == 0)
+		changed, again, err = h.read(ctx, target, name, nativeID, wake)
 		reset = reset || again
 		switch {
 		case err == nil, errors.Is(err, ErrNotFound):
