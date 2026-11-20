@@ -60,10 +60,19 @@ type Options struct {
 	Dialer Dialer
 	// Waker, when set, is called before every waking call.
 	Waker Waker
+	// WakeTimeout bounds the wait of one waking call for the Waker
+	// (default DefaultWakeTimeout). Most waking calls serve an HTTP
+	// request; a proxy such as Cloudflare ends a request after 100 s. A
+	// longer start continues, and the call fails with the Waker's error
+	// (vmm.ErrStarting).
+	WakeTimeout time.Duration
 	// Leaser, when set, receives a pty lease per running PTY.
 	Leaser Leaser
 	Logger *slog.Logger
 }
+
+// DefaultWakeTimeout is the default of Options.WakeTimeout.
+const DefaultWakeTimeout = 75 * time.Second
 
 // Client talks to the guest daemon of each tenant.
 type Client struct {
@@ -80,6 +89,9 @@ func New(opts Options) *Client {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
+	if opts.WakeTimeout <= 0 {
+		opts.WakeTimeout = DefaultWakeTimeout
+	}
 	return &Client{opts: opts, sessions: map[string]*rpc.Session{}, dialMu: map[string]*sync.Mutex{}, leases: map[string]map[string]bool{}}
 }
 
@@ -95,7 +107,10 @@ var ErrUnavailable = errors.New("guest daemon unavailable")
 
 func (c *Client) session(ctx context.Context, tenantID string, wake bool) (*rpc.Session, error) {
 	if wake && c.opts.Waker != nil {
-		if err := c.opts.Waker.EnsureRunning(ctx, tenantID); err != nil {
+		wctx, cancel := context.WithTimeout(ctx, c.opts.WakeTimeout)
+		err := c.opts.Waker.EnsureRunning(wctx, tenantID)
+		cancel()
+		if err != nil {
 			return nil, err
 		}
 	}

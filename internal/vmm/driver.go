@@ -154,6 +154,10 @@ var ErrUnavailable = api.ErrVMUnavailable
 // wraps ErrUnavailable).
 var ErrStopped = api.ErrVMStopped
 
+// ErrStarting is returned by EnsureRunning when the caller's context ends
+// by its deadline while the boot continues (it wraps ErrUnavailable).
+var ErrStarting = api.ErrVMStarting
+
 // ValidTenantID checks that a tenant ID is safe in file names, interface
 // names, and container names: 1 to 64 letters, digits, '-', or '_'.
 func ValidTenantID(id string) error {

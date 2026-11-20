@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/lydiabox/lydiabox/internal/httpx"
 )
 
 // Lease kinds (docs/api.md section 7).
@@ -182,7 +183,8 @@ func (c *Controller) Refresh(ctx context.Context, tid string) error {
 
 // EnsureRunning wakes the VM on demand: it boots a stopped VM or resumes a
 // paused one and waits until the guest daemon answers. Concurrent calls
-// share one boot, which keeps running when a caller's ctx ends. A VM that
+// share one boot, which keeps running when a caller's ctx ends; a ctx that
+// ends by its deadline before the boot gives ErrStarting. A VM that
 // the user stopped (Stop, until Start) is not woken: EnsureRunning returns
 // ErrStopped at once.
 func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
@@ -207,6 +209,13 @@ func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
 	case <-call.done:
 		return call.err
 	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			// The caller's bound is shorter than the boot, which continues:
+			// the caller can try again (an HTTP request answers 503 with
+			// Retry-After).
+			httpx.NoteVMStarting(ctx)
+			return ErrStarting
+		}
 		return ctx.Err()
 	}
 }

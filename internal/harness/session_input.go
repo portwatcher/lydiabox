@@ -18,6 +18,16 @@ var (
 	doubleEscDelay = 150 * time.Millisecond
 )
 
+// inputRoom returns the room of a session for an HTTP request (input,
+// interrupt). A wake of the VM for it waits at most WakeTimeout; a longer
+// start continues, and the request fails with an error that says that the
+// VM still starts.
+func (m *Manager) inputRoom(ctx context.Context, tenantID, id string) (*Room, error) {
+	wctx, cancel := context.WithTimeout(ctx, m.opts.WakeTimeout)
+	defer cancel()
+	return m.Room(wctx, tenantID, id)
+}
+
 // SendInput types a prompt into the terminal of a live session and
 // submits it. A program that turned on bracketed paste mode gets the text
 // as one paste; Enter follows after submitDelay.
@@ -32,7 +42,7 @@ func (m *Manager) SendInput(ctx context.Context, tenantID, id, text string) erro
 	if lv, ok := m.liveInfo(tenantID, id); ok && lv.engine == EngineACP {
 		return m.bridgeCommand(ctx, tenantID, id, BridgeCommand{Type: BridgePrompt, Text: text})
 	}
-	room, err := m.Room(ctx, tenantID, id)
+	room, err := m.inputRoom(ctx, tenantID, id)
 	if err != nil {
 		return err
 	}
@@ -73,7 +83,7 @@ func (m *Manager) Interrupt(ctx context.Context, tenantID, id string) error {
 	if lv.engine == EngineACP {
 		return m.bridgeCommand(ctx, tenantID, id, BridgeCommand{Type: BridgeCancel})
 	}
-	room, err := m.Room(ctx, tenantID, id)
+	room, err := m.inputRoom(ctx, tenantID, id)
 	if err != nil {
 		return err
 	}

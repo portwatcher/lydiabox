@@ -5,9 +5,10 @@
 // Every operation first takes a "files" lease on the VM controller and
 // calls EnsureRunning, so a request wakes a paused or stopped machine and
 // the machine does not hibernate while a transfer runs. A machine that the
-// user stopped is not started: the operation fails with agentfs.ErrStopped. When the machine
-// does not answer within WakeTimeout, the operation fails with
-// agentfs.ErrUnavailable (HTTP 503).
+// user stopped is not started: the operation fails with agentfs.ErrStopped.
+// When the machine does not answer within WakeTimeout, the operation fails
+// with agentfs.ErrStarting (HTTP 503 with Retry-After) while the start
+// continues, or with agentfs.ErrUnavailable.
 package remotefs
 
 import (
@@ -27,8 +28,11 @@ import (
 // LeaseFiles is the VM lease kind held while a file operation runs.
 const LeaseFiles = "files"
 
-// DefaultWakeTimeout bounds the wait for the machine to answer.
-const DefaultWakeTimeout = 90 * time.Second
+// DefaultWakeTimeout bounds the wait for the machine to answer. It is
+// shorter than the 100 s after which a proxy in front of LydiaBox
+// (Cloudflare) ends a request without a response; a longer start
+// continues, and the client sends the request again (ErrStarting).
+const DefaultWakeTimeout = 75 * time.Second
 
 // Client is the guest daemon client (*guestclient.Client implements it).
 type Client interface {
@@ -97,6 +101,9 @@ func (f *FS) Begin(ctx context.Context, tenantID string) (release func(), err er
 		}
 		if errors.Is(err, agentfs.ErrStopped) {
 			return nil, agentfs.ErrStopped
+		}
+		if errors.Is(err, agentfs.ErrStarting) {
+			return nil, agentfs.ErrStarting
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, agentfs.Unavailable("the agent machine did not start within %s; retry the request", f.opts.WakeTimeout)

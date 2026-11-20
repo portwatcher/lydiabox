@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lydiabox/lydiabox/internal/httpx"
 )
 
 // slowRemote is a remote machine whose resume takes resumeDelay. The
@@ -132,6 +134,41 @@ func TestFailedReadyPausesARemoteMachine(t *testing.T) {
 	}
 	if calls := local.Calls(); calls != "resume,shutdown-force" {
 		t.Fatalf("local calls %q", calls)
+	}
+}
+
+// A caller with a shorter bound than the boot gets ErrStarting, its
+// request is marked for Retry-After, and the boot continues.
+func TestShortCallerGetsErrStarting(t *testing.T) {
+	d := &fakeDriver{bootDelay: 300 * time.Millisecond}
+	c := newCtl(t, d, 0, nil)
+	rctx, note := httpx.WithStartingNote(context.Background())
+	ctx, cancel := context.WithTimeout(rctx, 50*time.Millisecond)
+	defer cancel()
+	err := c.EnsureRunning(ctx, "t1")
+	if !errors.Is(err, ErrStarting) || !errors.Is(err, ErrUnavailable) || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error %v, want ErrStarting", err)
+	}
+	if !note.Starting() {
+		t.Fatal("the request was not marked as waiting for a start")
+	}
+	if st := c.State("t1"); st != StateBooting {
+		t.Fatalf("state %s while the boot continues", st)
+	}
+	if err := c.EnsureRunning(context.Background(), "t1"); err != nil {
+		t.Fatal(err)
+	}
+	if d.count("boot") != 1 {
+		t.Fatalf("calls %s, want one boot", d.Calls())
+	}
+
+	// A caller that goes away gets its own error, not ErrStarting.
+	d2 := &fakeDriver{bootDelay: 200 * time.Millisecond}
+	c2 := newCtl(t, d2, 0, nil)
+	cctx, ccancel := context.WithCancel(context.Background())
+	ccancel()
+	if err := c2.EnsureRunning(cctx, "t1"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled caller: %v", err)
 	}
 }
 

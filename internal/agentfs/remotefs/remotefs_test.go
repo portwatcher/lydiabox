@@ -254,3 +254,17 @@ func TestStoppedMachineIsNotStarted(t *testing.T) {
 		t.Fatal("lease leaked")
 	}
 }
+
+// A file request whose wait ends while the start continues fails with
+// agentfs.ErrStarting (a 503 that the client sends again).
+func TestStartingMachineAnswersStarting(t *testing.T) {
+	g, _ := start(t)
+	g.Waker.Set(0, agentfs.ErrStarting)
+	_, err := g.FS.Lstat(context.Background(), tid, agentfs.RootHome, "")
+	if !errors.Is(err, agentfs.ErrStarting) || !errors.Is(err, agentfs.ErrUnavailable) {
+		t.Fatalf("request while the machine starts = %v", err)
+	}
+	if g.Waker.Leases(remotefs.LeaseFiles) != 0 {
+		t.Fatal("lease leaked")
+	}
+}
