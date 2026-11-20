@@ -127,6 +127,7 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 		if sm.Harness != Shell {
 			s.Engine = engineName(x.Engine)
 		}
+		s.Provisional = x.Provisional
 		if sm.Title != "" {
 			s.Title = sm.Title
 		}
@@ -167,10 +168,10 @@ func (m *Manager) ListSessions(ctx context.Context, tenantID string, f Filter) (
 
 	out := make([]Session, 0, len(order))
 	for _, id := range order {
+		// A session stored as running that is not live keeps "running": its
+		// terminal can still run in the guest (a pause or a host restart
+		// detached it), and Reconcile attaches it again when the VM runs.
 		s := *byID[id]
-		if s.Status == StatusRunning && !s.Live {
-			s.Status = StatusIdle
-		}
 		if f.match(s) {
 			out = append(out, s)
 		}

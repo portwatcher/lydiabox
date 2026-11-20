@@ -48,6 +48,15 @@ func (m *Manager) storedProvisional(ctx context.Context, tenantID, id string) bo
 	return false
 }
 
+// isProvisional reports whether the session id (live or stored) has no
+// native ID yet.
+func (m *Manager) isProvisional(ctx context.Context, tenantID, id string) bool {
+	if lv, live := m.liveInfo(tenantID, id); live {
+		return lv.provisional
+	}
+	return m.storedProvisional(ctx, tenantID, id)
+}
+
 // wakeOnce asks once per hub, in the background, to wake the machine for a
 // session without a transcript. The clients do not wait for it: the hub
 // reports the session as synced with no events at once, and as live when

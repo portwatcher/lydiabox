@@ -36,10 +36,13 @@ type Session struct {
 	Live         bool   `json:"live"`
 	// Engine is how the session runs or last ran: EnginePTY (the harness
 	// TUI in a terminal) or EngineACP (the chat view through the bridge).
-	Engine    string    `json:"engine,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	Usage     *Usage    `json:"usage,omitempty"`
+	Engine string `json:"engine,omitempty"`
+	// Provisional reports a session without a native ID: the harness did
+	// not write a transcript yet, so there is no conversation to continue.
+	Provisional bool      `json:"provisional,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	Usage       *Usage    `json:"usage,omitempty"`
 }
 
 // SessionID joins a harness and a native ID.
@@ -251,6 +254,10 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	case ok:
 		if req.ResumeNativeID != "" && strings.ContainsAny(req.ResumeNativeID, "/\\\x00") {
 			return Session{}, fmt.Errorf("%w: invalid resumeNativeId", ErrBadRequest)
+		}
+		if req.ResumeNativeID != "" && m.isProvisional(ctx, tenantID, SessionID(req.Harness, req.ResumeNativeID)) {
+			return Session{}, fmt.Errorf("%w: session %s has no conversation to continue yet (the harness did not write a transcript); open its terminal instead",
+				ErrConflict, SessionID(req.Harness, req.ResumeNativeID))
 		}
 		if engine == EngineACP {
 			cmd, nativeID = m.acpCommand(req.Harness, ws, req.Model, req.ResumeNativeID), req.ResumeNativeID
@@ -563,5 +570,6 @@ func (m *Manager) roomEnd(ls *liveSession) roomEnd {
 func (m *Manager) sessionOf(ls *liveSession) Session {
 	now := ls.startedAt
 	return Session{ID: SessionID(ls.harness, ls.nativeID), Harness: ls.harness, NativeID: ls.nativeID, Title: ls.title,
-		WorkspaceDir: ls.workspace, Model: ls.model, Status: StatusRunning, Live: true, Engine: engineName(ls.engine), CreatedAt: now, UpdatedAt: now}
+		WorkspaceDir: ls.workspace, Model: ls.model, Status: StatusRunning, Live: true, Engine: engineName(ls.engine),
+		Provisional: ls.provisional, CreatedAt: now, UpdatedAt: now}
 }

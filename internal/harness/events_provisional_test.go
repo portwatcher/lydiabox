@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,5 +124,51 @@ func TestGuestDiscoveryWakeForEvents(t *testing.T) {
 	p.guest.Waker.Set(0, agentfs.ErrStopped)
 	if err := p.disc.WakeForEvents(ctx, tenant); !errors.Is(err, harness.ErrUnavailable) {
 		t.Fatalf("wake of a stopped machine = %v", err)
+	}
+}
+
+// TestProvisionalSessionJSONAndResume reports provisional sessions (live or
+// stored) in the session JSON, and refuses to resume one with a conflict,
+// without a wake or a new process.
+func TestProvisionalSessionJSONAndResume(t *testing.T) {
+	runner := &harnesstest.Runner{}
+	e := newEnv(t, runner)
+	ctx := context.Background()
+	s, err := e.mgr.Create(ctx, tenant, harness.CreateRequest{Harness: harness.DSH, WorkspaceDir: "/workspace/fresh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal(s); !s.Provisional || !strings.Contains(string(b), `"provisional":true`) {
+		t.Fatalf("live provisional session JSON = %s", b)
+	}
+	storeProvisional(t, e.store, harness.Antigravity, "new-agy", "lbx-agy")
+	stored := sessionByID(t, e.mgr, "antigravity:new-agy")
+	if !stored.Provisional || stored.Live || stored.Status != harness.StatusRunning {
+		t.Fatalf("stored provisional session = %+v", stored)
+	}
+	if live := sessionByID(t, e.mgr, s.ID); !live.Provisional || !live.Live {
+		t.Fatalf("live provisional session in the list = %+v", live)
+	}
+	list, err := e.mgr.List(ctx, tenant, harness.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sm := range list {
+		if b, _ := json.Marshal(sm); !sm.Provisional && strings.Contains(string(b), "provisional") {
+			t.Fatalf("a session with a native ID has the field: %s", b)
+		}
+	}
+
+	wakes, ptys := e.waker.Wakes, len(runner.PTYs())
+	for _, req := range []harness.CreateRequest{
+		{Harness: harness.Antigravity, WorkspaceDir: "/workspace", ResumeNativeID: "new-agy"},
+		{Harness: harness.DSH, WorkspaceDir: "/workspace/fresh", ResumeNativeID: s.NativeID},
+	} {
+		if _, err := e.mgr.Create(ctx, tenant, req); !errors.Is(err, harness.ErrConflict) {
+			t.Fatalf("resume of %s = %v, want a conflict", req.ResumeNativeID, err)
+		}
+	}
+	if e.waker.Wakes != wakes || len(runner.PTYs()) != ptys {
+		t.Fatalf("the refused resume woke the VM (%d -> %d) or started a process (%d -> %d)", wakes, e.waker.Wakes, ptys, len(runner.PTYs()))
 	}
 }

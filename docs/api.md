@@ -612,8 +612,15 @@ Harness IDs: `claude-code`, `codex`, `dsh`, `antigravity`, `opencode`, plus
 ```
 
 - `id` is `<harness>:<nativeId>`; escape it as one path segment.
-- `status`: `running` (a PTY is attached), `idle` (discovered on disk, no
-  PTY), `exited`. `live` is true while a PTY exists.
+- `status`: `running` (the terminal runs: attached when `live` is true;
+  with `live` false a pause or a host restart detached it, and its process
+  can still run in the guest, so the host attaches it again when the VM
+  runs), `idle` (discovered on disk, no terminal), `exited`. `live` is true
+  while the host has the terminal attached.
+- `provisional` is `true` for a session without a native ID (live or
+  stored): the harness did not write a transcript yet, and the `id` holds a
+  temporary `new-…` ID. It is omitted when false. Such a session cannot be
+  resumed with `resumeNativeId`; its terminal can be opened.
 - `usage` is omitted when the harness transcript has no usage data.
 - Discovery reads harness files from `home/agent` on the host
   (`juicefs` mode), so listing works while the VM is `STOPPED`. In the
@@ -659,8 +666,10 @@ it last ran with). Response `201`: `Session`. Errors: `400` unknown harness or a
 `workspaceDir` outside `/workspace` and `/home/agent`, `409 not_installed`
 when the program of the harness is not installed in the VM (the message
 names it, for example `Claude Code is not installed in the VM (the command
-"claude" was not found)`; logged at info level), `503` when the VM or the
-guest terminal service is not available.
+"claude" was not found)`; logged at info level), `409 conflict` when
+`resumeNativeId` is the ID of a provisional session of that harness (it has
+no conversation to continue; the VM is not started and no process starts),
+`503` when the VM or the guest terminal service is not available.
 
 Details:
 
