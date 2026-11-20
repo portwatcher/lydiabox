@@ -60,6 +60,12 @@ const CodeVMPaused = harness.CodeVMPaused
 // again. It wraps ErrVMUnavailable (503 unavailable).
 var ErrVMStopped = fmt.Errorf("%w: the VM was stopped; start it to use it", ErrVMUnavailable)
 
+// ErrVMStarting marks a request that stopped its wait for a VM start or
+// resume while the start continues. It wraps ErrVMUnavailable (503
+// unavailable); the request log adds "Retry-After: 5"
+// (httpx.NoteVMStarting), and the client sends the request again.
+var ErrVMStarting = fmt.Errorf("%w: the VM is still starting; send the request again when it runs", ErrVMUnavailable)
+
 // VMController is the VM power API (*vmm.Controller implements it).
 type VMController interface {
 	VMStatusSource
@@ -71,8 +77,15 @@ type VMController interface {
 	Stop(ctx context.Context, tenantID string, force bool) error
 }
 
-// WakeTimeout bounds POST /api/v1/vm/wake.
-const WakeTimeout = 120 * time.Second
+// WakeTimeout bounds the wait of POST /api/v1/vm/wake. It is shorter than
+// the 100 s after which a proxy in front of LydiaBox (Cloudflare) ends a
+// request without a response. A start that takes longer continues: the
+// route then answers 503 vm_starting with Retry-After (ErrVMStarting).
+const WakeTimeout = RequestWakeWait
+
+// RequestWakeWait is the longest time that an HTTP request waits for a VM
+// start or resume (docs/api.md section 1).
+const RequestWakeWait = 75 * time.Second
 
 // VMRoutes serves /api/v1/vm/* (docs/api.md section 7).
 type VMRoutes struct {

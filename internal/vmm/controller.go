@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/lydiabox/lydiabox/internal/httpx"
 )
 
 // Lease kinds (docs/api.md section 7).
@@ -40,7 +41,9 @@ type Options struct {
 	Flush func(ctx context.Context, tenantID string) error
 	// OnStateChange is called after every state change (outside locks).
 	OnStateChange func(tenantID string, st State)
-	// BootTimeout bounds one boot (default 120 s).
+	// BootTimeout bounds one boot (default 120 s). For a driver with
+	// Capabilities.ProviderTimeout, it bounds only the guest-ready wait
+	// after the provider part.
 	BootTimeout time.Duration
 	// CPUs, MemMB, and GPU are reported by Status.
 	CPUs  int
@@ -180,7 +183,8 @@ func (c *Controller) Refresh(ctx context.Context, tid string) error {
 
 // EnsureRunning wakes the VM on demand: it boots a stopped VM or resumes a
 // paused one and waits until the guest daemon answers. Concurrent calls
-// share one boot, which keeps running when a caller's ctx ends. A VM that
+// share one boot, which keeps running when a caller's ctx ends; a ctx that
+// ends by its deadline before the boot gives ErrStarting. A VM that
 // the user stopped (Stop, until Start) is not woken: EnsureRunning returns
 // ErrStopped at once.
 func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
@@ -205,124 +209,14 @@ func (c *Controller) EnsureRunning(ctx context.Context, tid string) error {
 	case <-call.done:
 		return call.err
 	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			// The caller's bound is shorter than the boot, which continues:
+			// the caller can try again (an HTTP request answers 503 vm_starting with
+			// Retry-After).
+			httpx.NoteVMStarting(ctx)
+			return ErrStarting
+		}
 		return ctx.Err()
-	}
-}
-
-func (c *Controller) runBoot(tid string, t *tenantVM, call *bootCall) {
-	t.trans.Lock()
-	ctx, cancel := context.WithTimeout(context.Background(), c.opts.BootTimeout)
-	err := c.bootLocked(ctx, tid, t)
-	cancel()
-	t.trans.Unlock()
-	c.mu.Lock()
-	t.boot = nil
-	if err != nil {
-		t.lastError = err.Error()
-	} else {
-		t.lastError = ""
-	}
-	c.mu.Unlock()
-	call.err = err
-	close(call.done)
-}
-
-func (c *Controller) bootLocked(ctx context.Context, tid string, t *tenantVM) error {
-	c.mu.Lock()
-	held := t.held
-	c.mu.Unlock()
-	if held {
-		// A Stop came after this wake was asked for.
-		return ErrStopped
-	}
-	st, err := c.opts.Driver.State(ctx, tid)
-	if err != nil {
-		return fmt.Errorf("vmm: read VM state: %w", err)
-	}
-	switch st {
-	case StateRunning:
-		// Already running (adopted after a host restart or a cancelled pause).
-	case StatePaused:
-		c.setState(tid, t, StateBooting)
-		if err := c.opts.Driver.Resume(ctx, tid); err != nil {
-			c.setState(tid, t, StatePaused)
-			return fmt.Errorf("vmm: resume: %w", err)
-		}
-	case StateBooting:
-		if c.caps.Remote {
-			// The provider is still booting the machine: wait for the
-			// guest, do not create it again.
-			c.setState(tid, t, StateBooting)
-			break
-		}
-		fallthrough
-	default:
-		c.setState(tid, t, StateBooting)
-		c.mu.Lock()
-		t.bootedAt = time.Time{}
-		c.mu.Unlock()
-		if err := c.create(ctx, tid); err != nil {
-			c.cleanupFailedBoot(tid, t)
-			return err
-		}
-	}
-	if err := c.waitReady(ctx, tid); err != nil {
-		c.cleanupFailedBoot(tid, t)
-		return err
-	}
-	c.mu.Lock()
-	t.pausing = false
-	c.mu.Unlock()
-	c.setState(tid, t, StateRunning)
-	return nil
-}
-
-func (c *Controller) create(ctx context.Context, tid string) error {
-	spec, err := c.opts.Spec(ctx, tid)
-	if err != nil {
-		return fmt.Errorf("vmm: build VM spec: %w", err)
-	}
-	if err := c.opts.Driver.Create(ctx, tid, spec); err != nil {
-		return fmt.Errorf("vmm: create VM: %w", err)
-	}
-	if err := c.opts.Driver.Boot(ctx, tid); err != nil {
-		return fmt.Errorf("vmm: boot VM: %w", err)
-	}
-	return nil
-}
-
-// cleanupFailedBoot tears down a half-started VM so the next attempt starts
-// clean.
-func (c *Controller) cleanupFailedBoot(tid string, t *tenantVM) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := c.opts.Driver.Shutdown(ctx, tid, true); err != nil {
-		c.opts.Logger.Warn("cleanup after failed boot", "tenant", tid, "err", err)
-	}
-	c.setState(tid, t, StateStopped)
-}
-
-func (c *Controller) waitReady(ctx context.Context, tid string) error {
-	if c.opts.Ready == nil {
-		return nil
-	}
-	probe := c.caps.ReadyProbeTimeout
-	if probe <= 0 {
-		probe = DefaultReadyProbeTimeout
-	}
-	var last error
-	for {
-		rctx, cancel := context.WithTimeout(ctx, probe)
-		last = c.opts.Ready(rctx, tid)
-		cancel()
-		if last == nil {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("vmm: guest daemon not ready: %w (%v)", ctx.Err(), last)
-		case <-time.After(250 * time.Millisecond):
-		}
 	}
 }
 

@@ -365,13 +365,17 @@ func isELF(path string) bool {
 }
 
 // filesWaker is the controller as the waker of remotefs: a VM that the
-// user stopped gives agentfs.ErrStopped.
+// user stopped gives agentfs.ErrStopped, and a start that continues after
+// the wait gives agentfs.ErrStarting.
 type filesWaker struct{ ctl *vmm.Controller }
 
 func (w filesWaker) EnsureRunning(ctx context.Context, tid string) error {
 	err := w.ctl.EnsureRunning(ctx, tid)
-	if errors.Is(err, vmm.ErrStopped) {
+	switch {
+	case errors.Is(err, vmm.ErrStopped):
 		return agentfs.ErrStopped
+	case errors.Is(err, vmm.ErrStarting):
+		return agentfs.ErrStarting
 	}
 	return err
 }

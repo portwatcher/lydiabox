@@ -71,6 +71,13 @@ func newEnv(t *testing.T) *env {
 // (nil: the runner itself).
 func newEnvWith(t *testing.T, wrap func(*fakeguest.Runner) instaboxtest.GuestRunner) *env {
 	t.Helper()
+	return newEnvFake(t, wrap, nil)
+}
+
+// newEnvFake is newEnvWith with the options of the fake server changed by
+// fakeOpts (nil: the defaults of newEnv).
+func newEnvFake(t *testing.T, wrap func(*fakeguest.Runner) instaboxtest.GuestRunner, fakeOpts func(*instaboxtest.Options)) *env {
+	t.Helper()
 	root, err := os.MkdirTemp("", "lbxi")
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +88,11 @@ func newEnvWith(t *testing.T, wrap func(*fakeguest.Runner) instaboxtest.GuestRun
 	if wrap != nil {
 		guest = wrap(e.runner)
 	}
-	e.fake = instaboxtest.New(instaboxtest.Options{OpDelay: 10 * time.Millisecond, Guest: guest, Exec: e.exec})
+	fo := instaboxtest.Options{OpDelay: 10 * time.Millisecond, Guest: guest, Exec: e.exec}
+	if fakeOpts != nil {
+		fakeOpts(&fo)
+	}
+	e.fake = instaboxtest.New(fo)
 	t.Cleanup(func() {
 		e.fake.Close()
 		e.runner.Close()

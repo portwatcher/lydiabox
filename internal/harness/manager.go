@@ -94,8 +94,12 @@ type ManagerOptions struct {
 	// KillGrace is the wait after SIGINT before SIGTERM (default 3s).
 	KillGrace time.Duration
 	// TermGrace is the wait after SIGTERM before detaching (default 2s).
-	TermGrace   time.Duration
-	WakeTimeout time.Duration // default 120s
+	TermGrace time.Duration
+	// WakeTimeout bounds the wait of an HTTP request for a VM start
+	// (default 75 s, below the 100 s after which a proxy such as
+	// Cloudflare ends a request). A longer start continues; the request
+	// fails with an error that says that the VM still starts.
+	WakeTimeout time.Duration
 	// EventPoll is how often the event stream of a live session reads its
 	// transcript and terminal state (default 1s; four times as long for a
 	// session without a terminal).
@@ -181,7 +185,7 @@ func NewManager(opts ManagerOptions) (*Manager, error) {
 		opts.TermGrace = 2 * time.Second
 	}
 	if opts.WakeTimeout <= 0 {
-		opts.WakeTimeout = 120 * time.Second
+		opts.WakeTimeout = DefaultWakeTimeout
 	}
 	m := &Manager{opts: opts, log: opts.Logger.With("component", "harness"), adapters: map[string]Adapter{},
 		live: map[string]*liveSession{}, aliases: map[string]string{}, starting: map[string]bool{}}
@@ -274,6 +278,9 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	}
 	return m.sessionOf(ls), nil
 }
+
+// DefaultWakeTimeout is the default of Options.WakeTimeout.
+const DefaultWakeTimeout = 75 * time.Second
 
 // startVM starts the VM for a new or resumed session, an explicit request
 // of the user: it also starts a VM that the user stopped (VMStarter).

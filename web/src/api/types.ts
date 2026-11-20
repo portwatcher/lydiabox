@@ -13,7 +13,8 @@ export type ErrorCode =
   | "rate_limited"
   | "internal"
   | "not_implemented"
-  | "unavailable";
+  | "unavailable"
+  | "vm_starting";
 
 export interface ErrorEnvelope {
   error: { code: ErrorCode | string; message: string };

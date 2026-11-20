@@ -16,6 +16,10 @@ package vmm
 //     cached state, the idle timer, and the OnStateChange callback. Until
 //     the driver reports a self-pause, calls fail fast with ErrUnavailable
 //     from the driver's DialGuest; they do not hang.
+//   - Its provider can need minutes for a start or resume.
+//     Capabilities.ProviderTimeout bounds that part of a boot, and a boot
+//     that fails never stops the machine (cleanupFailedBoot). When the
+//     machine runs later, Observe adopts it and clears the last error.
 
 // Observe records a power change that the driver saw but did not make
 // (for example a provider pause or resume). The change is ignored while
@@ -34,4 +38,9 @@ func (c *Controller) Observe(tid string, st State) {
 	}
 	defer t.trans.Unlock()
 	c.setState(tid, t, st)
+	if st == StateRunning {
+		// The machine runs: an earlier failed boot (for example a resume
+		// that took longer than the provider bound) is no longer true.
+		c.clearError(t)
+	}
 }

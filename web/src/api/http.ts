@@ -4,7 +4,7 @@ import type { ErrorEnvelope } from "./types";
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
-  /** Seconds from `Retry-After`, set on `429 rate_limited`. */
+  /** Seconds from `Retry-After` (`429 rate_limited`, `503 vm_starting`, `503 cell_starting`). */
   readonly retryAfter: number | undefined;
 
   constructor(status: number, code: string, message: string, retryAfter?: number) {
@@ -101,12 +101,57 @@ export async function errorFromResponse(res: Response): Promise<ApiError> {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** Waits `ms`; rejects with an AbortError when `signal` aborts first. */
+export type Sleep = (ms: number, signal?: AbortSignal) => Promise<void>;
+
+/**
+ * The longest time that one request waits for a VM start. The server ends
+ * a start after 10 minutes at the provider and 2 minutes for the guest.
+ */
+export const STARTING_LIMIT_MS = 15 * 60_000;
+
+/** The code of a `503` whose request stopped its wait for a VM start that continues (docs/api.md section 1). */
+export const VM_STARTING_CODE = "vm_starting";
+
+/**
+ * Seconds to wait before the request is sent again, when the error says
+ * that the VM still starts (`503 vm_starting` with `Retry-After`); else
+ * null. Another `503`, such as `cell_starting` of LydiaBox Cloud, is not
+ * sent again: the pages show it.
+ */
+export function startingRetry(err: ApiError): number | null {
+  if (err.status !== 503 || err.code !== VM_STARTING_CODE) {
+    return null;
+  }
+  const seconds = err.retryAfter ?? 5;
+  return seconds > 0 ? Math.min(seconds, 30) : 5;
+}
+
+const defaultSleep: Sleep = (ms, signal) =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(id);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const id = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
 export class HttpClient {
   private fetchImpl: FetchLike;
+  private sleep: Sleep;
   private unauthorizedListeners = new Set<() => void>();
 
-  constructor(fetchImpl?: FetchLike) {
+  constructor(fetchImpl?: FetchLike, sleep?: Sleep) {
     this.fetchImpl = fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
+    this.sleep = sleep ?? defaultSleep;
   }
 
   setFetch(fetchImpl: FetchLike): void {
@@ -137,8 +182,30 @@ export class HttpClient {
     }
   }
 
-  /** Sends a request and returns the raw response; non-2xx statuses throw ApiError. */
+  /**
+   * Sends a request and returns the raw response; non-2xx statuses throw
+   * ApiError. While the server answers that the VM still starts (`503
+   * vm_starting`), the request is sent again after `Retry-After`, up to
+   * STARTING_LIMIT_MS: a page then waits for the start and does not show
+   * a failure.
+   */
   async send(path: string, options: RequestOptions = {}): Promise<Response> {
+    const started = Date.now();
+    for (;;) {
+      const res = await this.sendOnce(path, options);
+      if (res.ok) {
+        return res;
+      }
+      const error = await errorFromResponse(res);
+      const wait = startingRetry(error);
+      if (wait === null || Date.now() - started >= STARTING_LIMIT_MS) {
+        throw this.failed(res.status, error);
+      }
+      await this.sleep(wait * 1000, options.signal);
+    }
+  }
+
+  private async sendOnce(path: string, options: RequestOptions): Promise<Response> {
     const headers: Record<string, string> = { Accept: "application/json" };
     let body: BodyInit | undefined;
     if (options.body instanceof FormData) {
@@ -162,14 +229,14 @@ export class HttpClient {
       }
       throw new NetworkError("Unable to reach the LydiaBox server.");
     }
-    if (!res.ok) {
-      const error = await errorFromResponse(res);
-      if (res.status === 401) {
-        this.unauthorizedListeners.forEach((listener) => listener());
-      }
-      throw error;
-    }
     return res;
+  }
+
+  private failed(status: number, error: ApiError): ApiError {
+    if (status === 401) {
+      this.unauthorizedListeners.forEach((listener) => listener());
+    }
+    return error;
   }
 
   get<T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> {

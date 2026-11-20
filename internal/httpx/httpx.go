@@ -24,6 +24,10 @@ const (
 	CodeInternal     = "internal"
 	CodeNotImpl      = "not_implemented"
 	CodeCanceled     = "canceled"
+	// CodeVMStarting is the code of a 503 (with Retry-After) of a request
+	// that stopped its wait for a VM start while the start continues
+	// (NoteVMStarting). A client sends the request again.
+	CodeVMStarting = "vm_starting"
 )
 
 // StatusClientClosedRequest (499, a common extension) is the status of a
@@ -51,8 +55,12 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// WriteError writes the error envelope.
+// WriteError writes the error envelope. A 503 unavailable of a request
+// that stopped its wait for a VM start gets the code vm_starting.
 func WriteError(w http.ResponseWriter, status int, code, message string) {
+	if status == http.StatusServiceUnavailable && code == CodeUnavailable && vmStarting(w) {
+		code = CodeVMStarting
+	}
 	WriteJSON(w, status, ErrorBody{Error: ErrorDetail{Code: code, Message: message}})
 }
 

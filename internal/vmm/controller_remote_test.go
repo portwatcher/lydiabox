@@ -10,12 +10,13 @@ import (
 // remoteDriver is a fake remote machine that the provider can pause.
 type remoteDriver struct {
 	fakeDriver
-	probe   time.Duration
-	observe func(string, State)
+	probe    time.Duration
+	provider time.Duration
+	observe  func(string, State)
 }
 
 func (d *remoteDriver) Capabilities() Capabilities {
-	return Capabilities{Remote: true, SelfPause: true, ReadyProbeTimeout: d.probe}
+	return Capabilities{Remote: true, SelfPause: true, ReadyProbeTimeout: d.probe, ProviderTimeout: d.provider}
 }
 
 func (d *remoteDriver) WatchState(fn func(string, State)) { d.observe = fn }

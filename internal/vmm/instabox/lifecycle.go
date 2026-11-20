@@ -177,11 +177,19 @@ func (d *Driver) Resume(ctx context.Context, tid string) error {
 
 // bringUp moves the machine to running: start a stopped one, resume a
 // paused one, and wait for a transition. Callers hold t.op. It logs what
-// it asked InstaBox for and how long the machine took to run, so that a
-// slow start or resume shows in the log.
-func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, error) {
+// it asks InstaBox for (info), how long the machine took to run, and,
+// when ctx ends first, the action, the operation, and the time it waited
+// (warning), so that a slow start or resume shows in the log.
+func (d *Driver) bringUp(ctx context.Context, tid, id string) (m *ib.Machine, err error) {
 	start := time.Now()
-	action, waited := "", false
+	action, opID, waited := "", "", false
+	defer func() {
+		if err != nil && ctx.Err() != nil {
+			d.opts.Logger.Warn("instabox: the machine did not run before the bound ended; InstaBox can still bring it up",
+				"tenant", tid, "machine", id, "action", action, "operation", opID,
+				"waited", time.Since(start).Round(time.Millisecond), "err", err)
+		}
+	}()
 	for {
 		m, err := d.opts.Client.GetMachine(ctx, id)
 		if err != nil {
@@ -199,6 +207,9 @@ func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, erro
 			return nil, fmt.Errorf("%w: %w", vmm.ErrUnavailable, ErrMachineGone)
 		case ib.StateSuspended:
 			if m.IdlePaused() {
+				if action != "wake" {
+					d.opts.Logger.Info("instabox: waking the idle-paused machine", "tenant", tid, "machine", id)
+				}
 				action = "wake"
 				if _, err := d.opts.Client.WakeMachine(ctx, id); err != nil && !errors.Is(err, ib.ErrConflict) {
 					return nil, d.fail(tid, err)
@@ -215,6 +226,9 @@ func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, erro
 			if !waited {
 				waited = true
 				d.opts.Logger.Info("instabox: waiting for a machine transition", "tenant", tid, "state", m.State)
+			}
+			if m.OperationID != nil {
+				opID = *m.OperationID
 			}
 			if err := d.waitSettled(ctx, m); err != nil {
 				return nil, err
@@ -235,6 +249,8 @@ func (d *Driver) bringUp(ctx context.Context, tid, id string) (*ib.Machine, erro
 		if err != nil {
 			return nil, d.fail(tid, err)
 		}
+		opID = op.ID
+		d.opts.Logger.Info("instabox: asked for a "+action+" of the machine", "tenant", tid, "machine", id, "operation", op.ID)
 		if _, err := d.opts.Client.WaitOperation(ctx, op); err != nil {
 			return nil, d.fail(tid, err)
 		}
@@ -291,6 +307,7 @@ func (d *Driver) Pause(ctx context.Context, tid string) error {
 		}
 		switch m.State {
 		case ib.StateSuspended:
+			d.setReported(tid, vmm.StatePaused)
 			return nil
 		case ib.StateRunning:
 			op, err := d.opts.Client.PauseMachine(ctx, id)
@@ -306,6 +323,7 @@ func (d *Driver) Pause(ctx context.Context, tid string) error {
 			if err != nil {
 				return d.fail(tid, err)
 			}
+			d.setReported(tid, vmm.StatePaused)
 			return nil
 		case ib.StateStopped, ib.StateError, ib.StateDeleted:
 			return fmt.Errorf("%w: pause while the machine is %s", vmm.ErrConflict, m.State)
@@ -340,6 +358,7 @@ func (d *Driver) Shutdown(ctx context.Context, tid string, force bool) error {
 		var op *ib.Operation
 		switch m.State {
 		case ib.StateStopped, ib.StateError, ib.StateDeleted, ib.StateDeleting:
+			d.setReported(tid, vmm.StateStopped)
 			return nil
 		case ib.StateSuspended:
 			if m.IdlePaused() {
@@ -375,6 +394,18 @@ func (d *Driver) Shutdown(ctx context.Context, tid string, force bool) error {
 			return d.fail(tid, err)
 		}
 	}
+}
+
+// setReported records a power state that this driver made, so that the
+// watcher reports the next change from it. Without it, a resume that
+// starts before the watcher saw the pause, and that ends after the
+// controller stopped its wait, is not reported: the watcher would see
+// RUNNING before and after.
+func (d *Driver) setReported(tid string, st vmm.State) {
+	t := d.tenant(tid)
+	d.mu.Lock()
+	t.reported = st
+	d.mu.Unlock()
 }
 
 func sleep(ctx context.Context, d time.Duration) error {

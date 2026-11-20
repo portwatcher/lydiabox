@@ -63,6 +63,10 @@ var (
 	// ErrStopped means the user stopped the agent machine: a file request
 	// does not start it (it wraps ErrUnavailable).
 	ErrStopped = fmt.Errorf("%w: the VM was stopped; start it to use these files", ErrUnavailable)
+	// ErrStarting means the wait for the machine ended while its start or
+	// resume continues: send the request again when the VM runs (it wraps
+	// ErrUnavailable).
+	ErrStarting = fmt.Errorf("%w: the VM is still starting; send the request again when it runs", ErrUnavailable)
 )
 
 // Entry describes one file or directory.

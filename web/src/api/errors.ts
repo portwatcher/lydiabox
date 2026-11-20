@@ -4,7 +4,8 @@ import { ApiError, NetworkError } from "./http";
  * Why a subsystem cannot answer:
  * - `missing`: the route is not registered in this build (404 on a route).
  * - `not_implemented`: the route exists but the subsystem is not built in (501).
- * - `unavailable`: a dependency such as the VM or magpie is not running (502-504).
+ * - `unavailable`: a dependency such as the VM or magpie is not running
+ *   (502-504, including `503 vm_starting`, a VM that still starts).
  */
 export type Availability = "missing" | "not_implemented" | "unavailable";
 
@@ -51,6 +52,9 @@ export function describeError(err: unknown, failed: string): string {
         return `${failed}. Too many attempts; wait ${err.retryAfter ?? 60} seconds, then try again.`;
       case "unavailable":
         return `${failed}. ${sentence(err.message) || "A required service is not running."} Try again when it is back.`;
+      case "vm_starting":
+        // Only uploads see it (XMLHttpRequest); other requests wait for the start.
+        return `${failed}. The VM is still starting. Try again when it runs.`;
       case "not_implemented":
         return `${failed}. This build of LydiaBox does not include this feature.`;
       case "unauthorized":

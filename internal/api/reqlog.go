@@ -6,6 +6,7 @@ import (
 
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,18 +31,35 @@ type statusRecorder struct {
 	body   bytes.Buffer
 	// expected marks a 5xx that is an expected state (httpx.NoteExpected).
 	expected bool
+	// starting is set when the request stopped its wait for a VM start
+	// that continues (httpx.NoteVMStarting).
+	starting *httpx.StartingNote
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
 	if r.status == 0 {
 		r.status = code
+		r.hintStarting(code)
 	}
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// VMStarting implements httpx.StartingReporter.
+func (r *statusRecorder) VMStarting() bool { return r.starting.Starting() }
+
+// hintStarting tells the client of a 503 that the VM still starts: the
+// client sends the request again after Retry-After (docs/api.md section 1).
+func (r *statusRecorder) hintStarting(code int) {
+	if code != http.StatusServiceUnavailable || !r.starting.Starting() {
+		return
+	}
+	r.ResponseWriter.Header().Set("Retry-After", strconv.Itoa(httpx.RetryAfterStarting))
+	r.expected = true
+}
+
 func (r *statusRecorder) Write(b []byte) (int, error) {
 	if r.status == 0 {
-		r.status = http.StatusOK
+		r.WriteHeader(http.StatusOK)
 	}
 	if r.status >= 500 && r.body.Len() < maxCauseBody {
 		r.body.Write(b[:min(len(b), maxCauseBody-r.body.Len())])
@@ -95,8 +113,9 @@ func withRoute(pattern string, h http.Handler) http.Handler {
 func (s *Server) logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w}
-		next.ServeHTTP(rec, r)
+		ctx, note := httpx.WithStartingNote(r.Context())
+		rec := &statusRecorder{ResponseWriter: w, starting: note}
+		next.ServeHTTP(rec, r.WithContext(ctx))
 		attrs := []any{"method", r.Method, "route", rec.route, "path", r.URL.Path,
 			"status", rec.status, "bytes", rec.bytes, "duration", time.Since(start)}
 		if rec.status < 500 {
