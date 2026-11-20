@@ -36,6 +36,11 @@ interface ChatViewProps {
 /** After a send, the view shows "working" this long before the terminal reacts. */
 const SEND_GRACE_MS = 4000;
 
+/** After the open of a session, the view reads the VM status after this long. */
+const OPEN_STATUS_MS = 600;
+/** After the open of a session, the view offers Start or Resume only after this long. */
+const OPEN_SETTLE_MS = 2000;
+
 /**
  * The structured view of a harness session: the conversation from the
  * session events, the state of the agent, and a prompt field that types
@@ -43,7 +48,7 @@ const SEND_GRACE_MS = 4000;
  */
 export function ChatView({ session, models, onOpenTerminal, onResume, resumeBlocked, onAdopt }: ChatViewProps) {
   const toast = useToast();
-  const { vmState, transition, pending } = useSystem();
+  const { vmState, transition, pending, refresh } = useSystem();
   const { chat, timeline, socket, error } = useAgentEvents(session.id);
   const status = chat.status;
   const live = status ? status.live : session.live;
@@ -55,6 +60,19 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   const [sentAt, setSentAt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const composer = useRef<HTMLTextAreaElement>(null);
+
+  // The open of a session asks the host to wake the VM. For a moment the
+  // view offers no Start or Resume button, and it reads the VM status soon,
+  // so that it follows the start without the slow status poll.
+  const [opened, setOpened] = useState<string | null>(null);
+  useEffect(() => {
+    const soon = setTimeout(refresh, OPEN_STATUS_MS);
+    const id = setTimeout(() => setOpened(session.id), OPEN_SETTLE_MS);
+    return () => {
+      clearTimeout(soon);
+      clearTimeout(id);
+    };
+  }, [session.id, refresh]);
 
   const graced = sentAt > 0 && now - sentAt < SEND_GRACE_MS;
   const state: AgentState = !live ? "offline" : status?.state === "idle" && graced ? "working" : (status?.state ?? "idle");
@@ -178,7 +196,7 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   };
 
   const contextWindow = timeline.context?.window || models.find((m) => m.id === (timeline.model || session.model))?.contextWindow || 0;
-  const footer = chatFooter(session, live, vmState, transition !== null || pending !== null);
+  const footer = chatFooter(session, live, vmState, transition !== null || pending !== null || opened !== session.id);
   const synced = status?.synced ?? false;
   const empty = timeline.turns.length === 0;
   const lastDesktop = lastTurn?.desktop ?? false;
