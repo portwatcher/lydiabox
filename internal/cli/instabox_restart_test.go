@@ -52,6 +52,18 @@ func TestInstaboxHostRestartKeepsLiveTerminals(t *testing.T) {
 	if err := agent.Write(ctx, websocket.MessageBinary, []byte("while true; do echo tick; sleep 0.2; done\n")); err != nil {
 		t.Fatal(err)
 	}
+	// The loop must run before the stop: input that is still on its way
+	// when the host stops is lost.
+	var started strings.Builder
+	for !strings.Contains(started.String(), "tick\r\n") {
+		typ, data, err := agent.Read(ctx)
+		if err != nil {
+			t.Fatalf("agent output before the restart %q: %v", started.String(), err)
+		}
+		if typ == websocket.MessageBinary {
+			started.Write(data)
+		}
+	}
 	shell.CloseNow()
 	agent.CloseNow()
 
