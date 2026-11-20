@@ -23,12 +23,20 @@ type cacheEnv struct {
 
 func newCacheEnv(t *testing.T, running bool, delay time.Duration) *cacheEnv {
 	t.Helper()
+	return newCacheEnvWith(t, running, func(o *harness.ManagerOptions) { o.EventCopyDelay = delay })
+}
+
+// newCacheEnvWith is newCacheEnv with changed manager options.
+func newCacheEnvWith(t *testing.T, running bool, set func(*harness.ManagerOptions)) *cacheEnv {
+	t.Helper()
 	e := &cacheEnv{disc: harnesstest.NewEventDiscovery(running), cache: &harnesstest.EventCache{}, store: &harnesstest.Store{}}
 	home := t.TempDir()
-	mgr, err := harness.NewManager(harness.ManagerOptions{
+	opts := harness.ManagerOptions{
 		Adapters: adapters.All(), Files: localFiles(home, t.TempDir()), Discovery: e.disc, Store: e.store,
-		Logger: quiet(), EventPoll: 10 * time.Millisecond, EventCache: e.cache, EventCopyDelay: delay,
-	})
+		Logger: quiet(), EventPoll: 10 * time.Millisecond, EventCache: e.cache,
+	}
+	set(&opts)
+	mgr, err := harness.NewManager(opts)
 	if err != nil {
 		t.Fatal(err)
 	}

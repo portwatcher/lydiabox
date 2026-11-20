@@ -111,12 +111,15 @@ type EventDiscovery struct {
 	sessions map[string][]harness.SessionMeta
 	events   map[string][]harness.Event
 	wakes    int
+	calls    int
 	reads    map[string]int
 	// WakeErr, when set, fails a read with wake while the machine does not
 	// run (the user stopped it).
 	WakeErr error
 	// OnRead runs after every read of a session (outside the lock).
 	OnRead func(source string)
+	// DiscoverErrs are the per-harness errors of a fresh discovery.
+	DiscoverErrs map[string]error
 }
 
 // NewEventDiscovery returns a fake whose machine runs or not.
@@ -239,4 +242,40 @@ func (d *EventDiscovery) Events(ctx context.Context, _, h, id string, after int,
 		return harness.EventPage{}, fmt.Errorf("%w: session %s", harness.ErrNotFound, source)
 	}
 	return harness.EventPageOf(evs, after), nil
+}
+
+// WakeForEvents implements harness.EventWaker: it counts as a wake and
+// waits until Resume while the machine does not run, or fails with WakeErr.
+func (d *EventDiscovery) WakeForEvents(ctx context.Context, _ string) error {
+	d.mu.Lock()
+	d.wakes++
+	running, resumed, wakeErr := d.running, d.resumed, d.WakeErr
+	d.mu.Unlock()
+	if running {
+		return nil
+	}
+	if wakeErr != nil {
+		return fmt.Errorf("%w: %v", harness.ErrUnavailable, wakeErr)
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-resumed:
+		return nil
+	}
+}
+
+// Serving reports whether the machine runs.
+func (d *EventDiscovery) Serving(string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.running
+}
+
+// GuestCalls returns the number of guest calls: every event read and every
+// fresh discovery.
+func (d *EventDiscovery) GuestCalls() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.calls
 }

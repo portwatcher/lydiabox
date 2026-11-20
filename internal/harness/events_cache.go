@@ -56,33 +56,37 @@ func (c *eventCopies) gen(tenantID, source string) uint64 {
 }
 
 // preload is the stored copy that a new hub shows before its first read.
+// noTranscript reports a provisional session: it has no events to read.
 type preload struct {
-	source string
-	gen    uint64
-	events []Event
+	source       string
+	gen          uint64
+	events       []Event
+	noTranscript bool
 }
 
 // preloadEvents reads the stored copy of a session. A provisional session
 // (no native ID yet) and a running ACP session (the bridge sends every
 // event at once) have none.
 func (m *Manager) preloadEvents(tenantID, id string) preload {
-	if m.opts.EventCache == nil {
-		return preload{}
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), eventCopyTimeout)
+	defer cancel()
 	name, nativeID, err := SplitSessionID(id)
 	if lv, live := m.liveInfo(tenantID, id); live {
-		if lv.provisional || (lv.engine == EngineACP && lv.room != nil) {
+		if lv.provisional {
+			return preload{noTranscript: true}
+		}
+		if lv.engine == EngineACP && lv.room != nil {
 			return preload{}
 		}
 		name, nativeID, err = lv.harness, lv.nativeID, nil
+	} else if m.storedProvisional(ctx, tenantID, m.aliasTarget(tenantID, id)) {
+		return preload{noTranscript: true}
 	}
-	if err != nil || nativeID == "" {
+	if m.opts.EventCache == nil || err != nil || nativeID == "" {
 		return preload{}
 	}
 	source := SessionID(name, nativeID)
 	p := preload{source: source, gen: m.copies.gen(tenantID, source)}
-	ctx, cancel := context.WithTimeout(context.Background(), eventCopyTimeout)
-	defer cancel()
 	got, err := m.opts.EventCache.GetSessionEvents(ctx, tenantID, name, nativeID)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
@@ -102,6 +106,11 @@ func (m *Manager) preloadEvents(tenantID, id string) preload {
 // takePreload gives a new hub its stored copy; the caller holds no hub
 // lock because nobody else sees the hub yet.
 func (h *eventHub) takePreload(p preload) {
+	if p.noTranscript {
+		// The first update tells the client at once that there is nothing
+		// to load.
+		h.status.Synced = true
+	}
 	if p.source == "" {
 		return
 	}

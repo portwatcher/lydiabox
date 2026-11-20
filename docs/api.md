@@ -771,7 +771,13 @@ read that starts or resumes the machine, and the status has `cached: true`.
 When the first read of the guest is complete, the client gets the changed
 and new events when the order of the copy is the start of the guest order;
 otherwise (an event was removed, the order differs, or the copy was cut) it
-gets a `reset` with the guest events. Shell
+gets a `reset` with the guest events. A session without a native ID (the
+harness did not write a transcript yet; the stored session is
+provisional) has no events to read: its first message has `synced: true`
+and no events at once, also while the machine is paused, starts, or
+resumes. The open still asks to start or resume the machine in the
+background (not a machine that the user stopped), and the status says
+`live` when the terminal is attached again. Shell
 sessions and unknown harnesses get `error` `not_found` and a close `1008`.
 
 Server → client (text frames):
@@ -837,7 +843,8 @@ Texts are cut at 32 KiB, tool inputs at 8 KiB, outputs at 12 KiB.
 
 `sessionId` is the ID that the session has now: a session started without
 a native ID gets one after the harness writes its transcript. `synced` is
-`true` after the first read (also when the harness has no transcript yet);
+`true` after the first read, and at once for a session that has no
+transcript yet;
 `cached` is `true` while the events are the stored copy and the guest was
 not read yet (`provider` mode; it stays `true` when the read fails, and the
 copy stays on the screen); `error` is the last read error (for example a

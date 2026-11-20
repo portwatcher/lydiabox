@@ -112,6 +112,9 @@ type eventHub struct {
 	dirty  bool
 	// saveMu serializes the writes of the copy.
 	saveMu sync.Mutex
+	// woke reports that the hub asked to wake the machine for a session
+	// without a transcript (events_provisional.go).
+	woke bool
 }
 
 // eventList is the ordered event list of a hub. cursor is the index after
@@ -265,8 +268,14 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 	}
 	name, nativeID, current, provisional, room := lv.harness, lv.nativeID, lv.current, lv.provisional, lv.room
 	if !live {
-		name, nativeID, _ = SplitSessionID(h.id)
-		current = h.id
+		current = m.aliasTarget(h.tenantID, h.id)
+		name, nativeID, _ = SplitSessionID(current)
+		if m.storedProvisional(ctx, h.tenantID, current) {
+			// No transcript yet: nothing to read, and the client does not
+			// wait for the machine. The open still wakes it (section 4.3).
+			provisional = true
+			h.wakeOnce(ctx)
+		}
 	}
 	source := ""
 	if !provisional && nativeID != "" {

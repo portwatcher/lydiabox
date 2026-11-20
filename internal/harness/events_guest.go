@@ -46,6 +46,27 @@ func (g *GuestDiscovery) peekEvents(ctx context.Context, tenantID, harness, nati
 	return page, nil
 }
 
+// WakeForEvents implements EventWaker with the wake of an event read: it
+// takes a files lease, starts or resumes the machine, and releases the
+// lease. A machine that the user stopped is not started.
+func (g *GuestDiscovery) WakeForEvents(ctx context.Context, tenantID string) error {
+	if g.Begin == nil {
+		return nil
+	}
+	release, err := g.Begin(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	release()
+	return nil
+}
+
+// Serving implements servingReporter: the machine runs and no pause or stop
+// of it is in progress.
+func (g *GuestDiscovery) Serving(tenantID string) bool {
+	return g.Running == nil || g.Running(tenantID)
+}
+
 func guestErr(err error, what string) error {
 	switch {
 	case rpc.IsCode(err, rpc.CodeBadRequest):
