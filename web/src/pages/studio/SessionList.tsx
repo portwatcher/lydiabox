@@ -55,7 +55,9 @@ function UsageLine({ session }: { session: Session }) {
 }
 
 function SessionRow({ session, selected, onSelect, onDelete, now }: { session: Session; selected: boolean; onSelect: () => void; onDelete: () => void; now: number }) {
-  const info = statusInfo[session.status];
+  // A terminal that a pause or a host restart detached is stored as
+  // running; the list shows it as idle until it is live again.
+  const info = statusInfo[!session.live && session.status === "running" ? "idle" : session.status];
   return (
     <li className="group relative">
       <button
