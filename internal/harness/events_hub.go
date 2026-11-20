@@ -266,6 +266,10 @@ func (h *eventHub) poll(ctx context.Context, tick int) bool {
 		_, _ = m.ListSessions(ctx, h.tenantID, Filter{Harness: lv.harness})
 		lv, live = m.liveInfo(h.tenantID, h.id)
 	}
+	if !live && m.reattachWatched(ctx, h.tenantID, m.aliasTarget(h.tenantID, h.id)) {
+		// A link loss detached the terminal while the VM kept running.
+		lv, live = m.liveInfo(h.tenantID, h.id)
+	}
 	name, nativeID, current, provisional, room := lv.harness, lv.nativeID, lv.current, lv.provisional, lv.room
 	if !live {
 		current = m.aliasTarget(h.tenantID, h.id)

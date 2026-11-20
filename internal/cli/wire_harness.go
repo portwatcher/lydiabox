@@ -245,6 +245,10 @@ func (w wakeOnly) EnsureRunning(ctx context.Context, tenantID string) error {
 // Held implements harness.VMHolder.
 func (w wakeOnly) Held(tenantID string) bool { return w.w.Held(tenantID) }
 
+// Serving reports whether the VM runs and no pause or stop of it is in
+// progress: the harness manager attaches a watched terminal again only then.
+func (w wakeOnly) Serving(tenantID string) bool { return w.w.Serving(tenantID) }
+
 // Paused implements harness.VMPauseReporter.
 func (w wakeOnly) Paused(tenantID string) bool { return w.w.Paused(tenantID) }
 

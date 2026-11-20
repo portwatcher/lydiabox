@@ -786,7 +786,12 @@ provisional) has no events to read: its first message has `synced: true`
 and no events at once, also while the machine is paused, starts, or
 resumes. The open still asks to start or resume the machine in the
 background (not a machine that the user stopped), and the status says
-`live` when the terminal is attached again. Shell
+`live` when the terminal is attached again. While a client watches a
+session that is stored as `running` but is not live (a guest link loss
+detached its terminal while the VM kept running), the host tries at each
+poll (every 4 seconds) to attach the guest terminal again, without a wake
+and only while the VM serves (not during a pause or stop). The session is
+then live again, or `exited` when the guest no longer has the terminal. Shell
 sessions and unknown harnesses get `error` `not_found` and a close `1008`.
 
 Server → client (text frames):
