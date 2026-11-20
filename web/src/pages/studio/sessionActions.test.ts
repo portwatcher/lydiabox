@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HARNESSES } from "../../api/types";
-import { deleteText, deletesWithoutConfirm, listDisagrees, listOutOfDate } from "./sessionActions";
+import { deleteText, deletesWithoutConfirm, hasDetached, listDisagrees, listOutOfDate } from "./sessionActions";
 
 describe("listOutOfDate", () => {
   it("is true on every change of the VM state", () => {
@@ -41,5 +41,19 @@ describe("listDisagrees", () => {
 
   it("never in the juicefs mode, where the list is never cached", () => {
     expect(listDisagrees("PAUSED", false, false)).toBe(false);
+  });
+
+  it("loads again a list with a detached terminal while the VM runs", () => {
+    expect(listDisagrees("RUNNING", false, true, true)).toBe(true);
+    expect(listDisagrees("RUNNING", false, false, true)).toBe(true);
+    expect(listDisagrees("BOOTING", false, true, true)).toBe(false);
+    expect(listDisagrees("PAUSED", true, true, true)).toBe(false);
+  });
+});
+
+describe("hasDetached", () => {
+  it("finds a session stored as running that is not live", () => {
+    expect(hasDetached([{ status: "running", live: false }])).toBe(true);
+    expect(hasDetached([{ status: "running", live: true }, { status: "exited", live: false }, { status: "idle", live: false }])).toBe(false);
   });
 });

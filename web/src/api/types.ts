@@ -203,6 +203,8 @@ export interface Session {
   live: boolean;
   /** How the session runs or last ran: "acp" (chat agent) or "pty" (terminal). */
   engine?: SessionEngine;
+  /** The session has no native ID yet: the harness did not write a transcript, so nothing can be resumed. */
+  provisional?: boolean;
   createdAt: string;
   updatedAt: string;
   usage?: Usage;

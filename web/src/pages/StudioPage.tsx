@@ -16,7 +16,7 @@ import { NewSessionDialog } from "./studio/NewSessionDialog";
 import { NoModelNotice, modelProblem } from "./studio/NoModelNotice";
 import { SessionList } from "./studio/SessionList";
 import { SessionModelMenu } from "./studio/SessionModelMenu";
-import { deleteText, deletesWithoutConfirm, listDisagrees, listOutOfDate } from "./studio/sessionActions";
+import { deleteText, deletesWithoutConfirm, hasDetached, listDisagrees, listOutOfDate } from "./studio/sessionActions";
 import type { SessionFilter } from "./studio/SessionList";
 import { ChatView } from "./studio/ChatView";
 import { TerminalView } from "./studio/TerminalView";
@@ -63,9 +63,11 @@ export default function StudioPage() {
   }, [vmState, reloadList]);
 
   // The first list after a change can still show the old state (the guest
-  // is not scanned yet): load it again after 2 s, at most 5 times, instead
-  // of waiting for the 10 s poll.
-  const disagrees = list.data !== undefined && listDisagrees(vmState, list.data.cached ?? false, status?.storage.mode === "provider");
+  // is not scanned yet, or a detached terminal is not attached yet): load
+  // it again after 2 s, at most 5 times, instead of waiting for the 10 s
+  // poll.
+  const disagrees =
+    list.data !== undefined && listDisagrees(vmState, list.data.cached ?? false, status?.storage.mode === "provider", hasDetached(list.data.sessions));
   const listData = list.data;
   useEffect(() => {
     if (!disagrees || retries.current >= 5) {

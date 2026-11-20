@@ -11,16 +11,23 @@ export function listOutOfDate(previous: VMState, next: VMState): boolean {
 
 /**
  * Whether the session list disagrees with the VM state: a cached list while
- * the VM runs (the guest was not scanned yet after a start or resume), or,
- * in the provider storage mode, a fresh list while it does not (it was
- * scanned just before the pause or stop). The page then loads it again
- * soon, so the "Cached" label follows the VM state.
+ * the VM runs (the guest was not scanned yet after a start or resume), a
+ * list with a detached terminal (stored as running, not live) while the VM
+ * runs (the host attaches it again in a moment), or, in the provider
+ * storage mode, a fresh list while the VM does not run (it was scanned just
+ * before the pause or stop). The page then loads it again soon, so the
+ * "Cached" label and the sessions follow the VM state.
  */
-export function listDisagrees(vmState: VMState, cached: boolean, providerMode: boolean): boolean {
+export function listDisagrees(vmState: VMState, cached: boolean, providerMode: boolean, detached = false): boolean {
   if (vmState === "RUNNING") {
-    return cached;
+    return cached || detached;
   }
   return providerMode && !cached && (vmState === "PAUSED" || vmState === "STOPPED");
+}
+
+/** Whether a session of the list has a terminal that a pause or host restart detached. */
+export function hasDetached(list: Pick<Session, "status" | "live">[]): boolean {
+  return list.some((s) => s.status === "running" && !s.live);
 }
 
 /** An ended shell has no transcript, so deleting it loses nothing and needs no confirmation. */

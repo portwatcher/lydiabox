@@ -19,6 +19,7 @@ import { Banner, Button } from "../../components/ui";
 import { VmWakeButton } from "../../components/VmPower";
 import { useSystem } from "../../hooks/useSystem";
 import { harnessLabel, setupStepsOf } from "../../lib/harness";
+import { chatFooter } from "./chatFooter";
 import { historyFailed } from "./chatHistory";
 
 interface ChatViewProps {
@@ -42,7 +43,7 @@ const SEND_GRACE_MS = 4000;
  */
 export function ChatView({ session, models, onOpenTerminal, onResume, resumeBlocked, onAdopt }: ChatViewProps) {
   const toast = useToast();
-  const { vmState } = useSystem();
+  const { vmState, transition, pending } = useSystem();
   const { chat, timeline, socket, error } = useAgentEvents(session.id);
   const status = chat.status;
   const live = status ? status.live : session.live;
@@ -177,6 +178,7 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
   };
 
   const contextWindow = timeline.context?.window || models.find((m) => m.id === (timeline.model || session.model))?.contextWindow || 0;
+  const footer = chatFooter(session, live, vmState, transition !== null || pending !== null);
   const synced = status?.synced ?? false;
   const empty = timeline.turns.length === 0;
   const lastDesktop = lastTurn?.desktop ?? false;
@@ -232,7 +234,7 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
           <span className="flex-1" />
           {timeline.context ? <ContextMeter tokens={timeline.context.tokens} window={contextWindow} /> : null}
         </div>
-        {live ? (
+        {footer === "composer" ? (
           <PromptComposer
             ref={composer}
             value={draft}
@@ -243,13 +245,17 @@ export function ChatView({ session, models, onOpenTerminal, onResume, resumeBloc
             sending={sending || held}
             placeholder={empty ? "Describe a task" : "Reply to the agent"}
           />
-        ) : (
+        ) : footer === "continue" ? (
           <div className="flex justify-center">
             <Button variant="primary" icon={Play} onClick={onResume} disabled={resumeBlocked !== null} title={resumeBlocked ?? undefined}>
               Continue session
             </Button>
           </div>
-        )}
+        ) : footer === "wake" ? (
+          <div className="flex justify-center">
+            <VmWakeButton variant="primary" />
+          </div>
+        ) : null}
       </div>
     </div>
   );
