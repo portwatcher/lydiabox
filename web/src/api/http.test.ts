@@ -53,6 +53,45 @@ describe("HttpClient", () => {
     expect(availabilityOf(err)).toBe("unavailable");
   });
 
+  it("sends the request again while the VM still starts (503 with Retry-After)", async () => {
+    const starting = () =>
+      jsonResponse(503, { error: { code: "unavailable", message: "the VM is still starting" } }, { "Retry-After": "5" });
+    const fetch = vi
+      .fn<(input: string, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(starting())
+      .mockResolvedValueOnce(starting())
+      .mockResolvedValueOnce(jsonResponse(200, { entries: [] }));
+    const waits: number[] = [];
+    const client = new HttpClient(fetch, async (ms) => {
+      waits.push(ms);
+    });
+    await expect(client.get("/api/v1/fs/workspace/list")).resolves.toEqual({ entries: [] });
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(waits).toEqual([5000, 5000]);
+  });
+
+  it("does not send a 503 without Retry-After again", async () => {
+    const fetch = vi.fn(async () => jsonResponse(503, { error: { code: "unavailable", message: "the VM provider did not resume the machine in 10 minutes" } }));
+    const client = new HttpClient(fetch, async () => undefined);
+    const err = await client.get("/x").catch((e: unknown) => e);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(err).toMatchObject({ status: 503, code: "unavailable" });
+  });
+
+  it("stops the wait for a start when the request is aborted", async () => {
+    const fetch = vi.fn(async () =>
+      jsonResponse(503, { error: { code: "unavailable", message: "starting" } }, { "Retry-After": "5" }),
+    );
+    const controller = new AbortController();
+    const client = new HttpClient(fetch);
+    const pending = client.get("/x", undefined, controller.signal).catch((e: unknown) => e);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    controller.abort();
+    const err = await pending;
+    expect(err).toBeInstanceOf(DOMException);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("reads Retry-After on 429", async () => {
     const client = new HttpClient(async () =>
       jsonResponse(429, { error: { code: "rate_limited", message: "too many attempts" } }, { "Retry-After": "42" }),
