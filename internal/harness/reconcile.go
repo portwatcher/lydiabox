@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -52,7 +53,7 @@ func (m *Manager) attachStored(ctx context.Context, tenantID string, sm store.Se
 	id := SessionID(sm.Harness, sm.SessionID)
 	pty, err := attach(ctx, tenantID, x.PTYID)
 	if errors.Is(err, ErrNotFound) {
-		m.markExited(ctx, tenantID, sm, x, time.Now().UTC())
+		m.markExited(ctx, tenantID, sm, x, time.Now().UTC(), true)
 		return nil, err
 	}
 	if err != nil {
@@ -77,9 +78,61 @@ func (m *Manager) attachStored(ctx context.Context, tenantID string, sm store.Se
 	return ls.room, nil
 }
 
+// Room returns the terminal room of a session for a WebSocket client. A
+// terminal that survived a host restart is re-attached from the guest.
+func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) {
+	if ls := m.lookupLive(tenantID, id); ls != nil {
+		return ls.room, nil
+	}
+	harness, nativeID, err := SplitSessionID(id)
+	if err != nil {
+		return nil, err
+	}
+	metas, err := m.opts.Store.ListSessionMeta(ctx, tenantID, harness)
+	if err != nil {
+		return nil, err
+	}
+	for _, sm := range metas {
+		if sm.SessionID != nativeID {
+			continue
+		}
+		var x extra
+		_ = json.Unmarshal(sm.Extra, &x)
+		if sm.Status != StatusRunning || x.PTYID == "" {
+			if sm.Status == StatusExited && x.Lost {
+				return nil, errTerminalLost
+			}
+			break
+		}
+		if err := m.opts.Waker.EnsureRunning(ctx, tenantID); err != nil {
+			// A VM that the user stopped is not started for a reconnect.
+			return nil, fmt.Errorf("%w: wake VM: %w", ErrUnavailable, err)
+		}
+		room, err := m.attachStored(ctx, tenantID, sm, x, m.opts.Runner.AttachPTY)
+		if errors.Is(err, ErrNotFound) {
+			return nil, errTerminalLost
+		}
+		if err != nil {
+			break
+		}
+		return room, nil
+	}
+	if _, err := m.Get(ctx, tenantID, id); err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("%w: session %s has no running terminal; start it with POST /api/v1/sessions and resumeNativeId", ErrConflict, id)
+}
+
+// errTerminalLost answers a client that opens the terminal of a session
+// whose terminal ended with the VM. Room gives it before and after
+// Reconcile recorded the end, so the client always gets the same answer.
+var errTerminalLost = fmt.Errorf("%w: the terminal ended while the VM was paused or stopped", ErrConflict)
+
 // markExited records that the terminal of a stored session ended at end.
-func (m *Manager) markExited(ctx context.Context, tenantID string, sm store.SessionMeta, x extra, end time.Time) {
-	x.EndedAt = end.UTC()
+// lost is true when the terminal ended with the VM (a stop, or a pause
+// that did not keep the processes) and not by its own exit.
+func (m *Manager) markExited(ctx context.Context, tenantID string, sm store.SessionMeta, x extra, end time.Time, lost bool) {
+	x.EndedAt, x.Lost = end.UTC(), lost
 	raw, _ := json.Marshal(x)
 	sm.Status, sm.Extra = StatusExited, raw
 	if err := m.opts.Store.UpsertSessionMeta(context.WithoutCancel(ctx), tenantID, sm); err != nil {
@@ -145,9 +198,9 @@ func (m *Manager) Reconcile(ctx context.Context, tenantID string) error {
 				m.log.Warn("attach a guest terminal again", "session", SessionID(sm.Harness, sm.SessionID), "err", err)
 			}
 		case ok && !info.ExitedAt.IsZero():
-			m.markExited(ctx, tenantID, sm, x, info.ExitedAt)
+			m.markExited(ctx, tenantID, sm, x, info.ExitedAt, false)
 		default:
-			m.markExited(ctx, tenantID, sm, x, time.Now())
+			m.markExited(ctx, tenantID, sm, x, time.Now(), true)
 		}
 	}
 	m.mu.Lock()
@@ -193,7 +246,7 @@ func (m *Manager) Stopped(ctx context.Context, tenantID string) {
 		}
 		var x extra
 		_ = json.Unmarshal(sm.Extra, &x)
-		m.markExited(ctx, tenantID, sm, x, time.Now())
+		m.markExited(ctx, tenantID, sm, x, time.Now(), true)
 	}
 }
 

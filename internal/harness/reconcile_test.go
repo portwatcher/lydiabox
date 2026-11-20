@@ -3,6 +3,7 @@ package harness_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,10 @@ func TestReconcileAfterAHostRestart(t *testing.T) {
 	s := sessionByID(t, after, ended.ID)
 	if s.Status != harness.StatusExited || s.UpdatedAt.Sub(endAt).Abs() > time.Second {
 		t.Fatalf("ended terminal: status %s, time %s, want %s", s.Status, s.UpdatedAt, endAt)
+	}
+	// A terminal that ended by its own exit is not one that the VM ended.
+	if _, err := after.Room(ctx, tenant, ended.ID); !errors.Is(err, harness.ErrConflict) || !strings.Contains(err.Error(), "has no running terminal") {
+		t.Fatalf("room of a terminal that exited: %v", err)
 	}
 	if !orphan.Exited() || foreign.Exited() {
 		t.Fatalf("orphan ended %v, foreign ended %v; want true, false", orphan.Exited(), foreign.Exited())
@@ -176,6 +181,14 @@ func TestStoppedVMEndsDetachedSessions(t *testing.T) {
 	after.Stopped(ctx, tenant)
 	if got := sessionByID(t, after, s.ID); got.Status != harness.StatusExited {
 		t.Fatalf("after the stop: %+v", got)
+	}
+	// A client that opens the terminal gets the same answer as before the
+	// end was recorded: the VM ended the terminal. No terminal starts.
+	if _, err := after.Room(ctx, tenant, s.ID); !errors.Is(err, harness.ErrConflict) || !strings.Contains(err.Error(), "ended while the VM was paused or stopped") {
+		t.Fatalf("room of a terminal that the VM ended: %v", err)
+	}
+	if len(runner.PTYs()) != 1 {
+		t.Fatalf("%d ptys: the room started a terminal", len(runner.PTYs()))
 	}
 }
 

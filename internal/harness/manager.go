@@ -120,6 +120,8 @@ type extra struct {
 	StartedAt   time.Time `json:"startedAt,omitempty"`
 	// EndedAt is when the terminal ended (exited sessions).
 	EndedAt time.Time `json:"endedAt,omitzero"`
+	// Lost reports that the terminal ended with the VM (markExited).
+	Lost bool `json:"lost,omitempty"`
 	// Engine is EngineACP for a session that runs through the bridge.
 	Engine string `json:"engine,omitempty"`
 }
@@ -528,48 +530,6 @@ func (m *Manager) Delete(ctx context.Context, tenantID, id string, purge bool) e
 		}
 	}
 	return nil
-}
-
-// Room returns the terminal room of a session for a WebSocket client. A
-// terminal that survived a host restart is re-attached from the guest.
-func (m *Manager) Room(ctx context.Context, tenantID, id string) (*Room, error) {
-	if ls := m.lookupLive(tenantID, id); ls != nil {
-		return ls.room, nil
-	}
-	harness, nativeID, err := SplitSessionID(id)
-	if err != nil {
-		return nil, err
-	}
-	metas, err := m.opts.Store.ListSessionMeta(ctx, tenantID, harness)
-	if err != nil {
-		return nil, err
-	}
-	for _, sm := range metas {
-		if sm.SessionID != nativeID || sm.Status != StatusRunning {
-			continue
-		}
-		var x extra
-		_ = json.Unmarshal(sm.Extra, &x)
-		if x.PTYID == "" {
-			break
-		}
-		if err := m.opts.Waker.EnsureRunning(ctx, tenantID); err != nil {
-			// A VM that the user stopped is not started for a reconnect.
-			return nil, fmt.Errorf("%w: wake VM: %w", ErrUnavailable, err)
-		}
-		room, err := m.attachStored(ctx, tenantID, sm, x, m.opts.Runner.AttachPTY)
-		if errors.Is(err, ErrNotFound) {
-			return nil, fmt.Errorf("%w: the terminal ended while the VM was paused or stopped", ErrConflict)
-		}
-		if err != nil {
-			break
-		}
-		return room, nil
-	}
-	if _, err := m.Get(ctx, tenantID, id); err != nil {
-		return nil, err
-	}
-	return nil, fmt.Errorf("%w: session %s has no running terminal; start it with POST /api/v1/sessions and resumeNativeId", ErrConflict, id)
 }
 
 // roomVM reports the state of the VM of tenantID to a room, as far as the
