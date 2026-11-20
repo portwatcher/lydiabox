@@ -375,12 +375,21 @@ func (c *Controller) stop(ctx context.Context, tid string, t *tenantVM, force bo
 		t.stopping = false
 		c.mu.Unlock()
 	}()
+	guest := true
 	if st == StatePaused && !force {
 		if err := c.opts.Driver.Resume(ctx, tid); err != nil {
-			return fmt.Errorf("vmm: resume before stop: %w", err)
+			if !c.caps.Remote {
+				return fmt.Errorf("vmm: resume before stop: %w", err)
+			}
+			// The guest of a remote machine does not answer (for example
+			// after a failed boot), and the resume can have left the
+			// machine running at the provider. The stop continues without
+			// the guest sync: the provider shuts the machine down.
+			c.opts.Logger.Warn("resume before stop failed; the stop continues without a guest sync", "tenant", tid, "err", err)
+			guest = false
 		}
 	}
-	if !force || st == StateRunning {
+	if guest && (!force || st == StateRunning) {
 		if err := c.flush(ctx, tid); err != nil && !force {
 			return fmt.Errorf("%w: sync guest filesystems before stop: %v (retry with force)", ErrUnavailable, err)
 		}

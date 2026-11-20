@@ -137,6 +137,66 @@ func TestFailedReadyPausesARemoteMachine(t *testing.T) {
 	}
 }
 
+// noGuest is a machine whose resume runs it but cannot reach its guest.
+type noGuest struct{ remoteDriver }
+
+func (d *noGuest) Resume(context.Context, string) error {
+	d.record("resume")
+	d.set(StateRunning)
+	return errors.New("no guest link")
+}
+
+// localNoGuest is the same failure on a local driver.
+type localNoGuest struct{ fakeDriver }
+
+func (d *localNoGuest) Resume(context.Context, string) error {
+	d.record("resume")
+	return errors.New("resume failed")
+}
+
+// A stop of a paused remote machine whose guest cannot be reached (the
+// state after a failed boot) still stops the machine: the resume can have
+// left it running at the provider. A local VM keeps the error.
+func TestStopOfARemoteMachineWithoutAGuest(t *testing.T) {
+	flushed := 0
+	d := &noGuest{}
+	d.provider = time.Second
+	d.set(StatePaused)
+	c, err := NewController(Options{
+		Driver: d, Logger: slog.New(slog.DiscardHandler),
+		Spec:  func(context.Context, string) (Spec, error) { return Spec{CPUs: 1}, nil },
+		Flush: func(context.Context, string) error { flushed++; return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Refresh(context.Background(), "t1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Stop(context.Background(), "t1", false); err != nil {
+		t.Fatalf("stop without a guest: %v", err)
+	}
+	if calls := d.Calls(); calls != "resume,shutdown" {
+		t.Fatalf("remote calls %q, want resume,shutdown", calls)
+	}
+	if st := c.Status("t1"); st.State != string(StateStopped) || st.LastError != "" || flushed != 0 {
+		t.Fatalf("status %+v, %d guest syncs; want STOPPED, no error, no sync", st, flushed)
+	}
+
+	local := &localNoGuest{}
+	local.set(StatePaused)
+	lc := newRemoteCtl(t, local, time.Second, nil)
+	if err := lc.Refresh(context.Background(), "t1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := lc.Stop(context.Background(), "t1", false); err == nil || !strings.Contains(err.Error(), "resume before stop") {
+		t.Fatalf("local stop: %v", err)
+	}
+	if calls := local.Calls(); calls != "resume" {
+		t.Fatalf("local calls %q, want resume", calls)
+	}
+}
+
 // A caller with a shorter bound than the boot gets ErrStarting, its
 // request is marked for Retry-After, and the boot continues.
 func TestShortCallerGetsErrStarting(t *testing.T) {
