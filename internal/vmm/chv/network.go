@@ -48,7 +48,25 @@ func NftScript(nw Network, webrtcPort int) string {
 	fmt.Fprintf(&b, "\tchain input {\n\t\ttype filter hook input priority filter; policy accept;\n")
 	fmt.Fprintf(&b, "\t\tiifname %q ct state established,related accept\n", nw.Tap)
 	fmt.Fprintf(&b, "\t\tiifname %q drop\n\t}\n}\n", nw.Tap)
+	// The guest network is IPv4 only. Drop all IPv6 from the TAP, else
+	// the guest reaches host services over link-local addresses.
+	fmt.Fprintf(&b, "table ip6 %s {\n", t)
+	fmt.Fprintf(&b, "\tchain forward {\n\t\ttype filter hook forward priority filter; policy accept;\n\t\tiifname %q drop\n\t}\n", nw.Tap)
+	fmt.Fprintf(&b, "\tchain input {\n\t\ttype filter hook input priority filter; policy accept;\n\t\tiifname %q drop\n\t}\n}\n", nw.Tap)
 	return b.String()
+}
+
+// Ip6tablesRules returns the ip6tables rules that drop all IPv6 traffic
+// from the guest ("-I" to add, "-D" to delete).
+func Ip6tablesRules(nw Network, add bool) [][]string {
+	op := "-I"
+	if !add {
+		op = "-D"
+	}
+	return [][]string{
+		{op, "INPUT", "-i", nw.Tap, "-j", "DROP"},
+		{op, "FORWARD", "-i", nw.Tap, "-j", "DROP"},
+	}
 }
 
 // IptablesRules returns the equivalent iptables rules as argument lists
@@ -61,7 +79,8 @@ func IptablesRules(nw Network, webrtcPort int, add bool) [][]string {
 	tap := nw.Tap
 	rules := [][]string{
 		{"-t", "nat", app, "POSTROUTING", "-s", nw.Subnet(), "!", "-o", tap, "-j", "MASQUERADE"},
-		{app, "INPUT", "-i", tap, "-j", "DROP"},
+		// Inserted, so host ACCEPT rules (ufw) cannot come first.
+		{ins, "INPUT", "-i", tap, "-j", "DROP"},
 		{ins, "INPUT", "-i", tap, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"},
 	}
 	for _, r := range privateRanges {
@@ -131,6 +150,15 @@ func (f Firewall) Setup(ctx context.Context, nw Network, webrtcPort int) error {
 			return fmt.Errorf("chv: install iptables rules: %w", err)
 		}
 	}
+	ip6t, err := f.LookPath("ip6tables")
+	if err != nil {
+		return errors.New("chv: ip6tables is not installed; it is needed to keep the guest off host IPv6 addresses")
+	}
+	for _, r := range Ip6tablesRules(nw, true) {
+		if err := f.Runner.Run(ctx, storage.Command{Path: ip6t, Args: append([]string{"-w"}, r...)}); err != nil {
+			return fmt.Errorf("chv: install ip6tables rules: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -143,6 +171,8 @@ func (f Firewall) Teardown(ctx context.Context, nw Network, webrtcPort int) erro
 				_ = f.Runner.Run(ctx, storage.Command{Path: ipt, Args: append([]string{"-w"}, r...)})
 			}
 		}
+		// The ip6 table is missing on hosts set up by older versions.
+		_ = f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"delete", "table", "ip6", TableName(nw)}})
 		err := f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"delete", "table", "ip", TableName(nw)}})
 		if err != nil && !strings.Contains(err.Error(), "No such file") {
 			return err
@@ -152,6 +182,11 @@ func (f Firewall) Teardown(ctx context.Context, nw Network, webrtcPort int) erro
 	ipt, err := f.LookPath("iptables")
 	if err != nil {
 		return nil
+	}
+	if ip6t, err := f.LookPath("ip6tables"); err == nil {
+		for _, r := range Ip6tablesRules(nw, false) {
+			_ = f.Runner.Run(ctx, storage.Command{Path: ip6t, Args: append([]string{"-w"}, r...)})
+		}
 	}
 	var errs []error
 	for _, r := range IptablesRules(nw, webrtcPort, false) {

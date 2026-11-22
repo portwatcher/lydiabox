@@ -166,7 +166,7 @@ Requirements:
 
 - `/dev/kvm` readable and writable by the user that runs `lydiabox`;
 - root (or `CAP_NET_ADMIN`) for the TAP device and NAT rules;
-- `nft` (or `iptables`), `ip`, and `sysctl` for networking;
+- `nft` (or `iptables` and `ip6tables`), `ip`, and `sysctl` for networking;
 - `mkfs.ext4` (e2fsprogs) for the persistent root image and the guest
   binary image;
 - guest images: `vmlinux`, `initramfs.cpio.gz`, and `rootfs.squashfs` in
