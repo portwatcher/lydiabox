@@ -149,6 +149,10 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 		VMStatus:      api.StaticVMStatus{State: api.VMStopped, Driver: driver},
 		SkipBootstrap: skipBootstrap,
 	}
+	if cfg.Owner.Enabled() {
+		d.Auth.EnableOwnerAssertion(cfg.Owner.Key, cfg.TenantID, cfg.Owner.Email, cfg.Owner.LogoutURL, log)
+		log.Info("the owner assertion login of the control plane is on", "tenant", cfg.TenantID)
+	}
 	var comps []*component
 	for _, wire := range wirers {
 		c, err := wire(ctx, d)

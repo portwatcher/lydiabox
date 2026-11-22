@@ -65,11 +65,20 @@ export function App() {
   }, [state]);
 
   const accessSignedIn = state.kind === "signedIn" && state.session.method === "access";
+  const ownerLogoutUrl =
+    state.kind === "signedIn" && state.session.method === "owner" && state.session.logoutUrl?.startsWith("https://")
+      ? state.session.logoutUrl
+      : null;
   const logout = useCallback(() => {
     auth
       .logout()
       .catch(() => undefined)
       .finally(() => {
+        if (ownerLogoutUrl) {
+          // The hosted control plane ends its own session.
+          window.location.assign(ownerLogoutUrl);
+          return;
+        }
         if (accessSignedIn) {
           // The admin cookie is gone; Cloudflare Access ends its own session.
           window.location.assign(accessLogoutPath);
@@ -77,7 +86,7 @@ export function App() {
         }
         setState({ kind: "signedOut" });
       });
-  }, [accessSignedIn]);
+  }, [accessSignedIn, ownerLogoutUrl]);
 
   switch (state.kind) {
     case "checking":

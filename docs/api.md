@@ -170,13 +170,41 @@ Response `200`:
 { "authenticated": true, "method": "access", "email": "me@example.com", "access": true }
 ```
 
-- `method` is `token` (cookie, Bearer, or Basic) or `access` (section 2.1).
-  It is omitted when `authenticated` is false.
+- `method` is `token` (cookie, Bearer, or Basic), `access` (section 2.1),
+  or `owner` (section 2.2). It is omitted when `authenticated` is false.
+- `logoutUrl` (only with `owner`) is the sign-out address of the control
+  plane; the UI opens it after its own logout.
 - `email` is the Cloudflare Access email. When `authenticated` is false, an
   `email` means a valid Access login whose email is not on the allow list.
 - `access` is true when Cloudflare Access login is on.
 
 The UI calls this on load to decide between the login screen and the app.
+
+### 2.2 Owner assertion of a hosted control plane — implemented
+
+A cell of LydiaBox Cloud in its OpenID Connect mode gets no Access token.
+The control plane verifies the owner itself and adds the header
+`X-Lydiabox-Owner-Assertion` to each request that it forwards (it removes
+the header from every client request). Settings, only in cell mode:
+
+| Setting | Use |
+| :--- | :--- |
+| `LYDIABOX_OWNER_ASSERTION_KEY_FILE` (or `_KEY`) | 32-byte hex HMAC key of this cell |
+| `LYDIABOX_OWNER_EMAIL` | The one owner email |
+| `LYDIABOX_OWNER_LOGOUT_URL` | `https` sign-out address for the UI (optional) |
+
+The key and the email are set together; without `LYDIABOX_CELL_MODE` the
+settings stop the start. The value is `v1.<payload>.<mac>`: `payload` is
+base64url JSON `{"aud":"lydiabox-cell","tid","email","iat","exp"}`, and
+`mac` is base64url HMAC-SHA256 of `"lydiabox owner assertion v1." +
+payload`. The cell accepts it as the admin only with a valid MAC
+(constant-time), `aud` `lydiabox-cell`, `tid` equal to
+`LYDIABOX_TENANT_ID`, `email` equal to the owner email, `exp` in the
+future, `iat` at most 5 seconds in the future, and a lifetime of at most
+60 seconds. Every other value, and two headers, authenticate nothing.
+Writes and WebSocket upgrades need the same-origin check as a cookie. The
+Access login (section 2.1) and the admin token keep working; the
+self-hosted mode does not use this login.
 
 ## 3. Health and status
 

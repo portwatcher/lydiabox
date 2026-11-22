@@ -283,10 +283,10 @@ The cell listens only on a Unix socket in its cell host pod. Thus only
 the cell host, and through it `lbx-router` and `lbx-control`, reach it.
 `lbx-control` uses the service token of section 4.2 for service calls.
 
-Later: when login moves from Access to a hosted identity provider
-(decision 9), `lbx-router` signs a short-lived JWT, and the cell verifies
-it with the same verifier ([internal/cloudflare/accessjwt](../internal/cloudflare/accessjwt))
-and a configured issuer, audience, and key set.
+When the control plane signs users in itself (LydiaBox Cloud in its
+OpenID Connect mode), it sends a short-lived owner assertion with an HMAC
+key of the cell in place of the Access JWT, and the cell verifies it
+([api.md](api.md#22-owner-assertion-of-a-hosted-control-plane--implemented)).
 
 ### 4.5 Stop
 

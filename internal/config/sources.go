@@ -224,6 +224,7 @@ func applyEnv(cfg *Config, env map[string]string, home string) error {
 	errs = append(errs, applyWebRTCEnv(&cfg.WebRTC, env)...)
 	applyRemoteEnv(cfg, env)
 	errs = append(errs, applyCellEnv(cfg, env)...)
+	errs = append(errs, applyOwnerEnv(cfg, env)...)
 	applyStorageEnv(cfg, env)
 	errs = append(errs, applyInstaboxEnv(&cfg.Instabox, env)...)
 	if len(errs) > 0 {

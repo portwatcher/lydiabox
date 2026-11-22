@@ -127,6 +127,7 @@ func (c *Config) ValidateServe() error {
 		errs = append(errs, c.validateInstabox()...)
 	}
 	errs = append(errs, c.validateCellServe()...)
+	errs = append(errs, c.validateOwner()...)
 	if c.S3.Endpoint != "" {
 		if err := checkHTTPURL(c.S3.Endpoint); err != nil {
 			errs = append(errs, fmt.Errorf("LYDIABOX_S3_ENDPOINT: %w", err))

@@ -78,6 +78,8 @@ type Config struct {
 	GuestNativeSet *bool
 	// Instabox holds the instabox VM driver settings (instabox.go).
 	Instabox InstaboxConfig
+	// Owner is the owner assertion login of a cell (owner.go).
+	Owner OwnerAssertionConfig
 
 	// AuthTokenGenerated and MasterKeyGenerated report whether EnsureSecrets
 	// created the secret during this run (the CLI prints new tokens once).

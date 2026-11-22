@@ -23,13 +23,16 @@ const BasicUser = "lydiabox"
 
 // Authenticator validates the admin token presented as a Bearer header, a
 // session cookie, or Basic Auth (user "lydiabox"), and, when EnableAccess
-// was called, a Cloudflare Access token (access_auth.go).
+// was called, a Cloudflare Access token (access_auth.go), and, when
+// EnableOwnerAssertion was called, the owner assertion of the control
+// plane of a hosted cell (owner_auth.go).
 type Authenticator struct {
 	tokenSum [32]byte
 	session  string
 	limiter  *failureLimiter
 	now      func() time.Time
 	access   *accessLogin
+	owner    *ownerLogin
 }
 
 // NewAuthenticator derives the session cookie value from token with
@@ -60,6 +63,9 @@ const (
 	credCookie
 	// credAccess is a Cloudflare Access token of an allowed email.
 	credAccess
+	// credOwner is an owner assertion of the control plane of a hosted
+	// cell (owner_auth.go).
+	credOwner
 )
 
 // authenticate reports which credential authenticated the request and, for
@@ -74,6 +80,9 @@ func (a *Authenticator) authenticate(r *http.Request) (credentialKind, string) {
 			return credBasic, ""
 		}
 		return credNone, ""
+	}
+	if email := a.ownerEmail(r); email != "" {
+		return credOwner, email
 	}
 	if email := a.accessEmail(r); email != "" {
 		return credAccess, email
@@ -99,9 +108,10 @@ func (a *Authenticator) Require(h http.Handler, basicChallenge bool) http.Handle
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := a.clientIP(r)
 		kind, _ := a.authenticate(r)
-		// A valid session cookie or Access token cannot be guessed, so
-		// failed attempts of other clients must not lock it out.
-		guessable := kind != credCookie && kind != credAccess
+		// A valid session cookie, Access token, or owner assertion cannot
+		// be guessed, so failed attempts of other clients must not lock
+		// it out.
+		guessable := kind != credCookie && kind != credAccess && kind != credOwner
 		if guessable && a.limiter.blocked(ip, a.now()) {
 			w.Header().Set("Retry-After", "60")
 			httpx.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many failed authentication attempts")

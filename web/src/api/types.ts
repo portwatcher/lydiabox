@@ -21,7 +21,7 @@ export interface ErrorEnvelope {
 }
 
 // Section 2: authentication.
-export type AuthMethod = "token" | "access";
+export type AuthMethod = "token" | "access" | "owner";
 
 export interface AuthState {
   authenticated: boolean;
@@ -31,6 +31,8 @@ export interface AuthState {
   email?: string;
   /** True when Cloudflare Access login is on. */
   access?: boolean;
+  /** Where to sign out when method is "owner" (the hosted control plane). */
+  logoutUrl?: string;
 }
 
 // Section 3: health and status.

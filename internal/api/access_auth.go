@@ -101,7 +101,7 @@ func (a *Authenticator) clientIP(r *http.Request) string {
 		}
 		return ip
 	}
-	if a.access == nil || !parsed.IsLoopback() {
+	if (a.access == nil && a.owner == nil) || !parsed.IsLoopback() {
 		return ip
 	}
 	if cf := net.ParseIP(strings.TrimSpace(r.Header.Get("Cf-Connecting-Ip"))); cf != nil {
@@ -114,6 +114,9 @@ func (a *Authenticator) clientIP(r *http.Request) string {
 const (
 	MethodToken  = "token"
 	MethodAccess = "access"
+	// MethodOwner is the owner assertion of the control plane of a hosted
+	// cell.
+	MethodOwner = "owner"
 )
 
 // SessionState is the body of GET /api/v1/auth/session.
@@ -127,6 +130,9 @@ type SessionState struct {
 	Email string `json:"email,omitempty"`
 	// Access reports that Cloudflare Access login is on.
 	Access bool `json:"access"`
+	// LogoutURL is where the workstation signs out with MethodOwner (the
+	// control plane ends the session).
+	LogoutURL string `json:"logoutUrl,omitempty"`
 }
 
 func (a *Authenticator) sessionStatus(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +141,8 @@ func (a *Authenticator) sessionStatus(w http.ResponseWriter, r *http.Request) {
 	switch kind {
 	case credAccess:
 		st.Method, st.Email = MethodAccess, email
+	case credOwner:
+		st.Method, st.Email, st.LogoutURL = MethodOwner, email, a.owner.logoutURL
 	case credNone:
 		if email, _ := a.accessIdentity(r); email != "" {
 			st.Email = email
