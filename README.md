@@ -340,7 +340,11 @@ gets a picture soon. The guest log has one line when a viewer joins, when
 keyframes that it sent (`level=WARN` when it sent nothing).
 Minted credentials (Cloudflare, `LYDIABOX_TURN_SECRET`) are renewed before
 `LYDIABOX_TURN_TTL` ends. With `chv`, the guest cannot reach private
-networks or the host, so the TURN server needs a public address.
+networks or the host, so the TURN server needs a public address. The
+guest also gets the TURN credentials: a self-run TURN server must refuse
+relays to private, loopback, and link-local addresses (coturn
+`denied-peer-ip`), and static credentials (`LYDIABOX_TURN_USERNAME`) stay
+valid for the guest after the viewer closes.
 [docs/turn-manual-test.md](docs/turn-manual-test.md) is the check with a
 real TURN service.
 

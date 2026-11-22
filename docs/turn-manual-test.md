@@ -74,7 +74,13 @@ Do the steps in the order given. Record pass or fail for each line.
 ## 5. Self-run coturn (optional)
 
 1. Run coturn on a host with a public address with
-   `use-auth-secret` and `static-auth-secret=<secret>`.
+   `use-auth-secret` and `static-auth-secret=<secret>`. The guest gets
+   TURN credentials too, so do not let it relay to private networks: set
+   `no-loopback-peers`, `no-multicast-peers`, and `denied-peer-ip` for
+   `10.0.0.0-10.255.255.255`, `172.16.0.0-172.31.255.255`,
+   `192.168.0.0-192.168.255.255`, `169.254.0.0-169.254.255.255`,
+   `100.64.0.0-100.127.255.255`, `fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff`,
+   and `fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff`.
 2. Start `lydiabox up` with `LYDIABOX_TURN_URLS=turn:<host>:3478?transport=udp,turns:<host>:5349?transport=tcp`,
    `LYDIABOX_TURN_SECRET=<secret>`, and `LYDIABOX_WEBRTC_RELAY_ONLY=true`.
 3. Repeat section 2. Expect coturn log lines for two allocations per
