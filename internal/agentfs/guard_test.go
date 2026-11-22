@@ -62,3 +62,41 @@ func TestGuardKeepsCredentialFilesFromTheHost(t *testing.T) {
 		t.Errorf("list: %d %v", len(kids), err)
 	}
 }
+
+// A directory link (alias -> .codex) must not open a way around the guard,
+// and a file of a guarded directory is guarded except the allowed files.
+func TestGuardRefusesLinkedParentsAndGuardedDirs(t *testing.T) {
+	d := dirs{home: t.TempDir(), ws: t.TempDir()}
+	for rel, data := range map[string]string{".codex/auth.json": "secret", ".gemini/app/token": "secret", ".gemini/app/settings.json": "{}"} {
+		p := filepath.Join(d.home, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(".codex", filepath.Join(d.home, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	g := agentfs.Guard(agentfs.NewLocal(d, agentfs.LocalOptions{}), agentfs.CredentialPaths{
+		Files: []string{".codex/auth.json"}, Dirs: []string{".gemini/app"}, Allow: []string{".gemini/app/settings.json"},
+	})
+	ctx := context.Background()
+	const tid = "default"
+	if _, err := g.ReadFile(ctx, tid, agentfs.RootHome, "alias/auth.json"); !errors.Is(err, agentfs.ErrCredential) {
+		t.Errorf("read through a linked parent: %v, want ErrCredential", err)
+	}
+	if err := g.WriteFile(ctx, tid, agentfs.RootHome, "alias/auth.json", []byte("x"), 0o600); !errors.Is(err, agentfs.ErrCredential) {
+		t.Errorf("write through a linked parent: %v, want ErrCredential", err)
+	}
+	if _, err := g.Rename(ctx, tid, agentfs.RootHome, "alias/auth.json", "out.json", false); !errors.Is(err, agentfs.ErrCredential) {
+		t.Errorf("rename through a linked parent: %v, want ErrCredential", err)
+	}
+	if _, err := g.ReadFile(ctx, tid, agentfs.RootHome, ".gemini/app/token"); !errors.Is(err, agentfs.ErrCredential) {
+		t.Errorf("read in a guarded dir: %v, want ErrCredential", err)
+	}
+	if b, err := g.ReadFile(ctx, tid, agentfs.RootHome, ".gemini/app/settings.json"); err != nil || string(b) != "{}" {
+		t.Errorf("allowed file: %q %v", b, err)
+	}
+}

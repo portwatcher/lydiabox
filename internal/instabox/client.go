@@ -99,8 +99,14 @@ func NewClient(opts Options) (*Client, error) {
 	if base == "" {
 		base = DefaultBaseURL
 	}
-	if u, err := url.Parse(base); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return nil, fmt.Errorf("instabox: invalid base URL %q", opts.BaseURL)
+	}
+	// The API key must not go over plain HTTP, except to a local test
+	// server.
+	if u.Scheme == "http" && !loopbackHost(u.Hostname()) {
+		return nil, fmt.Errorf("instabox: base URL %q must use https", opts.BaseURL)
 	}
 	c := &Client{
 		base:       strings.TrimSuffix(base, "/v1"),
@@ -116,6 +122,7 @@ func NewClient(opts Options) (*Client, error) {
 	if c.http == nil {
 		c.http = &http.Client{}
 	}
+	c.http = keepKeyOnRedirect(c.http)
 	if c.maxRetries == 0 {
 		c.maxRetries = DefaultMaxRetries
 	}

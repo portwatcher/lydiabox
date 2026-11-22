@@ -53,7 +53,7 @@ func TestSetupScreen(t *testing.T) {
 		"Quick safety check: Is this a project you created or one you trust?\r\n ❯ 1. Yes, I trust this folder": "Yes, I trust this folder",
 		"I finished the change. The tests pass.\r\n> ":                                                          "",
 		agyColorScheme: "Choose your color scheme:",
-		// the test machine: cursor moves put the preview box on the title line.
+		// a test tenant: cursor moves put the preview box on the title line.
 		"Choose your color scheme:\x1b[40C\x1b[1m╭ Preview ╮\x1b[0m\x1b[2C you: add a greeting function": "Choose your color scheme:",
 		"\x1b[1mWelcome to Antigravity CLI!\x1b[0m\r\n":                                                  "Welcome to Antigravity CLI!",
 		"\x1b[2J\x1b[HPick a region\r\n> europe\r\n\x1b[2m↑/↓ Navigate · enter Confirm\x1b[0m":           "↑/↓ Navigate · enter Confirm",

@@ -33,8 +33,16 @@ var CredentialFiles = []string{
 // file in guest-native mode.
 var CredentialDirs = []string{
 	".config/gcloud",
-	".gemini/antigravity-cli/auth",
+	// The Antigravity CLI keeps its sign-in in the system keyring, and in
+	// its app data directory when no keyring runs (the VM has none).
+	".gemini/antigravity-cli",
+	// Linux Secret Service (gnome-keyring) files.
+	".local/share/keyrings",
 }
+
+// CredentialAllow are files below CredentialDirs that hold no credential
+// and that the native wirers edit.
+var CredentialAllow = []string{antigravityCLISettings}
 
 // nativeModel returns model when it can be a native model ID of a harness
 // that names models without a provider ("opus", "gpt-6"); a gateway model

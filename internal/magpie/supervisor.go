@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/secretmask"
 	"github.com/lydiabox/lydiabox/internal/storage"
 )
 
@@ -467,7 +468,7 @@ type logWriter struct {
 }
 
 func (w logWriter) Write(p []byte) (int, error) {
-	w.log.Log(context.Background(), w.level, "magpie output", "line", string(trimNewline(p)))
+	w.log.Log(context.Background(), w.level, "magpie output", "line", secretmask.String(string(trimNewline(p))))
 	return len(p), nil
 }
 

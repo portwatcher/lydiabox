@@ -27,6 +27,7 @@ func credentialPaths() agentfs.CredentialPaths {
 		Files: wire.CredentialFiles,
 		Names: []string{".credentials.json", "oauth_creds.json"},
 		Dirs:  wire.CredentialDirs,
+		Allow: wire.CredentialAllow,
 	}
 }
 

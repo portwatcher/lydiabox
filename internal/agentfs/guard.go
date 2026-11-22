@@ -17,11 +17,12 @@ var ErrCredential = fmt.Errorf("%w: a sign-in or key file of a harness stays in 
 // CredentialPaths names the files that the host must not read or write.
 // Files are relative to the home root; Names are base names that are
 // refused in every root and directory; Dirs are home directories whose
-// whole tree is refused.
+// whole tree is refused, except the files in Allow (home-relative).
 type CredentialPaths struct {
 	Files []string
 	Names []string
 	Dirs  []string
+	Allow []string
 }
 
 // Guard returns fsys with the reads and writes of the credential files
@@ -48,6 +49,11 @@ func (g *guardFS) denied(root Root, rel string) bool {
 	if root != RootHome {
 		return false
 	}
+	for _, f := range g.c.Allow {
+		if p == f {
+			return false
+		}
+	}
 	for _, f := range g.c.Files {
 		if p == f {
 			return true
@@ -70,6 +76,23 @@ func (g *guardFS) checkRead(ctx context.Context, tenantID string, root Root, rel
 	if err == nil && e.Type == "symlink" {
 		return fmt.Errorf("%s is a symbolic link: %w", rel, ErrCredential)
 	}
+	return g.checkParents(ctx, tenantID, root, rel)
+}
+
+// checkParents refuses a path below a directory link in the home root:
+// the name check above sees only the link name (alias/auth.json), not
+// the credential file that the link leads to.
+func (g *guardFS) checkParents(ctx context.Context, tenantID string, root Root, rel string) error {
+	if root != RootHome {
+		return nil
+	}
+	p := path.Clean(filepath.ToSlash(rel))
+	for dir := path.Dir(p); dir != "." && dir != "/"; dir = path.Dir(dir) {
+		e, err := g.FS.Lstat(ctx, tenantID, root, dir)
+		if err == nil && e.Type == "symlink" {
+			return fmt.Errorf("%s is below the symbolic link %s: %w", rel, dir, ErrCredential)
+		}
+	}
 	return nil
 }
 
@@ -91,12 +114,18 @@ func (g *guardFS) Write(ctx context.Context, tenantID string, root Root, rel str
 	if g.denied(root, rel) {
 		return WriteResult{}, fmt.Errorf("%s: %w", rel, ErrCredential)
 	}
+	if err := g.checkParents(ctx, tenantID, root, rel); err != nil {
+		return WriteResult{}, err
+	}
 	return g.FS.Write(ctx, tenantID, root, rel, src, o)
 }
 
 func (g *guardFS) WriteFile(ctx context.Context, tenantID string, root Root, rel string, data []byte, perm fs.FileMode) error {
 	if g.denied(root, rel) {
 		return fmt.Errorf("%s: %w", rel, ErrCredential)
+	}
+	if err := g.checkParents(ctx, tenantID, root, rel); err != nil {
+		return err
 	}
 	return g.FS.WriteFile(ctx, tenantID, root, rel, data, perm)
 }
@@ -122,6 +151,11 @@ func (g *guardFS) holdsCredential(root Root, rel string) bool {
 func (g *guardFS) Rename(ctx context.Context, tenantID string, root Root, from, to string, overwrite bool) (Entry, error) {
 	if g.denied(root, from) || g.denied(root, to) || g.holdsCredential(root, from) || g.holdsCredential(root, to) {
 		return Entry{}, fmt.Errorf("%s: %w", from, ErrCredential)
+	}
+	for _, p := range []string{from, to} {
+		if err := g.checkParents(ctx, tenantID, root, p); err != nil {
+			return Entry{}, err
+		}
 	}
 	return g.FS.Rename(ctx, tenantID, root, from, to, overwrite)
 }

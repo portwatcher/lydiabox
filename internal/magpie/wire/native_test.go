@@ -17,6 +17,11 @@ type guardedHome struct {
 
 func isCredential(rel string) bool {
 	rel = path.Clean(rel)
+	for _, f := range CredentialAllow {
+		if rel == f {
+			return false
+		}
+	}
 	for _, f := range CredentialFiles {
 		if rel == f {
 			return true
