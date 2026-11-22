@@ -19,7 +19,7 @@ func TestPTYEnvironmentIsDefined(t *testing.T) {
 	t.Cleanup(func() { daemonEnviron = old })
 	daemonEnviron = func() []string {
 		return []string{
-			"HOME=/home/agent", "USER=alice", "LOGNAME=alice", "SHELL=/bin/bash", "PATH=" + os.Getenv("PATH"),
+			"HOME=/home/agent", "USER=machineuser", "LOGNAME=machineuser", "SHELL=/bin/bash", "PATH=" + os.Getenv("PATH"),
 			"LC_ALL=C.UTF-8", "TZ=Etc/UTC", "DISPLAY=:0", "XDG_RUNTIME_DIR=/run/user/1000",
 			"INVOCATION_ID=0123", "JOURNAL_STREAM=8:1", "SYSTEMD_EXEC_PID=7", "MEMORY_PRESSURE_WATCH=/sys/x",
 			"SUPERVISOR_ENABLED=1", "SUPERVISOR_SERVER_URL=unix:///run/supervisor.sock", "DEBIAN_FRONTEND=noninteractive",
@@ -48,7 +48,7 @@ func TestPTYEnvironmentIsDefined(t *testing.T) {
 		}
 	}
 	for k, want := range map[string]string{
-		"HOME": "/home/agent", "USER": "alice", "LOGNAME": "alice", "SHELL": "/bin/bash", "LC_ALL": "C.UTF-8",
+		"HOME": "/home/agent", "USER": "machineuser", "LOGNAME": "machineuser", "SHELL": "/bin/bash", "LC_ALL": "C.UTF-8",
 		"LANG": "C.UTF-8", "TZ": "Etc/UTC", "DISPLAY": ":0", "XDG_RUNTIME_DIR": "/run/user/1000",
 		"ANTHROPIC_BASE_URL": GatewayURL, "OPENAI_BASE_URL": GatewayURL, "GEMINI_API_KEY": "lydiabox-local",
 		"LYDIABOX_HOST_ADDR": "unix:///run/lydiabox/host-9001.sock", "LYDIABOX_PTY_ID": "env", "TERM": "xterm-256color",
