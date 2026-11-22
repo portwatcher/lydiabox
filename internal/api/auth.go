@@ -98,12 +98,15 @@ func (a *Authenticator) Authenticated(r *http.Request) bool {
 func (a *Authenticator) Require(h http.Handler, basicChallenge bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := a.clientIP(r)
-		if a.limiter.blocked(ip, a.now()) {
+		kind, _ := a.authenticate(r)
+		// A valid session cookie or Access token cannot be guessed, so
+		// failed attempts of other clients must not lock it out.
+		guessable := kind != credCookie && kind != credAccess
+		if guessable && a.limiter.blocked(ip, a.now()) {
 			w.Header().Set("Retry-After", "60")
 			httpx.WriteError(w, http.StatusTooManyRequests, "rate_limited", "too many failed authentication attempts")
 			return
 		}
-		kind, _ := a.authenticate(r)
 		if kind == credNone {
 			if r.Header.Get("Authorization") != "" {
 				a.limiter.fail(ip, a.now())
@@ -116,9 +119,11 @@ func (a *Authenticator) Require(h http.Handler, basicChallenge bool) http.Handle
 			httpx.WriteError(w, http.StatusUnauthorized, httpx.CodeUnauthorized, "authentication required")
 			return
 		}
-		// The browser sends both cookies (ours and CF_Authorization) on
-		// cross-site requests, so both need the same-origin check.
-		if (kind == credCookie || kind == credAccess) && needsOriginCheck(r) && !sameOrigin(r) {
+		// The browser sends our cookie, CF_Authorization, and Basic
+		// credentials that it cached after a WebDAV challenge on
+		// cross-site requests, so all of them need the same-origin check.
+		// Only a Bearer token is never sent by the browser on its own.
+		if kind != credBearer && needsOriginCheck(r) && !sameOrigin(r) {
 			httpx.WriteError(w, http.StatusForbidden, httpx.CodeForbidden, "cross-origin request rejected")
 			return
 		}

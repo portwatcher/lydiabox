@@ -98,13 +98,16 @@ Rules:
   in hex. It is `HttpOnly`, `SameSite=Lax`, `Path=/`, 30 days, and `Secure`
   when the request arrived over TLS or with `X-Forwarded-Proto: https`.
   Rotating the token invalidates every session.
-- Cookie-authenticated requests that change state (any method other than
-  `GET`, `HEAD`, `OPTIONS`) and cookie-authenticated WebSocket upgrades must
-  carry an `Origin` (or `Referer`) whose host equals the request `Host`, or
-  no such header. Otherwise the server answers `403 forbidden`.
+- Requests that change state (any method other than `GET`, `HEAD`,
+  `OPTIONS`) and WebSocket upgrades that use a cookie, an Access token, or
+  Basic credentials must carry an `Origin` (or `Referer`) whose host equals
+  the request `Host`, or no such header. Otherwise the server answers
+  `403 forbidden`. Bearer requests have no such check.
 - Browsers open WebSockets with the cookie. Tokens never go in query strings.
 - After 10 failed attempts within one minute, a client IP gets `429` for the
-  rest of that minute.
+  rest of that minute. A valid session cookie or Access token is not
+  blocked. On a UNIX socket listener the client address is the
+  `Cf-Connecting-Ip` header.
 - Unauthenticated responses carry `WWW-Authenticate: Bearer realm="LydiaBox"`,
   or `Basic realm="LydiaBox"` under `/webdav/`.
 

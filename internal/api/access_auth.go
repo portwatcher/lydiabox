@@ -35,6 +35,7 @@ type accessLogin struct {
 // It also makes the failed-login limiter use the Cf-Connecting-IP header of
 // loopback requests: every request through cloudflared arrives from
 // loopback, so without the header one client could lock out all others.
+// Requests on a UNIX socket (a cell) always use that header when present.
 func (a *Authenticator) EnableAccess(v AccessVerifier, log *slog.Logger) {
 	if log == nil {
 		log = slog.Default()
@@ -89,10 +90,18 @@ func (l *accessLogin) warn(err error) {
 // clientIP is the address used by the failed-login limiter.
 func (a *Authenticator) clientIP(r *http.Request) string {
 	ip := clientIP(r)
-	if a.access == nil {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		// A UNIX socket peer (a cell): every connection comes from the
+		// cell host and has the same address, so use the client address
+		// that the edge sets. Requests without it (the control plane)
+		// share one key.
+		if cf := net.ParseIP(strings.TrimSpace(r.Header.Get("Cf-Connecting-Ip"))); cf != nil {
+			return cf.String()
+		}
 		return ip
 	}
-	if parsed := net.ParseIP(ip); parsed == nil || !parsed.IsLoopback() {
+	if a.access == nil || !parsed.IsLoopback() {
 		return ip
 	}
 	if cf := net.ParseIP(strings.TrimSpace(r.Header.Get("Cf-Connecting-Ip"))); cf != nil {
