@@ -6,7 +6,9 @@ import { ErrorView, LoadingView } from "../components/StateView";
 import { Panel } from "../components/ui";
 import { announceModelsChanged } from "../hooks/useModelOptions";
 import { useResource } from "../hooks/useResource";
+import { harnessLabels } from "../lib/harness";
 import { ModelCatalog } from "./models/ModelCatalog";
+import { NativeSignIn } from "./models/NativeSignIn";
 import { ProviderKeys } from "./models/ProviderKeys";
 import { ProviderStatus, statusRows } from "./models/ProviderStatus";
 import { RoutingEditor } from "./models/RoutingEditor";
@@ -97,6 +99,22 @@ export default function ModelsPage() {
   }
   if (missing) {
     return <ErrorView error={gateway.error} subsystem="Model management" failed="Models not loaded" onRetry={gateway.reload} />;
+  }
+
+  if (gateway.data?.mode === "guest-native") {
+    // Each harness signs in inside the VM; the host keeps no sign-in or key.
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 p-4 sm:p-6">
+          <h1 className="text-lg font-semibold tracking-tight">Models</h1>
+          <NativeSignIn />
+          {list.data ? (
+            <ModelCatalog models={list.data} names={harnessLabels} order={Object.keys(harnessLabels)} routing={[]} bindings={bindings.data ?? []} />
+          ) : null}
+          {sessions.data ? <UsagePanel sessions={sessions.data} /> : null}
+        </div>
+      </div>
+    );
   }
 
   const rows = statusRows(gateway.data ?? null, Boolean(gateway.error) && !gateway.data, subscriptions.data ?? [], providers.data ?? []);

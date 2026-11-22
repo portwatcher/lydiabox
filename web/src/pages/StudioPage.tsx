@@ -8,7 +8,7 @@ import { ConfirmDialog } from "../components/Dialog";
 import { StateView } from "../components/StateView";
 import { useToast } from "../components/Toast";
 import { Badge, Button, cx } from "../components/ui";
-import { useModelOptions } from "../hooks/useModelOptions";
+import { modelsFor, useModelOptions } from "../hooks/useModelOptions";
 import { useResource } from "../hooks/useResource";
 import { useSystem } from "../hooks/useSystem";
 import { acpHarnesses, engineFor, harnessLabel, sessionName } from "../lib/harness";
@@ -40,8 +40,9 @@ export default function StudioPage() {
   const [purge, setPurge] = useState(false);
   const termSize = useRef<{ cols: number; rows: number } | null>(null);
   const centerRef = useRef<HTMLDivElement>(null);
-  const { models, state: modelState } = useModelOptions();
-  const noModel = modelProblem(modelState, models.length);
+  const { models, state: modelState, native } = useModelOptions();
+  // In guest-native mode a harness without a model uses its own default.
+  const noModel = native ? null : modelProblem(modelState, models.length);
 
   const loader = useCallback((signal: AbortSignal) => sessions.list(filter, signal), [filter]);
   const list = useResource(loader, { pollMs: 10_000 });
@@ -319,7 +320,7 @@ export default function StudioPage() {
               <ViewSwitch value={shownMode} onChange={(mode) => void changeView(mode)} disabled={engineBusy || modelBusy} />
             ) : null}
             {selected && selected.harness !== "shell" ? (
-              <SessionModelMenu value={modelOf(selected)} models={models} onChange={(m) => void changeModel(selected, m)} disabled={modelBusy} />
+              <SessionModelMenu value={modelOf(selected)} models={modelsFor(models, selected.harness, native)} onChange={(m) => void changeModel(selected, m)} disabled={modelBusy} />
             ) : null}
           </header>
         ) : null}
@@ -382,6 +383,7 @@ export default function StudioPage() {
         onCreated={adopt}
         workspaces={workspaces}
         models={models}
+        native={native}
         noModel={noModel}
         size={size}
         defaultHarness={filter.harness}

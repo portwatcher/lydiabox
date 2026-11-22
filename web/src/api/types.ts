@@ -242,6 +242,8 @@ export interface CreateSessionRequest {
   title?: string;
   cols: number;
   rows: number;
+  /** With harness "shell": run the native sign-in of this harness (guest-native mode). */
+  signIn?: HarnessID;
 }
 
 export type PtySignal = "SIGINT" | "SIGTERM" | "SIGHUP" | "SIGQUIT";
@@ -336,12 +338,18 @@ export type InputMessage =
   | { t: "text"; text: string };
 
 // Section 10: models and magpie.
-export type GatewayState = "running" | "starting" | "stopped" | "error";
+export type GatewayState = "running" | "starting" | "stopped" | "error" | "off";
 
 export interface GatewayStatus {
   status: GatewayState;
   addr: string;
   version: string;
+  /**
+   * "guest-native": each harness signs in inside the VM and the host
+   * gateway is off. Models then lists native model IDs with the harness
+   * ID as provider.
+   */
+  mode?: "guest-native";
 }
 
 export interface Provider {

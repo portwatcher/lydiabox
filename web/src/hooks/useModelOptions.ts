@@ -29,9 +29,10 @@ export function announceModelsChanged(): void {
  * Model IDs for pickers. Falls back to an empty list when the models
  * subsystem is not available, so pickers accept free text instead.
  */
-export function useModelOptions(enabled = true): { models: Model[]; state: ModelListState } {
+export function useModelOptions(enabled = true): { models: Model[]; state: ModelListState; native: boolean } {
   const [list, setList] = useState<Model[]>([]);
   const [state, setState] = useState<ModelListState>("loading");
+  const [native, setNative] = useState(false);
   const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
@@ -47,6 +48,10 @@ export function useModelOptions(enabled = true): { models: Model[]; state: Model
       return;
     }
     const controller = new AbortController();
+    models
+      .gateway(controller.signal)
+      .then((g) => setNative(g.mode === "guest-native"))
+      .catch(() => undefined);
     models
       .list(controller.signal)
       .then((res) => {
@@ -78,5 +83,14 @@ export function useModelOptions(enabled = true): { models: Model[]; state: Model
     return () => clearInterval(id);
   }, [waiting]);
 
-  return { models: list, state };
+  return { models: list, state, native };
+}
+
+/**
+ * The models a harness can use. In guest-native mode the list has the
+ * native model IDs of every harness (provider = harness ID); otherwise
+ * every gateway model works with every harness.
+ */
+export function modelsFor(list: Model[], harness: string, native: boolean): Model[] {
+  return native ? list.filter((m) => m.provider === harness) : list;
 }

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { describeError } from "../../api/errors";
 import { models as modelsApi, sessions } from "../../api/domains";
+import { modelsFor } from "../../hooks/useModelOptions";
 import { SESSION_HARNESSES } from "../../api/types";
 import type { HarnessID, Model, Session } from "../../api/types";
 import { Dialog } from "../../components/Dialog";
@@ -19,6 +20,8 @@ interface NewSessionDialogProps {
   onCreated: (session: Session) => void;
   workspaces: string[];
   models: Model[];
+  /** Guest-native mode: the list has native model IDs per harness. */
+  native?: boolean;
   /** Why an agent cannot reach a model, or null. */
   noModel: ModelProblem | null;
   size: () => { cols: number; rows: number };
@@ -51,7 +54,7 @@ function validWorkspace(dir: string): boolean {
   return (inside("/workspace") || inside("/home/agent")) && !clean.split("/").includes("..");
 }
 
-export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed, models, noModel, size, defaultHarness }: NewSessionDialogProps) {
+export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed, models: all, native = false, noModel, size, defaultHarness }: NewSessionDialogProps) {
   // Only folders that the dialog accepts are offered (a list cached by an
   // older host can hold a guest link target such as /data/workspace).
   const workspaces = useMemo(() => listed.filter(validWorkspace), [listed]);
@@ -65,6 +68,7 @@ export function NewSessionDialog({ open, onClose, onCreated, workspaces: listed,
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   // The last model of each harness (the server keeps it at each start).
   const [lastModels, setLastModels] = useState<Partial<Record<HarnessID, string>>>({});
+  const models = useMemo(() => modelsFor(all, harness, native), [all, harness, native]);
 
   // The last model shows only while the gateway lists it.
   const model = typedModel ?? listedModel(lastModels[harness], models);
