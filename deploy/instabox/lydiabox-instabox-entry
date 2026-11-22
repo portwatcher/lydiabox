@@ -7,7 +7,7 @@
 #
 # The machine user is UID 1000, but its name is not the image's: an
 # InstaBox import keeps the machine's own user database, where UID 1000 has
-# the account's name (for example "alice") and the home /data/home. So
+# the account's name (for example "machineuser") and the home /data/home. So
 # nothing here or in the supervisord configuration uses a user name from
 # the image; the name comes from `getent passwd 1000` at each start.
 #

@@ -17,7 +17,7 @@ static Go binary runs the control plane on your server:
 See [docs/design.md](docs/design.md) for the architecture,
 [docs/api.md](docs/api.md) for the HTTP and WebSocket API, and
 [docs/conformance.md](docs/conformance.md) for the implementation status.
-[docs/cloud-design.md](docs/cloud-design.md) is a proposal for a hosted
+[docs/cloud-design.md](docs/cloud-design.md) is a design for a hosted
 service (LydiaBox Cloud) on top of this core. Its first version runs each
 agent VM on InstaBox ([docs/cloud-instabox.md](docs/cloud-instabox.md));
 [docs/cloud-own-compute.md](docs/cloud-own-compute.md) is the later design
@@ -545,7 +545,7 @@ npm run typecheck && npm run lint && npm run test
 | Connectors | Done; tested against fake provider APIs; full real-provider checklist passed on GitHub ([results](docs/conformance.md#connector-run-github-real-provider)); real-provider checklist in [docs/connectors-manual-test.md](docs/connectors-manual-test.md) |
 | Virtual S3 gateway | Done, on the main port (`/s3`, SigV4 verified and re-signed); tested end to end |
 | Remote access (Cloudflare Zero Trust) | Done; tested against a fake Cloudflare API, a fake JWKS, and a fake cloudflared; real-account checklist in [docs/remote-access-manual-test.md](docs/remote-access-manual-test.md) |
-| InstaBox client, image, and `instabox` driver (LydiaBox Cloud) | Client and driver tested against a fake InstaBox API whose machines run the real guest daemon (`lydiabox up` as a cell, end to end); image built for linux/amd64 and container-tested with Docker; not checked against the real service; checklist in [docs/instabox.md](docs/instabox.md#first-check-with-a-real-account) |
+| InstaBox client, image, and `instabox` driver (LydiaBox Cloud) | Client and driver tested against a fake InstaBox API whose machines run the real guest daemon (`lydiabox up` as a cell, end to end); image built for linux/amd64 and container-tested with Docker; partly checked on a real InstaBox machine ([results](docs/instabox.md#verified-on-a-real-machine-2026-11-16)); full checklist in [docs/instabox.md](docs/instabox.md#first-check-with-a-real-account) |
 
 Details and open items: [docs/conformance.md](docs/conformance.md).
 
@@ -571,3 +571,12 @@ internal/webui          embedded web UI
 web                     React + TypeScript web workstation
 deploy                  guest initramfs and root filesystem builds
 ```
+
+## License
+
+LydiaBox is licensed under the [Apache License 2.0](LICENSE). See
+[NOTICE](NOTICE) for third-party material in this repository. The runtime
+binaries that `lydiabox up` downloads have their own licenses.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md). To contribute,
+see [CONTRIBUTING.md](CONTRIBUTING.md).

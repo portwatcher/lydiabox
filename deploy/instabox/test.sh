@@ -15,7 +15,7 @@
 #   plain    the image as it is (UID 1000 is "agent", from the base image)
 #   machine  the image as an InstaBox import makes it
 #            (deploy/instabox/machine-model): no user "agent", UID 1000
-#            named "alice" with the home /data/home that has InstaBox's own
+#            named "machineuser" with the home /data/home that has InstaBox's own
 #            files, a dbus-run-session that fails, the user manager's
 #            session bus (HOME /data/home), the template's Codex settings
 #            and harness links, systemd's and supplier variables in the
@@ -277,16 +277,16 @@ if [ "$scenario" = plain ] || [ "$scenario" = all ]; then
 fi
 if [ "$scenario" = machine ] || [ "$scenario" = all ]; then
 	build_model
-	run_desktop machine "$model" alice
+	run_desktop machine "$model" machineuser
 fi
 if [ "$scenario" = migrate ] || [ "$scenario" = all ]; then
 	build_model
-	run_desktop migrate "$model" alice
+	run_desktop migrate "$model" machineuser
 fi
 if [ "$scenario" = precond ] || [ "$scenario" = all ]; then
 	build_model
 	current=precond
-	expect_entry_error "no user with UID 1000" "mkdir -p /data && userdel alice" "ERROR: no user with UID 1000"
+	expect_entry_error "no user with UID 1000" "mkdir -p /data && userdel machineuser" "ERROR: no user with UID 1000"
 	expect_entry_error "no /data" "rm -rf /data" "ERROR: /data does not exist"
 	expect_entry_error "/home/agent is a directory" "mkdir -p /data && rm /home/agent && mkdir /home/agent" "ERROR: /home/agent exists and is not a link"
 fi

@@ -1,11 +1,12 @@
-# LydiaBox Cloud: design proposal
+# LydiaBox Cloud: hosted deployment design
 
-Status: proposal, revised on 2026-11-15 for the InstaBox-first decision.
-The core seams of phase I0 are implemented (section 4 is the contract);
-the control plane is not. The first version of this proposal (2026-11-14)
-assumed that the service operates its own KVM hosts.
+Status: design. The core seams of phase I0 are implemented (section 4 is
+the contract). The control plane is not part of this repository: an
+operator who runs a hosted service writes it against the contract in
+section 4. Host names in this document are examples
+(`cloud.example.com`).
 
-This proposal has three documents:
+This design has three documents:
 
 - This document: the decision, the architecture, the contract between
   the control plane and a cell, secrets, the open decisions, and the
@@ -16,7 +17,8 @@ This proposal has three documents:
 - [cloud-own-compute.md](cloud-own-compute.md): the design for the
   service's own KVM hosts. It is now the later phase.
 
-LydiaBox Cloud is a hosted service on top of the open-source LydiaBox core.
+LydiaBox Cloud is the name in this document for a hosted, multi-tenant
+service on top of the open-source LydiaBox core.
 A user signs in, configures a harness, and gets a personal agent that is
 always reachable. The user can observe and take over the agent desktop,
 and the agent files persist.
@@ -41,12 +43,11 @@ Terms:
 
 | Item | Value |
 | :--- | :--- |
-| Date | 2026-11-15 |
-| Decided by | The owner |
-| Decision | Build LydiaBox Cloud first on InstaBox machines. Examine own compute later. |
-| Replaces | The 2026-11-14 plan to operate KVM hosts with the `chv` driver, a host agent, JuiceFS on a service bucket, and a shared PostgreSQL metadata engine. That design moves to [cloud-own-compute.md](cloud-own-compute.md). It is not deleted. |
-| Also decided | First login: Cloudflare Access email verification on `lydiabox.com`. Repository: a separate private repository, `lydiabox-cloud`. |
-| Deployment | The private infra repository `example/infra`, to a Kubernetes cluster with GitOps |
+| Compute | InstaBox machines first. Own KVM hosts are a later option. |
+| Alternative | Operate KVM hosts with the `chv` driver, a host agent, JuiceFS on a service bucket, and a shared PostgreSQL metadata engine: [cloud-own-compute.md](cloud-own-compute.md). |
+| First login | Cloudflare Access email verification on the service domain |
+| Control plane code | A separate repository that runs the core as a pinned binary |
+| Deployment | A Kubernetes cluster, with the manifests in a GitOps repository of the operator |
 
 Reasons:
 
@@ -99,16 +100,16 @@ One `lydiabox up` process is the trusted control plane for one tenant:
   imports `linux/amd64` images only.
 - A choice of region. InstaBox does not let a client select one.
 - Public sign-up and billing. The first users are people whose email the
-  owner adds to the Cloudflare Access policy.
+  operator adds to the Cloudflare Access policy.
 
 ### 2.4 User journey (first version)
 
-1. The owner adds the email of the user to the Access policy.
-2. The user opens `https://lydiabox.com/`. Cloudflare Access sends a code
+1. The operator adds the email of the user to the Access policy.
+2. The user opens `https://cloud.example.com/`. Cloudflare Access sends a code
    to the email and admits the user.
 3. The dashboard makes the tenant. The control plane starts a cell, and
    the cell makes the machine from the guest image snapshot.
-4. The user opens `https://<tenant>.lydiabox.com/`, the core web UI of
+4. The user opens `https://<tenant>.cloud.example.com/`, the core web UI of
    the cell, and sets the LLM endpoint.
 5. The user runs harness sessions and takes over the desktop through TURN.
 6. The machine pauses when idle and wakes on the next use.
@@ -116,10 +117,10 @@ One `lydiabox up` process is the trusted control plane for one tenant:
 ## 3. Architecture
 
 ```text
-Browser ──HTTPS──> Cloudflare (Access; lydiabox.com, *.lydiabox.com)
+Browser ──HTTPS──> Cloudflare (Access; cloud.example.com, *.cloud.example.com)
                        │ Cloudflare Tunnel
                        ▼
-Kubernetes:  lbx-router ──HTTP──> lbx-cellhost pod ──Unix socket──> cell
+K8s:   lbx-router ──HTTP──> lbx-cellhost pod ──Unix socket──> cell
        lbx-control                                (lydiabox up in cell mode,
        (accounts, tenants)                         magpie with the LLM keys)
                                                     │                │
@@ -151,15 +152,15 @@ when they land. Section 4 gives the names as proposals.
 
 ### 3.2 Cloud repository components
 
-The private repository `lydiabox-cloud` holds the control
-plane. It runs the core as a pinned binary and imports no core
-`internal/` package.
+A separate repository holds the control plane. It runs the core as a
+pinned binary and imports no core `internal/` package. The component
+names below are examples.
 
 | Component | Function |
 | :--- | :--- |
 | `lbx-control` | Accounts (identity: the Access email), tenant registry, tenant lifecycle, assignment of tenants to cell hosts, custody of the InstaBox API key and the tenant master keys |
 | `lbx-cellhost` | Starts, supervises, and stops the cells of its tenants. Keeps each cell data directory on a persistent volume. Forwards requests from `lbx-router` to the Unix socket of each cell. Reports cell health to `lbx-control`. |
-| `lbx-router` | Routes `<tenant>.lydiabox.com` to the cell of the tenant. Checks the Access identity. Keeps WebSocket routes open without buffering. |
+| `lbx-router` | Routes `<tenant>.cloud.example.com` to the cell of the tenant. Checks the Access identity. Keeps WebSocket routes open without buffering. |
 | Dashboard | Tenant creation, tenant state, link to the cell web UI |
 | Registry database | PostgreSQL: accounts, tenants, cell host assignment, machine IDs, wrapped keys |
 
@@ -172,21 +173,23 @@ short-lived credentials for it (`LYDIABOX_CLOUDFLARE_TURN_KEY_ID`,
 
 ### 3.3 Deployment
 
-- `example/infra` holds the Kubernetes manifests. GitOps syncs them to
-  Kubernetes. The CI of `lydiabox-cloud` builds the images.
+- A GitOps repository holds the Kubernetes manifests. A GitOps tool (for
+  example Argo CD) syncs them to the cluster. The CI of the control plane
+  repository builds the images.
 - `lbx-cellhost` is a StatefulSet. Each replica has its own persistent
   volume for the cell data directories. A NetworkPolicy lets only
   `lbx-router` and `lbx-control` reach it.
 - `cloudflared` runs in the cluster. One Cloudflare Tunnel serves
-  `lydiabox.com` and `*.lydiabox.com`.
-- One Cloudflare Access application covers `lydiabox.com` and
-  `*.lydiabox.com` with an email policy.
+  `cloud.example.com` and `*.cloud.example.com`.
+- One Cloudflare Access application covers `cloud.example.com` and
+  `*.cloud.example.com` with an email policy.
 - The InstaBox webhook endpoint of `lbx-control` needs an Access bypass
   for its path. `lbx-control` verifies the HMAC signature of each call
   ([source](https://instabox.sh/docs/integrations/webhooks.md)).
 - Kubernetes Secrets hold the InstaBox API key, the TURN key, the
   database credentials, and the key that wraps the tenant master keys.
-  Follow the secret handling of `example/infra`.
+  Keep them out of the GitOps repository in plain text (for example, use
+  sealed or external secrets).
 - Cell data directories hold the store, the master key, and the magpie
   state. Back them up to object storage (decision 19).
 
@@ -376,23 +379,23 @@ The guest is not trusted: it runs code from LLMs and the internet.
 
 ## 8. Open decisions
 
-**R** is the recommendation. Numbers 1 to 15 are from the 2026-11-14
-proposal.
+**R** is the recommendation. Other documents refer to these decisions by
+number.
 
-Decided by the owner on 2026-11-15:
+Decided in this design:
 
-- **Compute (new, 16).** InstaBox first; own compute later.
-- **2. Cloud code location.** A separate private repository,
-  `lydiabox-cloud`. The core seams stay here.
+- **16. Compute.** InstaBox first; own compute later.
+- **2. Cloud code location.** A separate repository for the control
+  plane. The core seams stay here.
+- **3. Core license.** The core is Apache-2.0 ([LICENSE](../LICENSE)).
 - **9. Login.** First login is Cloudflare Access email verification on
-  `lydiabox.com`. A hosted identity provider is for public sign-up later.
+  the service domain. A hosted identity provider is for public sign-up
+  later.
 
-Still open:
+Open:
 
 1. **Tenancy model.** (a) Process per tenant; (b) one multi-tenant
    process. **R**: (a). The InstaBox path implements (a) as cells.
-3. **Core license.** (a) MIT or Apache-2.0; (b) AGPL-3.0; (c)
-   source-available. **R**: decide before public launch.
 4. **Bucket ownership** (own compute). **R**: (a) service bucket with a
    prefix per tenant, [cloud-own-compute.md](cloud-own-compute.md#42-bucket-and-prefix).
 5. **Metadata engine and writeback** (own compute). **R**: PostgreSQL
@@ -405,7 +408,7 @@ Still open:
 8. **LLM supply.** **R**: the user brings a key or endpoint; later the
    service sells LLM access through magpie.
 10. **Tenant address.** **R**: a subdomain per tenant
-    (`<tenant>.lydiabox.com`), so the core cookie and `Origin` rules work
+    (`<tenant>.cloud.example.com`), so the core cookie and `Origin` rules work
     unchanged.
 11. **Sleep ladder** (own compute). **R**: pause, stop VM, stop cell.
 12. **First trigger channels.** **R**: schedule and webhook, then email,
@@ -419,10 +422,11 @@ Still open:
 17. **InstaBox API key custody.** (a) Each cell holds the workspace key;
     (b) a broker in `lbx-control` holds it and lets each cell act only on
     its own machine. **R**: (a) in phases I1 and I2 (few trusted users),
-    (b) before users that the owner does not know. The driver takes the
+    (b) before users that the operator does not know. The driver takes the
     API URL as a setting, so (b) needs no core change.
-18. **InstaBox plan.** **R**: Pro for phases I1 to I3; Builder or Team
-    when more than 100 machines must run at once.
+18. **InstaBox plan.** **R**: choose the plan from the number of
+    machines that must run at once
+    ([cloud-instabox.md §7](cloud-instabox.md#7-supplier-risks)).
 19. **Backups outside InstaBox.** (a) None; (b) a host-driven backup of
     the home and the workspace to a service bucket; (c) (b) to a bucket
     of the user. **R**: (b) daily, (c) later as an option.
@@ -457,10 +461,10 @@ Do the phases in sequence. Start a phase after the previous gate passes.
     gets `401`. Record the wake time from paused and the start time from
     stopped.
 - **Phase I2: cloud repository and deployment.** `lbx-control`,
-  `lbx-cellhost`, `lbx-router`, and the dashboard on Kubernetes through
-  `example/infra`, behind Access.
+  `lbx-cellhost`, `lbx-router`, and the dashboard on a Kubernetes
+  cluster, behind Access.
   - *Verification*: An allowed email makes a tenant and uses
-    `https://<tenant>.lydiabox.com/`. Access stops an email that is not
+    `https://<tenant>.cloud.example.com/`. Access stops an email that is not
     allowed. A second allowed user gets `403` on the first tenant. A
     request with a forged identity header fails. After a restart of a
     cell host, its cells attach to their machines with no data loss.

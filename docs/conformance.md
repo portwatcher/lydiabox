@@ -50,7 +50,7 @@ Not tested on real hardware, because no host had it: GPU passthrough
 user decided to skip it. The GitHub connector passed every step of the
 real-provider checklist (authorize, Cancel, expired state, grant, guest
 `git-cred` and `git ls-remote`, connector MCP tools, Disconnect with
-revoke at GitHub). On 2026-11-14 the user decided that this general flow
+revoke at GitHub). On 2026-11-14 the maintainer decided that this general flow
 is sufficient and waived the real-provider check for Google Drive,
 Notion, and Slack; these ran against fake providers only. See
 [Connector run (GitHub, real provider)](#connector-run-github-real-provider).
@@ -277,7 +277,7 @@ IANA page.
 | Requirement | Status | Where | Verified by |
 | :--- | :--- | :--- | :--- |
 | Status bar: VM pill, Wake / Hibernate / Stop, CPU/RAM, "Synced Xs ago" (only when the server syncs to S3: `storage.syncEnabled`) | done | `web/src/components`, `web/src/lib/sync.ts` | web tests (`sync.test.ts`); E2E (browser) |
-| VM power controls only on the Desktop page (owner request, 2026-11-19; before that in the status bar); the status bar shows only a running transition ("Starting the VM…"); the Files page lists without `auto=1` and so starts or resumes the VM; a page that needs a VM stopped by the user offers Start in its error view | done | `web/src/pages/desktop/DesktopToolbar.tsx`, `web/src/pages/DesktopPage.tsx`, `web/src/components/StatusBar.tsx`, `web/src/pages/FilesPage.tsx` | web tests (`DesktopToolbar.test.ts`, `stage.test.ts`); browser check against a mocked API |
+| VM power controls only on the Desktop page (maintainer decision, 2026-11-19; before that in the status bar); the status bar shows only a running transition ("Starting the VM…"); the Files page lists without `auto=1` and so starts or resumes the VM; a page that needs a VM stopped by the user offers Start in its error view | done | `web/src/pages/desktop/DesktopToolbar.tsx`, `web/src/pages/DesktopPage.tsx`, `web/src/components/StatusBar.tsx`, `web/src/pages/FilesPage.tsx` | web tests (`DesktopToolbar.test.ts`, `stage.test.ts`); browser check against a mocked API |
 | A user stop holds until an explicit start: the desktop socket, a terminal reconnect, and file requests do not start the VM; the Desktop page shows a calm stopped state, does not retry, and connects again after the start; an idle pause still wakes on use | done | `internal/vmm/controller.go`, `internal/desktop`, `internal/harness/manager.go`, `web/src/pages/desktop/stage.ts`, `web/src/api/socket.ts` | `TestUserStopHoldsUntilStart`, `TestWakeQueuedBehindAStopDoesNotBoot`, `TestDesktopSocketDoesNotStartAVMThatTheUserStopped`, `TestDesktopSocketDuringStopDoesNotStartTheVM`, `TestDesktopStreamEndedByAUserStopSaysStopped`, `TestStoppedVMIsStartedOnlyByANewSession`, `TestUserStopIsNotUndoneByAWakeOnDemand`, `TestIdlePausedMachineWakesOnDemand`; web tests (`stage.test.ts`, `desktopSignal.test.ts`, `socket.test.ts`) |
 | The user-stop hold survives a host restart (`vm_holds` in the state database); a failed or refused stop restores it; a host shutdown, `hibernate`, and the idle pause do not set it; an unreadable hold does not block a start | done | `internal/vmm/hold.go`, `internal/store/vmhold.go`, `internal/cli/wire_vm.go` | `TestUserStopHoldSurvivesAHostRestart`, `TestFailedStopRestoresTheStoredHold`, `TestShutdownAndHibernateDoNotHold`, `TestStoredHoldOfARunningVMIsDropped`, `TestBrokenHoldStoreDoesNotBlockAStart`, `TestVMHold` |
 | A live terminal ended by a user stop ends with the `stopped` error, not `exit -1`; the Files folder tree shows no error for the expected `503` while the VM is stopped and loads again after a start | done | `internal/harness/room.go`, `web/src/pages/files/folderNode.ts`, `web/src/pages/FilesPage.tsx` | `TestTerminalEndedByAUserStopSaysStopped`; web test `folderNode.test.ts` |
@@ -534,7 +534,7 @@ stopped"; `TestGuestTunnelEndAtHostShutdownIsInfo` covers it.
 
 ### Resume after Hibernate on InstaBox (2026-11-17)
 
-On `the test machine` a resume after a Hibernate with a live terminal took 59.9 s
+On a test tenant a resume after a Hibernate with a live terminal took 59.9 s
 (`BOOTING` to `guest link up`); InstaBox reported the machine `running` at
 05:07:20 and the link was up 1.8 s later, so the time was spent before the
 port proxy reached the guest. The host path has no wait of that length:
@@ -952,7 +952,7 @@ Full desktop image (step 7):
 | F9 | `claude` 2.1.322 (0.4 s), `codex-cli` 0.167.1 (0.5 s), `dsh` 0.2.2-rc.1 (0.4 s), `agy` 1.5.5 (2.5 s), `opencode` 1.19.5 (1.7 s) | pass |
 
 WebRTC from a browser on the Mac (step 8). The GCP VM has the external
-address `203.0.113.10` behind 1:1 NAT. A firewall rule let UDP 50000 in
+address (here `203.0.113.10`) behind 1:1 NAT. A firewall rule let UDP 50000 in
 from the public address of the Mac only (`/32`); no TCP port was opened.
 The browser (headless Chrome 157 on macOS, driven over CDP as in the
 arm64 run) reached the API through `gcloud compute ssh -L
@@ -1009,7 +1009,7 @@ On 2026-11-11 and 2026-11-14, with [connectors-manual-test.md](connectors-manual
 on the KVM test VM (`chv` driver, full desktop image, binaries from
 `929fa65`; the connector code is the same on `main`). The web UI was
 at `http://localhost:8080` through the Lima port forward. The OAuth app
-"LydiaBox local test" (owner `portwatcher`, "Expire user access tokens"
+"LydiaBox local test" (owned by the test account, "Expire user access tokens"
 on) had the callback `http://localhost:8080/api/v1/connectors/github/callback`.
 Its client ID and secret came from `LYDIABOX_GITHUB_CLIENT_ID` and
 `LYDIABOX_GITHUB_CLIENT_SECRET`.
@@ -1020,17 +1020,17 @@ Its client ID and secret came from `LYDIABOX_GITHUB_CLIENT_ID` and
 | Connect | pass: the browser goes to `github.com/login/oauth/authorize` with `code_challenge_method=S256`, a `code_challenge`, a `state`, the registered redirect URI, and `scope=repo read:org workflow` |
 | Cancel on the consent page | pass: back to `/connectors` with "access was denied on the provider's page"; host log `connector authorization failed` `error=access_denied` |
 | Authorize 50 minutes after Connect | pass (negative check): the state lives 10 minutes, so the callback answers `invalid_state` and the page shows "the sign-in link expired"; no account and no audit entry |
-| Connect and grant (2026-11-14) | pass: GitHub kept the grant of the earlier Authorize click, so it sent the browser back at once to `/connectors?connected=github`. The card shows account `portwatcher`, OAuth, scopes `read:org repo workflow`, and an expiry 8 hours later (expiring user token); status `ok` |
+| Connect and grant (2026-11-14) | pass: GitHub kept the grant of the earlier Authorize click, so it sent the browser back at once to `/connectors?connected=github`. The card shows the test account, OAuth, scopes `read:org repo workflow`, and an expiry 8 hours later (expiring user token); status `ok` |
 | Audit and token hiding | pass: one `connector.connected` entry (`authKind` `oauth2`, `source` `env`). `GET /api/v1/connectors/github` has no `token`, `accessToken`, or `refreshToken` field and no `gho_`/`ghu_`/`ghr_` value. The host databases `state/lydiabox.db` and `meta/jfs.db` (with WAL files) contain no GitHub token in clear text |
 | `git-cred get` in the guest (`LYDIABOX_HOST_ADDR=vsock://2:9001`) | pass: `username=x-access-token` and a `password=` line; exit 0; two `connector.token.issued` audit entries with consumer `git-cred` |
-| `git ls-remote` of the private repository `portwatcher/lydiabox` | pass: `HEAD` and `refs/heads/main` listed without a prompt (`GIT_TERMINAL_PROMPT=0`) |
+| `git ls-remote` of a private repository of the test account | pass: `HEAD` and `refs/heads/main` listed without a prompt (`GIT_TERMINAL_PROMPT=0`) |
 | No token in a guest file | pass: `grep -r` for `gh[ousr]_` in `~` and `/workspace` finds nothing |
 | Connector MCP in the guest (`127.0.0.1:8911`) | pass: `tools/list` gives the 15 connector tools; `github_list_repos`, `github_list_issues`, `github_get_file_contents` (`README.md`), and `github_create_issue` (issue #1, closed right after the test) succeed; four `connector.mcp.call` audit entries with `ok: true` |
 | Host route `POST /mcp/connectors` | pass: `github_list_issues` with the admin token succeeds; without a token the answer is `401` |
-| Disconnect | pass: `DELETE /api/v1/connectors/github?account=portwatcher` answers `204`; the card shows "Not connected"; audit `connector.disconnected` with `revoked: true`; "LydiaBox local test" is not in the 22 authorized OAuth apps at GitHub (Settings, Applications) |
+| Disconnect | pass: `DELETE /api/v1/connectors/github?account=<login>` answers `204`; the card shows "Not connected"; audit `connector.disconnected` with `revoked: true`; "LydiaBox local test" is not in the 22 authorized OAuth apps at GitHub (Settings, Applications) |
 | After Disconnect | pass: `git-cred get` prints nothing; the MCP call answers `isError: true` "connector is not connected: github" |
 
-On 2026-11-14 the user decided that the general OAuth flow, shown end to
+On 2026-11-14 the maintainer decided that the general OAuth flow, shown end to
 end on GitHub, is sufficient, and waived the real-provider check for
 Google Drive, Notion, and Slack. These providers ran against fake
 providers only (the tests listed in the open items of the full-image

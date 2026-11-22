@@ -13,7 +13,7 @@ disk at `/data`. The core reaches it through the `instabox` VM driver
 - `internal/vmm/instabox`: the `instabox` VM driver
   ([Driver](#driver)), and the operator command `lydiabox instabox`.
 
-The first real tenant (2026-11-16) checked the image on a real machine:
+A test tenant (2026-11-16) checked the image on a real machine:
 [Verified on a real machine](#verified-on-a-real-machine-2026-11-16) has
 the results.
 [What the documentation does not state](#what-the-documentation-does-not-state)
@@ -209,7 +209,7 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
 | The import pulls from a registry; a local image cannot be imported. | `build.sh --push`, or `docker tag` and `docker push`; the printed command uses the pushed digest. |
 | `ENTRYPOINT` and `CMD` run as the systemd unit `instabox-image.service`, in `WORKDIR`, as `USER` (root when unset), restarted on failure; output goes to the journal. | `ENTRYPOINT ["/usr/local/sbin/lydiabox-instabox-entry"]`, no `USER`, `WORKDIR /`. The entry point runs supervisord in the foreground, so the unit stays active. |
 | The image's own init (tini, s6) is not run. systemd, sshd, sudo, the UID 1000 user, `/data`, and the machine's shared libraries stay. | Verified with the Ubuntu-based image: the shared libraries (`*.so`), the dpkg database, and some programs (`dbus-daemon` 1.16.2) stay the machine's, while other files are the image's (`xfce4-panel` 4.18, `wrapper-2.0`, `/etc/xdg/xfce4/panel/default.xml`). So the base is Debian 13, the template's release ([Image](#image)). The entry point sets the files that matter to LydiaBox at each start. It mounts nothing (the `lydiabox-init` of the VM and docker drivers mounts `/run` and `/tmp` and is not used). It starts the system D-Bus only when `/run/dbus/system_bus_socket` is missing. The machine keeps its own `libdbus`, so the image's `dbus-run-session` of an Ubuntu-based image cannot run: the Xfce wrapper runs `dbus-daemon --session` itself (`/run/user/1000/lydiabox-session-bus`), not the bus of the machine's user manager (`/run/user/1000/bus`), whose services get `HOME=/data/home`. |
-| The image's user with UID 1000 is the machine user. | The import keeps the machine's user database: UID 1000 has the account's name (for example `alice`), not `agent`, and the home `/data/home`. The image uses UID 1000 by number (supervisord `user=1000`); the entry point reads the name with `getent passwd 1000`. `HOME` is `/home/agent`, a link to `/data/lydiabox/home`, not to InstaBox's `/data/home`. |
+| The image's user with UID 1000 is the machine user. | The import keeps the machine's user database: UID 1000 has the account's name (for example `machineuser`), not `agent`, and the home `/data/home`. The image uses UID 1000 by number (supervisord `user=1000`); the entry point reads the name with `getent passwd 1000`. `HOME` is `/home/agent`, a link to `/data/lydiabox/home`, not to InstaBox's `/data/home`. |
 | `ENV` reaches every session (exec, SSH, login shells). | `ENV HOME=/home/agent DISPLAY=:0 LYDIABOX_DATA_ROOT=/data`. InstaBox leaves out `HOME` and `PATH`: sessions get `HOME=/data/home`, and the unit gets no `HOME`. The entry point starts supervisord with a defined environment (`env -i`), not the unit's. |
 | `EXPOSE` is not published. | The driver publishes the link port with `PublishPrivatePort`. |
 | `/etc/instabox/image.json` records the image reference, digest, and config. | The driver can read it to check the snapshot's image. |
@@ -286,7 +286,7 @@ From [Custom images](https://instabox.sh/docs/machines/custom-images.md):
 ### Supplier files and environment
 
 The machine template adds harness settings and variables of its own.
-Found on the machine of the first tenant (2026-11-16; names and lengths
+Found on the machine of a test tenant (2026-11-16; names and lengths
 only, no value of a credential was read):
 
 | Supplier item | Effect before | What LydiaBox does now |
@@ -353,7 +353,7 @@ desktop, and harness checks:
 - `plain`: the image as it is (UID 1000 is `agent`).
 - `machine`: the image as the import makes it
   ([deploy/instabox/machine-model](../deploy/instabox/machine-model)): no
-  user `agent`, UID 1000 named `alice` with the home `/data/home` that has
+  user `agent`, UID 1000 named `machineuser` with the home `/data/home` that has
   InstaBox's files (`.claude.json` with the `instabox` and
   `open-computer-use` MCP servers, skills, `AGENTS.md`), a
   `dbus-run-session` that fails as on the machine, the user manager's
@@ -759,7 +759,7 @@ key, API key).
 
 ## Verified on a real machine, 2026-11-16
 
-Machine `lbx-0000000000000000` of the first tenant (template
+A machine of a test tenant (template
 `agent-browser@2026-11-14.2815`, snapshot of the image of core `23fbf68`,
 free plan, 4 vCPU / 8 GiB), read through exec. The image of core `23fbf68`
 did not start: supervisord stopped at
@@ -768,8 +768,8 @@ port 9000, and the port proxy answered the driver `502 Bad Gateway`.
 
 | Fact | Evidence |
 | :--- | :--- |
-| The import keeps the machine's user database; there is no user `agent` | `getent passwd 1000` is `alice:x:1000:1000::/data/home:/bin/bash`; `getent passwd agent` is empty; the import warned `image users not added, UID 1000 being the sandbox's user: agent(1000)`; the snapshot records `guestUser: alice`; the kernel command line has `instabox.user=alice` |
-| Exec runs as the machine user through an SSH login | `id` is `uid=1000(alice) gid=1000(alice) groups=1000(alice),27(sudo),991(docker)`; `SSH_CLIENT` is set; `HOME=/data/home`, `DISPLAY=:0` (image `ENV`), `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus` are set |
+| The import keeps the machine's user database; there is no user `agent` | `getent passwd 1000` is `machineuser:x:1000:1000::/data/home:/bin/bash`; `getent passwd agent` is empty; the import warned `image users not added, UID 1000 being the sandbox's user: agent(1000)`; the snapshot records `guestUser: machineuser`; the kernel command line has `instabox.user=machineuser` |
+| Exec runs as the machine user through an SSH login | `id` is `uid=1000(machineuser) gid=1000(machineuser) groups=1000(machineuser),27(sudo),991(docker)`; `SSH_CLIENT` is set; `HOME=/data/home`, `DISPLAY=:0` (image `ENV`), `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus` are set |
 | `sudo` works through exec, and so does the driver's restart | `sudo -n true` succeeds; `sudo supervisorctl -c /etc/lydiabox/instabox-supervisord.conf status` lists the programs |
 | The import keeps the image's links `/home/agent` and `/workspace` | image of core `802e85c`: `/home/agent -> /data/home` and `/workspace -> /data/workspace`, both owned by root |
 | `/data/home` has the machine's own files before the image starts | `.bashrc`, `.profile`, `.claude`, `.codex`, `.claude.json`, `AGENTS.md`, `MACHINE.md`; `/data` also has `config`, `state`, `tmp`, and a 4 GiB `swapfile` |
@@ -777,21 +777,21 @@ port 9000, and the port proxy answered the driver `502 Bad Gateway`.
 | Restart settings of the unit | `Restart=on-failure`, `RestartSec=5`, `StartLimitBurst=5` in `StartLimitIntervalSec=10s` (a failing entry point restarts every 5 seconds without end); `KillMode=mixed` |
 | The unit's standard output is a journal socket | supervisord could not open `stdout_logfile=/dev/stdout`: `spawnerr: unknown error making dispatchers for 'lydiabox-guest': ENXIO` |
 | The machine keeps its own shared libraries | glibc 2.41 (Debian 13) of the template; `libdbus-1.so.3` is the template's 1.16.2, so the image's `dbus-run-session`, `dbus-launch`, `dbus-send`, `dbus-monitor`, and `dbus-uuidgen` fail with ``version `LIBDBUS_PRIVATE_1.14.10' not found``; Xvfb, Xfce, ffmpeg, Chrome, Blender, Node.js, and git load |
-| The machine user lingers and has a session bus | `/var/lib/systemd/linger/alice`; `user@1000.service` runs from boot; `/run/user/1000/bus` exists; the image of core `802e85c` ran Xfce on it (the next image does not: [below](#panel-dialog-home-and-environment)) |
+| The machine user lingers and has a session bus | `/var/lib/systemd/linger/machineuser`; `user@1000.service` runs from boot; `/run/user/1000/bus` exists; the image of core `802e85c` ran Xfce on it (the next image does not: [below](#panel-dialog-home-and-environment)) |
 | No X server or desktop of the base machine runs at boot; `:0` is free | `/tmp/.X11-unix` is empty, no `Xvfb`, `Xorg`, or VNC process; `tigervncserver@.service` is disabled; only sshd listens (port 22) |
 | The root disk is kept across stop and start | files that exec wrote under `/usr/local/sbin` and `/etc/lydiabox` were there after `stop` and `start`; `MACHINE.md` says both disks survive a stop |
 | A private port with `Authorization: Bearer` reaches the machine from a server | the cell's WebSocket dials got `502` (not `401`) while nothing listened on port 9000 |
 
 With the fixes of this page applied in place, after `systemctl restart`
-and after a stop and start: all three programs `RUNNING` as `alice`,
+and after a stop and start: all three programs `RUNNING` as `machineuser`,
 `lydiabox-guest` listens on `*:9000` and answers `426` to a plain GET and
 `101` to a WebSocket upgrade, Xfce runs on `/run/user/1000/bus`, and
 `xdpyinfo` answers on `:0`.
 
 ### Desktop video through the relay
 
-In the first tenant test (2026-11-16) the browser's ICE connection was
-relay-only on both sides through `turn.example.com` over UDP, the input
+In the test tenant check (2026-11-16) the browser's ICE connection was
+relay-only on both sides through a self-hosted TURN server (`turn.example.com`) over UDP, the input
 data channel worked, and video RTP arrived with 8 to 14 % loss, but no
 frame was decoded. The cause is the packet size, measured on the same
 machine and from the tester's network:
@@ -799,7 +799,7 @@ machine and from the tester's network:
 | Fact | Evidence |
 | :--- | :--- |
 | Outbound UDP from the machine to the TURN server works, up to a 1500-byte IP packet; a fragmented datagram does not arrive | STUN Binding requests padded to a size: 1472-byte UDP payload (1500 IP) answered 4/4, 1473 and larger 0/4; `eth0` MTU 1500; ICMP `ping -M do -s 1472` to the TURN server passes |
-| The tester's network passes at most a 1452-byte IP packet to the TURN server | the same STUN probe from the tester's Mac: 1424-byte payload answered, 1428 and larger not |
+| The tester's network passes at most a 1452-byte IP packet to the TURN server | the same STUN probe from the tester's computer: 1424-byte payload answered, 1428 and larger not |
 | ffmpeg's default RTP packet is 1472 bytes; relayed, it does not fit | 1472 + 10 or 16 (SRTP) + 4 (TURN ChannelData) + 28 (UDP, IPv4) = 1514 to 1520 bytes |
 | Only keyframes have full-size packets | ffmpeg with the old arguments, 25 s on `:0`: 668 packets, 98 of them 1400 to 1472 bytes (14.7 %, the loss that the browser saw); keyframes 44 to 57 kB every 250 frames (10.4 s), P frames 250 to 500 bytes |
 | Not the cause: codec, payload type, profile | ffmpeg 6.1.1 with libx264 in the machine makes Constrained Baseline level 4.0, payload type 96, SPS and PPS in a STAP-A before each IDR; the guest rewrites the payload type to the negotiated one; a pion receiver on the machine assembles the real stream (below) |
@@ -817,7 +817,7 @@ path that drops packets above 1452 bytes.
 
 ### Panel dialog, home, and environment
 
-Read on the same machine (`m_example0000000000000000000`, snapshot of
+Read on the same machine (snapshot of
 core `802e85c`) on 2026-11-16 and 2026-11-17, through exec:
 
 | Fact | Evidence |
@@ -840,7 +840,7 @@ machine (old layout, released guest binary of core `802e85c`) with one
   from the image`, `set /etc/xdg/xfce4/panel/default.xml from the image`,
   and `linked /usr/local/bin/claude to /usr/bin/claude` (also `codex`,
   `opencode`, `dsh`); `/home/agent -> /data/lydiabox/home` (mode 0700,
-  owner `alice`); `/data/lydiabox/home-moved.log` has one line;
+  owner `machineuser`); `/data/lydiabox/home-moved.log` has one line;
 - the windows on `:0` (`xprop -root _NET_CLIENT_LIST`) are three
   `xfce4-panel` docks and the `xfdesktop` desktop, no dialog; no
   `wrapper-2.0` process; the new home's panel settings have
@@ -904,7 +904,7 @@ Each item needs a check with a real account (see the checklist below).
    2026-11-16: UID 1000 keeps the machine's name and home; exec runs as
    that user; the links stay
    ([above](#verified-on-a-real-machine-2026-11-16)); the files API writes
-   as that user (the driver's `guest.env` belongs to `alice`, mode 0600).
+   as that user (the driver's `guest.env` belongs to `machineuser`, mode 0600).
    SSH was not checked.
 6. **Display conflicts.** Verified on a real machine, 2026-11-16: nothing
    takes `:0` at boot. Which display `POST /v1/machines/{id}/desktop`

@@ -3,7 +3,7 @@
 # real machine on 2026-11-16 (docs/instabox.md):
 #
 # - The import keeps the machine's own user database: no user "agent";
-#   UID 1000 has the account's name (here "alice") and the home /data/home.
+#   UID 1000 has the account's name (here "machineuser") and the home /data/home.
 # - The machine keeps its own shared libraries and its dpkg database (the
 #   template is Debian 13): the stage "template" installs a part of the
 #   template's packages (apt, libdbus, the Xfce panel and its plugins) on
@@ -55,8 +55,8 @@ FROM ${IMAGE}
 RUN set -eux; \
 	userdel agent; \
 	if getent group agent >/dev/null; then groupdel agent; fi; \
-	groupadd --gid 1000 alice; \
-	useradd --uid 1000 --gid 1000 --groups sudo --home-dir /data/home --no-create-home --shell /bin/bash alice; \
+	groupadd --gid 1000 machineuser; \
+	useradd --uid 1000 --gid 1000 --groups sudo --home-dir /data/home --no-create-home --shell /bin/bash machineuser; \
 	printf '#!/bin/sh\necho "/usr/bin/dbus-run-session: /lib/x86_64-linux-gnu/libdbus-1.so.3: version LIBDBUS_PRIVATE_1.14.10 not found (machine-model stub)" >&2\nexit 1\n' \
 	>/usr/bin/dbus-run-session; \
 	chmod 0755 /usr/bin/dbus-run-session; \

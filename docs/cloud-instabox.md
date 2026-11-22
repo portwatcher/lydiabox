@@ -323,7 +323,7 @@ once for the workspace (limits).
 
 | Risk | Evidence | Mitigation |
 | :--- | :--- | :--- |
-| The company is unknown | The pages read name no company, address, or jurisdiction. The SDK package is `@insforge/instabox-sdk` (**inferred**: the company is InsForge). | Get the company name, jurisdiction, and data locations in writing before users that the owner does not know. |
+| The company is unknown | The pages read name no company, address, or jurisdiction. The SDK package is `@insforge/instabox-sdk` (**inferred**: the company is InsForge). | Get the company name, jurisdiction, and data locations in writing before users that the operator does not know. |
 | Resale terms are not checked | The API records agreement to "rules of the road" (`PUT /v1/me/terms`, openapi). We did not read the terms. | Read the terms. Ask InstaBox in writing if a hosted service for third parties is permitted. |
 | `linux/amd64` only | images | Build the guest image for `amd64` only on this path. Own compute later can use `arm64`. |
 | No stated UDP | ports and limits state HTTPS ports and a raw TCP preview only | Desktop through TURN on TCP or TLS (§4). |

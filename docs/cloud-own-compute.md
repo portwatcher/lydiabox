@@ -1,10 +1,9 @@
 # LydiaBox Cloud on own compute: later-phase design
 
-Status: later phase. This is the design of 2026-11-14 for KVM hosts that
-the service operates. On 2026-11-15 the owner decided to build LydiaBox
-Cloud first on InstaBox ([cloud-design.md](cloud-design.md)). Own compute
+Status: later phase. This is the design for KVM hosts that the service
+operates. The first hosted design uses InstaBox
+([cloud-design.md](cloud-design.md)). Own compute
 must reuse the cell contract of [cloud-design.md §4](cloud-design.md#4-contract-between-the-control-plane-and-a-cell).
-Only sections 1.1, 1.2, 10.3, and 12 changed since 2026-11-14.
 
 Terms: the **core** is the code in this repository, as
 [design.md](design.md) specifies it. A **cell** is one core process for one
@@ -92,8 +91,7 @@ and sessions persist across sleep and host failure.
 
 ### 2.3 Recommendation
 
-Use option A. The coordinator recommended it, and the analysis supports
-it:
+Use option A, for these reasons:
 
 1. The density gain of B is small. The guest VM is more than 90 percent of
    the memory of a running tenant (estimate), and both options need one
@@ -461,7 +459,7 @@ boundaries are browser, router, control plane, host agent, cell, guest.
 ### 10.1 Repository
 
 Put the control plane, host agent, router, trigger service, OAuth relay,
-and dashboard in a separate private repository (for example
+and dashboard in a separate repository (for example
 `lydiabox-cloud`). The cloud runs the core as a pinned binary, so it does
 not need the core `internal/` packages. The core stays complete without
 cloud code. Billing and abuse rules change often and do not help
@@ -555,18 +553,16 @@ Do the phases in sequence. Start a phase after the previous gate passes.
 ## 12. Open decisions
 
 **R** is the recommendation. The current status of each decision is in
-[cloud-design.md §8](cloud-design.md#8-open-decisions). The owner decided
-decisions 2 and 9 on 2026-11-15: a separate private repository
-(`lydiabox-cloud`), and Cloudflare Access email verification
-on `lydiabox.com` as the first login.
+[cloud-design.md §8](cloud-design.md#8-open-decisions). Decisions 2, 3,
+and 9 are decided there: a separate repository for the control plane,
+the Apache-2.0 license for the core, and Cloudflare Access email
+verification as the first login.
 
 1. **Tenancy model.** (a) Process per tenant behind a control plane; (b)
    one multi-tenant process per host. **R**: (a), see section 2.3.
-2. **Cloud code location.** (a) Separate private repository that runs a
+2. **Cloud code location.** (a) Separate repository that runs a
    pinned core binary; (b) `cloud/` here. **R**: (a), core seams here.
-3. **Core license.** There is no license file. (a) MIT or Apache-2.0; (b)
-   AGPL-3.0; (c) source-available. **R**: decide before launch; (b) to
-   stop other hosted copies, (a) for adoption.
+3. **Core license.** Decided: Apache-2.0 ([LICENSE](../LICENSE)).
 4. **Bucket ownership.** (a) Service bucket, prefix per tenant; (b) bucket
    per tenant; (c) user-owned bucket. **R**: (a), later (c) as an option.
 5. **Metadata engine and writeback.** (a) SQLite with backup; (b)
