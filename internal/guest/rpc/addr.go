@@ -126,7 +126,9 @@ func ListenUnix(path string, mode os.FileMode) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(path, mode); err != nil {
+	// The directory can be writable by the guest (docker driver): change
+	// the mode without following a symlink that replaced the socket.
+	if err := chmodSocket(path, mode); err != nil {
 		ln.Close()
 		return nil, err
 	}
