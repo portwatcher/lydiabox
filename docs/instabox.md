@@ -463,6 +463,24 @@ InstaBox has no region setting; the platform places machines. Start
 validation refuses the `juicefs` mode, a missing key or snapshot, a size
 that is not an InstaBox size, a GPU, and a UDP port.
 
+### Model sign-in in a cell
+
+A cell runs in guest-native mode by default (`LYDIABOX_GUEST_NATIVE`,
+[design.md section 4.4.2](design.md#442-guest-native-mode-hosted-cells)).
+The cell runs no magpie. Each harness signs in inside the machine with
+its own flow, keeps its tokens in the home on the machine disk
+(`/data/lydiabox/home`), and calls its provider from the machine. The
+guest LLM tunnel (`host-9002.sock`) answers 403, and the cell does not
+read or write the credential files of the harnesses through the file
+routes. The guest image and `lydiabox-guest` did not change for this mode:
+the image already has the five harness CLIs and their sign-in commands.
+
+Sign-in traffic leaves the machine directly (Claude, OpenAI, Google, and
+the opencode providers). The sign-in pages open in the browser of the
+user: Claude Code shows a URL and asks for the code that the page shows;
+Codex shows a device code; agy and opencode show their own steps in the
+terminal.
+
 ### What the driver does
 
 - The first use makes the machine `lbx-<16 hex of sha256(tenant)>` from

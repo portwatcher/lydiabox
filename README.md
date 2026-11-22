@@ -152,6 +152,7 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_DOCKER_IMAGE` | `lydiabox/guest:latest` | Guest image of the `docker` driver |
 | `LYDIABOX_GUEST_BINARY` | found next to `lydiabox` | Linux `lydiabox-guest` injected into the VM |
 | `LYDIABOX_ROOTFS_URL` | empty | Base URL of prebuilt guest images (`chv`) |
+| `LYDIABOX_GUEST_NATIVE` | `true` in cell mode, else `false` | Harnesses sign in inside the VM; no host gateway (design section 4.4.2) |
 | `LYDIABOX_GATEWAY_UPSTREAM` | `http://` + `LYDIABOX_MAGPIE_ADDR` | LLM gateway that guest traffic goes to |
 | `LYDIABOX_OAUTH_RELAY_URL` | empty | Optional OAuth relay for connectors |
 | `LYDIABOX_<PROVIDER>_CLIENT_ID`, `_CLIENT_SECRET` | empty | OAuth apps: `GITHUB`, `GDRIVE`, `NOTION`, `SLACK` |
@@ -449,6 +450,15 @@ Antigravity (for Antigravity) in the Subscriptions panel of the Models page. mag
 the same directory; the harnesses in the VM keep the placeholder token. Read
 the provider terms first: see
 [docs/subscriptions-manual-test.md](docs/subscriptions-manual-test.md).
+
+A hosted cell (`LYDIABOX_CELL_MODE`) uses guest-native mode
+(`LYDIABOX_GUEST_NATIVE`, on by default in cell mode): magpie does not run,
+and each harness signs in itself inside the VM. On the Models page,
+**Sign in** opens a VM terminal that runs the sign-in of that harness
+(`claude auth login`, `codex login --device-auth`, `opencode auth login`,
+`agy`, or `~/.dsh/.env` for dsh). Tokens and API keys stay in the VM home,
+and model traffic goes from the VM to the provider. See
+[docs/design.md section 4.4.2](docs/design.md#442-guest-native-mode-hosted-cells).
 
 The Studio lists the sessions of all five harnesses from `/home/agent`,
 also while the VM is off. A harness session opens in a chat view: the

@@ -19,7 +19,7 @@
    - Full VM persistence: `/home/agent` and `/workspace` mount via `virtio-fs`; `/` root filesystem uses `OverlayFS` (`rootfs.squashfs` read-only base + a sparse ext4 `root-upper.img` stored on JuiceFS attached via `virtio-blk`), so `sudo apt install`, `/etc` edits, Chrome login profiles, and Blender plugins persist across VM lifecycles.
 3. **Multi-Harness Session Management & LLM Decoupling**:
    - First-class support for 5 Harnesses: **`claude-code` (`claude`)**, **`codex`**, **`dsh`**, **`antigravity` (`agy`)**, and **`opencode`**.
-   - Integrates **`yetone/magpie`** on the Host Control Plane (`127.0.0.1:3425`) bridged into the VM via `vsock`. Upstream LLM API keys and OAuth subscriptions stay strictly on the host; Harnesses inside the VM only receive a revocable local gateway token.
+   - Integrates **`yetone/magpie`** on the Host Control Plane (`127.0.0.1:3425`) bridged into the VM via `vsock`. Upstream LLM API keys and OAuth subscriptions stay strictly on the host; Harnesses inside the VM only receive a revocable local gateway token. Hosted cells use guest-native mode instead (section 4.4.2): each harness signs in inside the user's VM and calls its provider directly.
    - **Session Manager**: Discovers sessions across all 5 Harnesses (even while VM is off), tracks usage, and changes bound LLMs on the fly.
 4. **Zero-Trust Connectors (OAuth2 & Dynamic Credential Broker)**:
    - Built-in Connector manager for **GitHub**, **Google Drive**, **Notion**, and **Slack**. Self-hosted users configure their own OAuth `CLIENT_ID`/`CLIENT_SECRET` (or Personal Access Tokens for instant setup; also supports an optional `LYDIABOX_OAUTH_RELAY_URL` for future cloud OAuth relay).
@@ -272,6 +272,30 @@ Running `./lydiabox up` reads environment variables (and optional `lydiabox.yaml
      ~~~
 
 ---
+
+#### 4.4.2 Guest-native mode (hosted cells)
+
+A hosted service must not hold, share, or route the personal subscription of
+a user (provider terms, `docs/subscriptions-manual-test.md`). In guest-native
+mode each harness runs, signs in, and calls its provider inside the user's
+own VM. The setting is `LYDIABOX_GUEST_NATIVE` (`guest_native` in
+`lydiabox.yaml`). It is on by default in cell mode and off in the
+self-hosted mode, where sections 4.4 and 4.4.1 apply unchanged.
+
+| Part | Self-hosted (gateway) | Guest-native |
+| :--- | :--- | :--- |
+| Harness process | In the VM | In the VM |
+| Subscription sign-in | magpie on the host (Models page) | The harness itself, in a VM terminal (Models page, "Sign in") |
+| Tokens and API keys | Host, `$DATA_DIR/state/magpie` | The VM home (for example `~/.claude/.credentials.json`, `~/.codex/auth.json`) |
+| Model traffic | VM to host magpie (vsock 9002) to provider | VM to provider |
+| Host magpie | Runs | Does not run |
+| Guest LLM tunnel (9002) | Adds the gateway key | Answers 403; sends nothing upstream |
+
+- **Sign-in**: `POST /api/v1/sessions` with `{"harness":"shell","signIn":"<harness>"}` starts a VM terminal that runs the native sign-in and then a login shell: `claude auth login`, `codex login --device-auth`, `opencode auth login`, `agy` (its first start asks for the sign-in method), and for `dsh` an editor on `~/.dsh/.env` (dsh uses API keys only). The host only relays the terminal; it does not store the input or read the token files.
+- **API keys**: the user adds them in the VM with the harness's own flow (`claude auth login --console`, `codex login --with-api-key`, `opencode auth login`, `~/.dsh/.env`). The host gateway is not offered: OpenAI forbids the transfer of an API key to a third party, and the Anthropic and Google terms do not state that a gateway of the operator is permitted.
+- **Wirers** (`wire.Binding.Native`): they remove the gateway settings that an earlier wiring wrote (base URLs, the placeholder token, the `lydiabox` provider of Codex and opencode, the Gemini API provider of agy, the dsh launcher files) and keep the MCP servers, the instruction block, the permission settings, and a native model. They never read or write a credential file (`wire.CredentialFiles`). They do not edit `~/.claude.json`; Claude Code gets the MCP servers with `--mcp-config` on its command line (ACP sessions get them through ACP).
+- **File guard** (`agentfs.Guard`): the host File Manager and the wirers cannot read, write, or rename the credential files of the harnesses, and cannot read through a symbolic link. Listing, stat, and delete stay.
+- **Models**: `GET /api/v1/models/gateway` returns `{"status":"off","mode":"guest-native"}`. `GET /api/v1/models` lists native model IDs with the harness ID as `provider`: the Claude Code aliases (`opus`, `sonnet`, `haiku`) and the models of earlier sessions. A session without a model uses the harness default. Subscription and API-key routes answer 409.
 
 ### 4.5 Computer Use, Desktop Streaming & Takeover (`internal/guest/*`)
 

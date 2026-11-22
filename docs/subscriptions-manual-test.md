@@ -78,29 +78,47 @@ file below the guest home.
 
 ## Provider terms
 
-- **Anthropic**: the Claude Code legal page allows the subscription sign-in
-  only for ordinary use of Claude Code and Anthropic's own apps. It forbids
-  third parties to route requests through a Free, Pro, or Max account for
-  their users. A product that runs Claude Code must not resell or
-  intermediate Claude usage. Since January 2026 Anthropic has blocked
-  subscription tokens that third-party tools use. magpie itself warns that
-  Anthropic can suspend an account that it sees used outside its apps.
-  Sources: <https://code.claude.com/docs/en/legal-and-compliance>,
-  <https://www.anthropic.com/legal/consumer-terms>.
-- **OpenAI**: the Terms of Use forbid sharing account credentials or making
-  an account available to others. OpenAI has a "Sign in with ChatGPT"
-  program for third-party apps; remotely hosted or paid apps must apply.
-  Sources: <https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites>,
-  <https://developers.openai.com/siwc/token-sharing-open-source>.
+Read again on 2026-11-23. "Unclear" means that the terms do not say it.
 
-- **Google**: the terms for Antigravity accounts were not checked for this
-  use. magpie itself warns that Google can suspend an Antigravity account
-  that it sees used outside Antigravity. The dialog shows this warning.
+| Use | Anthropic (Claude Code) | OpenAI (Codex) | Google (Antigravity) |
+| :--- | :--- | :--- | :--- |
+| The user signs in to the unmodified CLI in the user's own hosted VM | Permitted, if the operator accepts the Commercial Terms | Permitted (device code for remote machines) | Unclear |
+| The service holds or shares the sign-in | Forbidden | Forbidden | Forbidden |
+| The service routes subscription traffic | Forbidden | Unclear, probably forbidden | Forbidden |
+| The user's API key in the VM | Permitted | Permitted | Permitted (AI Studio or Gemini Enterprise key) |
+| The user's API key through a gateway of the service | Unclear | Unclear; transfer of a key to a third party is forbidden | Unclear |
 
-For the self-hosted version, one user signs in with an own account on an own
-host. A cloud version that holds the sign-ins of its users and routes their
-requests through a shared gateway is the use that both providers forbid.
-Decide this before the cloud work starts.
+- **Anthropic**: <https://code.claude.com/docs/en/legal-and-compliance>
+  permits Claude Code in hosted agent infrastructure when the binary is
+  unmodified and each end user signs in with an own subscription or key.
+  Third parties may not "collect, store, or intermediate Claude.ai
+  credentials" or route requests through Free, Pro, Max, or Ultra plan
+  credentials. The Consumer Terms
+  (<https://www.anthropic.com/legal/consumer-terms>) forbid sharing the
+  login. The Commercial Terms
+  (<https://www.anthropic.com/legal/commercial-terms>) apply to the
+  operator. opencode removed its Claude subscription sign-in after a
+  request from Anthropic (<https://github.com/anomalyco/opencode/pull/18186>):
+  use Claude in opencode with an API key only.
+- **OpenAI**: the Terms of Use (<https://openai.com/policies/row-terms-of-use/>)
+  forbid sharing account credentials or making an account available to
+  others. The Services Agreement (<https://openai.com/policies/services-agreement/>,
+  3.3(g)) forbids transferring API keys to a third party. The Codex
+  authentication page (<https://learn.chatgpt.com/docs/auth>) recommends
+  the device code sign-in on a remote or headless machine and says to keep
+  `~/.codex/auth.json` like a password.
+- **Google**: the Antigravity terms (<https://antigravity.google/terms>,
+  section 6) call access to the service through third-party software a
+  breach. The FAQ (<https://antigravity.google/docs/faq>) does not support
+  wrapping `agy` in third-party applications and recommends an AI Studio or
+  Gemini Enterprise key for them. Whether LydiaBox, which starts `agy` in
+  the user's VM, is such an application is not clear.
+
+Decision for LydiaBox Cloud: guest-native mode
+([design.md section 4.4.2](design.md#442-guest-native-mode-hosted-cells)).
+The harness signs in inside the user's VM, the tokens stay on the VM disk,
+and the cell neither reads them nor routes model traffic. The self-hosted
+version keeps the host sign-in below: one user, an own account, an own host.
 
 ## Real-account checklist
 
@@ -153,10 +171,10 @@ Record the date, the magpie version, and the result of each step in
 
 ## Open questions for the owner
 
-1. Terms: is subscription use acceptable for the self-hosted version, and
-   which model applies to the cloud version (each user's own Claude Code
-   in the user's own VM, the OpenAI "Sign in with ChatGPT" program, or API
-   keys only)?
+1. Terms: the cloud version uses each user's own harness sign-in in the
+   user's own VM (guest-native mode, decided 2026-11-23). Open: should the
+   cloud offer the Antigravity Google sign-in, or only a Gemini API key in
+   the VM?
 2. The last browser-signed-in Claude account cannot be removed through
    magpie's API (magpie does not sign its Claude Code copy out). Accept
    "turn the subscription off", or should LydiaBox delete the magpie

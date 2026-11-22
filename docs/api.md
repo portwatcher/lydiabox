@@ -665,6 +665,10 @@ runs the ACP agent of the harness in a guest terminal and exchanges JSON
 lines with the host; see "ACP engine" below). A shell runs only as `pty`;
 Antigravity also (`400`: its ACP agent cannot use the LydiaBox model
 gateway, `docs/harness-formats.md`, "ACP agents").
+`signIn` (guest-native mode only, `design.md` section 4.4.2) names a
+harness; with `"harness": "shell"` the terminal runs the native sign-in of
+that harness, then a login shell. Another harness or an unknown one is
+`400`; outside guest-native mode it is `409`.
 A `Session` has `engine` (`pty` or `acp`; for a stored session the engine
 it last ran with). Response `201`: `Session`. Errors: `400` unknown harness or a
 `workspaceDir` outside `/workspace` and `/home/agent`, `409 not_installed`
@@ -1118,7 +1122,7 @@ include key values, only `hasKey`.
 
 | Route | Request | Response |
 | :--- | :--- | :--- |
-| `GET /api/v1/models/gateway` | | `200 { "status": "running", "addr": "127.0.0.1:3425", "version": "0.1.3531" }` (`status`: `running`, `starting`, `stopped`, `error`) |
+| `GET /api/v1/models/gateway` | | `200 { "status": "running", "addr": "127.0.0.1:3425", "version": "0.1.3531" }` (`status`: `running`, `starting`, `stopped`, `error`; in guest-native mode `{"status":"off","mode":"guest-native"}`, the other models routes then list native model IDs and the subscription and provider changes answer `409`) |
 | `GET /api/v1/models/providers` | | `200 { "providers": [Provider] }` |
 | `POST /api/v1/models/providers` | `{ "kind": "openai", "name": "OpenAI", "baseUrl": "", "apiKey": "sk-..." }` | `201 Provider` |
 | `PATCH /api/v1/models/providers/{id}` | any of `name`, `baseUrl`, `apiKey`, `enabled` | `200 Provider` |

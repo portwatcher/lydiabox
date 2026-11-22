@@ -26,7 +26,9 @@
   absent).
 - Run `juicefs mount`, `magpie`, and AES-256-GCM encrypted connector/OAuth state
   strictly on the trusted host control plane. Never write upstream LLM keys or
-  refresh tokens to the guest disk.
+  refresh tokens to the guest disk. Exception: in guest-native mode (hosted
+  cells, `docs/design.md` section 4.4.2) the harness itself keeps the user's
+  own sign-in in the user's VM, and the host never reads, writes, or routes it.
 - Enforce strict path-traversal sandboxing (`filepath.Clean` + root boundary
   verification / `os.Root`) on all host File Manager APIs.
 - Prefer source files below 600 lines; 800 lines is the maximum. This applies to
