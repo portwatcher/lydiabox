@@ -142,6 +142,11 @@ func stripWebDAVPrefix(p string) string {
 var hrefPattern = regexp.MustCompile(`(<(?:[A-Za-z][A-Za-z0-9_.-]*:)?href>)\s*(?:https?://[^/<]+)?/`)
 
 func rewriteWebDAVResponse(resp *http.Response) error {
+	// The volume holds files that the guest wrote. Never let the browser
+	// run them as active content on the host origin (same as the File
+	// Manager download).
+	resp.Header.Set("Content-Security-Policy", "sandbox")
+	resp.Header.Set("X-Content-Type-Options", "nosniff")
 	if loc := resp.Header.Get("Location"); strings.HasPrefix(loc, "/") {
 		resp.Header.Set("Location", WebDAVPrefix+loc)
 	}
