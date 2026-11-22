@@ -88,8 +88,10 @@ One `lydiabox up` process is the trusted control plane for one tenant:
 2. The agent is always reachable. Work can start without an open browser.
 3. The user observes and takes over the desktop, as in the core.
 4. One tenant cannot read, change, or slow down another tenant.
-5. LLM keys, connector tokens, and the InstaBox API key never go into an
-   InstaBox machine.
+5. Connector tokens and the InstaBox API key never go into an InstaBox
+   machine. The cell never holds, reads, or routes the LLM sign-ins and keys
+   of a user: they stay in the user's machine (guest-native mode,
+   [design.md section 4.4.2](design.md#442-guest-native-mode-hosted-cells)).
 6. The core stays a complete self-hosted product. Each cloud change in the
    core is opt-in, and the defaults keep self-hosted behavior.
 
@@ -110,7 +112,8 @@ One `lydiabox up` process is the trusted control plane for one tenant:
 3. The dashboard makes the tenant. The control plane starts a cell, and
    the cell makes the machine from the guest image snapshot.
 4. The user opens `https://<tenant>.cloud.example.com/`, the core web UI of
-   the cell, and sets the LLM endpoint.
+   the cell, and signs in to each harness inside the machine (Models page,
+   **Sign in**).
 5. The user runs harness sessions and takes over the desktop through TURN.
 6. The machine pauses when idle and wakes on the next use.
 
@@ -122,7 +125,7 @@ Browser ──HTTPS──> Cloudflare (Access; cloud.example.com, *.cloud.exampl
                        ▼
 K8s:   lbx-router ──HTTP──> lbx-cellhost pod ──Unix socket──> cell
        lbx-control                                (lydiabox up in cell mode,
-       (accounts, tenants)                         magpie with the LLM keys)
+       (accounts, tenants)                         guest-native, no magpie)
                                                     │                │
                                   InstaBox API (HTTPS)   guest link (WSS to
                                                     │    a private port)
@@ -328,7 +331,7 @@ the core yet; the control plane or a later task must add them:
 
 | Secret | Where it is | Never |
 | :--- | :--- | :--- |
-| LLM keys, subscription tokens | magpie in the cell data directory | In the machine. The guest gets only the revocable gateway key, which the host side of channel 9002 adds. |
+| LLM keys, subscription tokens | In the machine home, written by the harness's own sign-in (guest-native mode) | In the cell: the cell runs no magpie, channel 9002 answers 403, and the file routes refuse the harness credential files. |
 | Connector tokens | Cell store, encrypted with the tenant master key | In the machine. The guest asks for a short-lived token over channel 9001. |
 | Tenant master key | Registry, wrapped with a control-plane key; a `0600` file for the cell | In the machine |
 | InstaBox API key | `lbx-control`; a `0600` file for each cell in the first version | In the machine |
@@ -345,10 +348,11 @@ must say it. The secrets above are not in the machine.
 
 ## 6. Harness authorization, triggers, and metering
 
-- **Harness authorization.** The default is an LLM endpoint with an API
-  key, stored in magpie. Do not offer subscription login in the cloud
-  until a legal review of each provider's terms permits it (decision 7,
-  [subscriptions-manual-test.md](subscriptions-manual-test.md)).
+- **Harness authorization.** Guest-native mode (decision 7): each harness
+  signs in inside the user's machine with its own flow, a subscription or
+  an API key, and calls its provider from the machine. The cell offers no
+  host sign-in and no host API keys
+  ([subscriptions-manual-test.md](subscriptions-manual-test.md#provider-terms)).
 - **Triggers.** A schedule, a webhook, an email, or a chat message starts
   a headless task through a new `POST /api/v1/tasks` route. The task
   holds a `task` lease. On InstaBox, the driver also holds an InstaBox
@@ -403,10 +407,13 @@ Open:
 6. **"Online 24/7".** (a) Always running; (b) always reachable, wake on
    use; (c) (b) by default, (a) as a paid option. **R**: (c). On InstaBox
    a paused machine costs only its disk.
-7. **Subscription credentials in the cloud.** **R**: never at launch;
-   then only after a legal review of each provider's terms.
-8. **LLM supply.** **R**: the user brings a key or endpoint; later the
-   service sells LLM access through magpie.
+7. **Subscription credentials in the cloud.** **Decided 2026-11-23**: the
+   user's own sign-in in the user's own machine (guest-native mode); the
+   cell never holds or routes it. Open: the Antigravity Google sign-in,
+   whose terms are not clear for this use.
+8. **LLM supply.** **R**: the user brings a sign-in or a key, in the
+   machine. Selling LLM access later needs its own design and the
+   providers' reseller terms; it cannot use the user's sign-ins.
 10. **Tenant address.** **R**: a subdomain per tenant
     (`<tenant>.cloud.example.com`), so the core cookie and `Origin` rules work
     unchanged.
