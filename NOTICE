@@ -1,0 +1,16 @@
+LydiaBox
+Copyright 2026 The LydiaBox authors
+
+This product is licensed under the Apache License, Version 2.0 (see the
+LICENSE file).
+
+This repository contains third-party material:
+
+- .agents/skills/: agent skills from https://github.com/jakubkrehel/skills,
+  Copyright (c) 2026 Jakub Krehel, licensed under the MIT License. The
+  license text is in .agents/skills/LICENSE.
+
+The Go modules and npm packages that LydiaBox depends on have their own
+licenses (see go.mod and web/package.json). The runtime binaries that
+`lydiabox up` downloads (internal/bootstrap/manifest.json) are not part of
+this repository and are distributed under their own licenses.
