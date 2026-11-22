@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -142,4 +144,13 @@ func titleFrom(p firstPrompt) string {
 		return string(r[:79]) + "…"
 	}
 	return s
+}
+
+// sqliteDSN returns a SQLite URI for the file p with query q. p holds
+// directory names that the guest chose, so it is percent-encoded: a '?'
+// or '#' in a name must not start the query, where the driver reads its
+// options and runs _pragma values as SQL.
+func sqliteDSN(p string, q url.Values) string {
+	u := url.URL{Scheme: "file", OmitHost: true, Path: filepath.ToSlash(p), RawQuery: q.Encode()}
+	return u.String()
 }

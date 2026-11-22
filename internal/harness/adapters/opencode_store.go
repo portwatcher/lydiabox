@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"net/url"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -117,7 +116,7 @@ func openOCDB(home string, write bool) (*sql.DB, error) {
 	if !write {
 		q.Set("mode", "ro")
 	}
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(p)+"?"+q.Encode())
+	db, err := sql.Open("sqlite", sqliteDSN(p, q))
 	if err != nil {
 		return nil, err
 	}

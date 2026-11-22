@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/url"
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -181,7 +180,7 @@ func agyOpen(home, id string) (*sql.DB, error) {
 	q := url.Values{}
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Set("mode", "ro")
-	return sql.Open("sqlite", "file:"+filepath.ToSlash(p)+"?"+q.Encode())
+	return sql.Open("sqlite", sqliteDSN(p, q))
 }
 
 func agySteps(home, id string) ([]agyStep, error) {
