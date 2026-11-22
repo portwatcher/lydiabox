@@ -134,7 +134,7 @@ Set environment variables, or put the same settings in `lydiabox.yaml`.
 | `LYDIABOX_CELL_MODE` | `false` | A cell of a control plane: the tenant ID, admin token, and master key must come from it; no tunnel, no UDP forward |
 | `LYDIABOX_INSTABOX_API_KEY`, `_API_KEY_FILE` | empty | InstaBox API key (`ibk_...`) of the `instabox` driver (environment only) |
 | `LYDIABOX_INSTABOX_SNAPSHOT` | empty | Snapshot ID (or name) of the imported guest image |
-| `LYDIABOX_INSTABOX_API_URL` | `https://api.instabox.sh` | InstaBox API (or a key broker) |
+| `LYDIABOX_INSTABOX_API_URL` | `https://api.instabox.sh` | InstaBox API (or a key broker); `https` only, except a loopback test server |
 | `LYDIABOX_INSTABOX_IDLE_PAUSE` | `30m` | Idle pause of the machine when no cell holds it awake (5m to 30m, `0` off) |
 | `LYDIABOX_MAGPIE_ADDR`, `_WEB_ADDR` | `127.0.0.1:3425`, `127.0.0.1:3426` | Host magpie gateway and its admin web API |
 | `LYDIABOX_VM_SUBNET_INDEX` | `auto` | Guest subnet `172.30.<n>.0/24` (`chv`); `auto` reads it from the state database |
