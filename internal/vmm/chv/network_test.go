@@ -98,3 +98,25 @@ func TestFirewallDropsGuestIPv6(t *testing.T) {
 		}
 	}
 }
+
+// A host without IPv6 (ipv6.disable=1) needs no IPv6 rules: a missing
+// ip6tables does not stop the VM.
+func TestFirewallWithoutHostIPv6(t *testing.T) {
+	old := ipv6Enabled
+	ipv6Enabled = func() bool { return false }
+	defer func() { ipv6Enabled = old }()
+	nw := DefaultNetwork("default")
+	look := func(name string) (string, error) {
+		if name == "iptables" {
+			return "/usr/sbin/iptables", nil
+		}
+		return "", errors.New("not found")
+	}
+	if err := (Firewall{Runner: &policyRunner{policy: "ACCEPT"}, LookPath: look}).Setup(context.Background(), nw, 0); err != nil {
+		t.Fatalf("Setup without host IPv6: %v", err)
+	}
+	ipv6Enabled = func() bool { return true }
+	if err := (Firewall{Runner: &policyRunner{policy: "ACCEPT"}, LookPath: look}).Setup(context.Background(), nw, 0); err == nil {
+		t.Fatal("Setup with host IPv6 and no ip6tables must fail")
+	}
+}

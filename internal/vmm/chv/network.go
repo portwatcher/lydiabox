@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/lydiabox/lydiabox/internal/storage"
@@ -31,7 +32,17 @@ func TableName(nw Network) string {
 // NftScript returns the nftables ruleset: masquerade guest traffic, drop
 // guest traffic to private networks and to the host itself, and forward
 // the WebRTC UDP port to the guest.
-func NftScript(nw Network, webrtcPort int) string {
+func NftScript(nw Network, webrtcPort int) string { return nftScript(nw, webrtcPort, true) }
+
+// ipv6Enabled reports whether the host has an IPv6 stack. Without one
+// (ipv6.disable=1) the guest has no IPv6 path, and the IPv6 rules are not
+// needed.
+var ipv6Enabled = func() bool {
+	_, err := os.Stat("/proc/sys/net/ipv6")
+	return err == nil
+}
+
+func nftScript(nw Network, webrtcPort int, ipv6 bool) string {
 	var b strings.Builder
 	t := TableName(nw)
 	fmt.Fprintf(&b, "table ip %s {\n", t)
@@ -48,6 +59,9 @@ func NftScript(nw Network, webrtcPort int) string {
 	fmt.Fprintf(&b, "\tchain input {\n\t\ttype filter hook input priority filter; policy accept;\n")
 	fmt.Fprintf(&b, "\t\tiifname %q ct state established,related accept\n", nw.Tap)
 	fmt.Fprintf(&b, "\t\tiifname %q drop\n\t}\n}\n", nw.Tap)
+	if !ipv6 {
+		return b.String()
+	}
 	// The guest network is IPv4 only. Drop all IPv6 from the TAP, else
 	// the guest reaches host services over link-local addresses.
 	fmt.Fprintf(&b, "table ip6 %s {\n", t)
@@ -128,8 +142,15 @@ func (f Firewall) Setup(ctx context.Context, nw Network, webrtcPort int) error {
 	}
 	_ = f.Teardown(ctx, nw, webrtcPort)
 	if nft, err := f.LookPath("nft"); err == nil {
-		script := NftScript(nw, webrtcPort)
-		if err := f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"-f", "-"}, Stdin: strings.NewReader(script)}); err != nil {
+		run := func(ipv6 bool) error {
+			script := nftScript(nw, webrtcPort, ipv6)
+			return f.Runner.Run(ctx, storage.Command{Path: nft, Args: []string{"-f", "-"}, Stdin: strings.NewReader(script)})
+		}
+		err := run(true)
+		if err != nil && !ipv6Enabled() {
+			err = run(false)
+		}
+		if err != nil {
 			return fmt.Errorf("chv: install nftables rules: %w", err)
 		}
 		if ipt, err := f.LookPath("iptables"); err == nil && f.forwardPolicyDrop(ctx, ipt) {
@@ -152,10 +173,16 @@ func (f Firewall) Setup(ctx context.Context, nw Network, webrtcPort int) error {
 	}
 	ip6t, err := f.LookPath("ip6tables")
 	if err != nil {
+		if !ipv6Enabled() {
+			return nil
+		}
 		return errors.New("chv: ip6tables is not installed; it is needed to keep the guest off host IPv6 addresses")
 	}
 	for _, r := range Ip6tablesRules(nw, true) {
 		if err := f.Runner.Run(ctx, storage.Command{Path: ip6t, Args: append([]string{"-w"}, r...)}); err != nil {
+			if !ipv6Enabled() {
+				return nil
+			}
 			return fmt.Errorf("chv: install ip6tables rules: %w", err)
 		}
 	}
