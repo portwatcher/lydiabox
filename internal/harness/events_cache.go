@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lydiabox/lydiabox/internal/secretmask"
 	"github.com/lydiabox/lydiabox/internal/store"
 )
 
@@ -217,7 +218,9 @@ func (m *Manager) putEventCopy(ctx context.Context, tenantID, source string, gen
 	raws := make([]json.RawMessage, 0, len(list))
 	for _, e := range list {
 		if b, err := json.Marshal(e); err == nil {
-			raws = append(raws, b)
+			// The host keeps this copy: mask a token that a harness or a
+			// tool printed (guest-native sign-ins stay in the VM).
+			raws = append(raws, secretmask.Bytes(b))
 		}
 	}
 	m.copies.mu.Lock()
