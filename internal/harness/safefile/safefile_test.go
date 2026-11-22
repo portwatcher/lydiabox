@@ -63,11 +63,11 @@ func TestSymlinkEscapes(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(outside, "new")); err == nil {
 		t.Fatal("dangling symlink target was created")
 	}
-	// An inside symlink is fine.
+	// An inside (relative) symlink is fine.
 	if err := os.MkdirAll(filepath.Join(root, "real"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "alias")); err != nil {
+	if err := os.Symlink("real", filepath.Join(root, "alias")); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteFile(root, "alias/f", []byte("ok"), 0o644); err != nil {

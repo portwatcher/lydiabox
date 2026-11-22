@@ -97,6 +97,9 @@ func (m dshMessage) text() string {
 	return strings.Join(parts, "\n")
 }
 
+// maxDSHDecoded bounds the decompressed size of one session file.
+var maxDSHDecoded int64 = safefile.MaxReadBytes
+
 // readDSH returns the decompressed JSONL of a session file.
 func readDSH(home, rel string) ([]byte, error) {
 	data, err := readHomeFile(home, rel)
@@ -111,7 +114,15 @@ func readDSH(home, rel string) ([]byte, error) {
 		return nil, err
 	}
 	defer dec.Close()
-	return io.ReadAll(dec)
+	// The guest writes these files: bound the decompressed size too.
+	out, err := io.ReadAll(io.LimitReader(dec, maxDSHDecoded+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(out)) > maxDSHDecoded {
+		return nil, fmt.Errorf("%s: %w", rel, safefile.ErrTooLarge)
+	}
+	return out, nil
 }
 
 func (d DSH) scan(home, rel string) (*harness.SessionMeta, error) {

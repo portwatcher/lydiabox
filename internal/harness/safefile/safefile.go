@@ -7,8 +7,11 @@
 package safefile
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -80,125 +83,250 @@ func within(root, p string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// ReadFile reads rel below root.
+// MaxReadBytes bounds ReadFile: the guest controls the files, and a huge,
+// sparse, or endless file must not exhaust host memory.
+const MaxReadBytes = 256 << 20
+
+// ErrTooLarge is returned by ReadFile for a file above MaxReadBytes.
+var ErrTooLarge = errors.New("file too large")
+
+// The functions below first call Resolve, which gives clear errors for a
+// path that escapes the root. They then do the operation itself through
+// an os.Root, which resolves every component relative to the root
+// directory. A guest that swaps a directory for a symlink between the two
+// steps can make the operation fail, but cannot move it outside the root.
+
+func openRoot(root, rel string) (*os.Root, string, error) {
+	if _, err := Resolve(root, rel); err != nil {
+		return nil, "", err
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, "", err
+	}
+	rel = filepath.Clean(filepath.FromSlash(rel))
+	return r, rel, nil
+}
+
+// ReadFile reads the regular file rel below root. It refuses other file
+// types (a FIFO would block) and files above MaxReadBytes.
 func ReadFile(root, rel string) ([]byte, error) {
-	p, err := Resolve(root, rel)
+	r, rel, err := openRoot(root, rel)
 	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(p)
+	defer r.Close()
+	f, err := r.OpenFile(rel, os.O_RDONLY|nonBlock, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("read %s: not a regular file", rel)
+	}
+	if fi.Size() > MaxReadBytes {
+		return nil, fmt.Errorf("read %s: %w", rel, ErrTooLarge)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > MaxReadBytes {
+		return nil, fmt.Errorf("read %s: %w", rel, ErrTooLarge)
+	}
+	return b, nil
+}
+
+// Stat returns the file info of rel below root (symlinks inside the root
+// are followed).
+func Stat(root, rel string) (fs.FileInfo, error) {
+	r, rel, err := openRoot(root, rel)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return r.Stat(rel)
 }
 
 // Exists reports whether rel exists below root (symlinks that escape count
 // as missing).
 func Exists(root, rel string) bool {
-	p, err := Resolve(root, rel)
-	if err != nil {
-		return false
-	}
-	_, err = os.Stat(p)
+	_, err := Stat(root, rel)
 	return err == nil
 }
 
 // MkdirAll creates rel and its parents below root and returns its real path.
 func MkdirAll(root, rel string) (string, error) {
-	p, err := Resolve(root, rel)
+	r, clean, err := openRoot(root, rel)
 	if err != nil {
 		return "", err
 	}
-	realRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
+	defer r.Close()
+	if err := mkdirAllIn(r, clean); err != nil {
 		return "", err
 	}
-	var missing []string
-	for cur := p; cur != realRoot; cur = filepath.Dir(cur) {
-		if _, err := os.Lstat(cur); err == nil {
-			break
-		}
-		missing = append(missing, cur)
-	}
-	for i := len(missing) - 1; i >= 0; i-- {
-		if err := os.Mkdir(missing[i], 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
-			return "", err
-		}
-		chownGuest(missing[i])
-	}
-	// Re-check: a concurrent guest could have swapped a directory for a link.
 	return Resolve(root, rel)
+}
+
+func mkdirAllIn(r *os.Root, rel string) error {
+	if rel == "." {
+		return nil
+	}
+	cur := ""
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		err := r.Mkdir(cur, 0o755)
+		if err == nil {
+			chownGuestIn(r, cur)
+			continue
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // WriteFile atomically writes data to rel below root, creating parent
 // directories. An existing file keeps its mode; a new file gets perm.
 func WriteFile(root, rel string, data []byte, perm os.FileMode) error {
-	dirRel := filepath.Dir(filepath.Clean(filepath.FromSlash(rel)))
-	if _, err := MkdirAll(root, dirRel); err != nil {
-		return err
-	}
-	// Resolve the file itself: a symlink inside the root is written
-	// through, one that leaves the root is refused.
-	target, err := Resolve(root, rel)
+	r, clean, err := openRoot(root, rel)
 	if err != nil {
 		return err
 	}
-	dir := filepath.Dir(target)
-	if fi, err := os.Stat(target); err == nil {
+	defer r.Close()
+	if clean == "." {
+		return fmt.Errorf("write %s: is the root", root)
+	}
+	if err := mkdirAllIn(r, filepath.Dir(clean)); err != nil {
+		return err
+	}
+	// A symlink inside the root is written through, one that leaves the
+	// root is refused.
+	target, err := leafTarget(r, root, clean)
+	if err != nil {
+		return err
+	}
+	if fi, err := r.Stat(target); err == nil {
 		if !fi.Mode().IsRegular() {
 			return fmt.Errorf("write %s: not a regular file", target)
 		}
 		perm = fi.Mode().Perm()
 	}
-	f, err := os.CreateTemp(dir, "."+filepath.Base(target)+".lydiabox-*")
+	tmp, f, err := createTemp(r, target)
 	if err != nil {
 		return err
 	}
-	tmp := f.Name()
 	ok := false
 	defer func() {
 		if !ok {
-			os.Remove(tmp)
+			_ = r.Remove(tmp)
 		}
 	}()
-	if _, err := f.Write(data); err != nil {
-		f.Close()
+	if err := writeAll(f, data, perm); err != nil {
 		return err
 	}
-	if err := f.Chmod(perm); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	chownGuest(tmp)
-	if err := os.Rename(tmp, target); err != nil {
+	if err := r.Rename(tmp, target); err != nil {
 		return err
 	}
 	ok = true
 	return nil
 }
 
-// RemoveAll removes rel below root. Missing paths are not an error.
+func writeAll(f *os.File, data []byte, perm os.FileMode) error {
+	_, err := f.Write(data)
+	if err == nil {
+		err = f.Chmod(perm)
+	}
+	if err == nil && os.Geteuid() == 0 {
+		err = f.Chown(GuestUID, GuestGID)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+func createTemp(r *os.Root, target string) (string, *os.File, error) {
+	dir, base := filepath.Split(target)
+	for i := 0; i < 100; i++ {
+		var b [4]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", nil, err
+		}
+		tmp := filepath.Join(dir, "."+base+".lydiabox-"+hex.EncodeToString(b[:]))
+		f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			return tmp, f, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", nil, err
+		}
+	}
+	return "", nil, fmt.Errorf("write %s: no free temporary name", target)
+}
+
+// leafTarget follows a symlink at rel (the last component only; os.Root
+// resolves the parents) and returns the root-relative path to write.
+func leafTarget(r *os.Root, root, rel string) (string, error) {
+	for range 40 {
+		fi, err := r.Lstat(rel)
+		if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			return rel, nil
+		}
+		link, err := r.Readlink(rel)
+		if err != nil {
+			return "", err
+		}
+		if filepath.IsAbs(link) {
+			realRoot, err := filepath.EvalSymlinks(root)
+			if err != nil {
+				return "", err
+			}
+			l, err := filepath.Rel(realRoot, link)
+			if err != nil || !filepath.IsLocal(l) {
+				return "", fmt.Errorf("%w: %s", ErrEscapes, rel)
+			}
+			rel = l
+			continue
+		}
+		next := filepath.Join(filepath.Dir(rel), link)
+		if !filepath.IsLocal(next) {
+			return "", fmt.Errorf("%w: %s", ErrEscapes, rel)
+		}
+		rel = next
+	}
+	return "", fmt.Errorf("%w: too many links at %s", ErrEscapes, rel)
+}
+
+// RemoveAll removes rel below root. Missing paths are not an error. A
+// symlink at rel is removed itself, not its target.
 func RemoveAll(root, rel string) error {
 	if filepath.Clean(filepath.FromSlash(rel)) == "." {
 		return fmt.Errorf("%w: refusing to remove the root", ErrEscapes)
 	}
-	p, err := Resolve(root, rel)
+	r, clean, err := openRoot(root, rel)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return err
 	}
-	return os.RemoveAll(p)
+	defer r.Close()
+	return r.RemoveAll(clean)
 }
 
-// chownGuest gives a file created by a root host process to the guest user.
-func chownGuest(p string) {
+// chownGuestIn gives a directory created by a root host process to the
+// guest user.
+func chownGuestIn(r *os.Root, rel string) {
 	if os.Geteuid() == 0 {
-		_ = os.Lchown(p, GuestUID, GuestGID)
+		_ = r.Lchown(rel, GuestUID, GuestGID)
 	}
 }

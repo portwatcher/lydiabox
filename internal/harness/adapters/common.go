@@ -108,13 +108,7 @@ func globHome(home, pattern string) ([]string, error) {
 }
 
 // statHome stats rel below home.
-func statHome(home, rel string) (fs.FileInfo, error) {
-	p, err := safefile.Resolve(home, rel)
-	if err != nil {
-		return nil, err
-	}
-	return os.Stat(p)
-}
+func statHome(home, rel string) (fs.FileInfo, error) { return safefile.Stat(home, rel) }
 
 // hostPath returns the resolved host path of rel below home.
 func hostPath(home, rel string) string {
