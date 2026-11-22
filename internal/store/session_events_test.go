@@ -92,3 +92,26 @@ func TestSessionEventsBound(t *testing.T) {
 		t.Fatalf("the newest event is not kept: %q, %v", last.Key, err)
 	}
 }
+
+// The guest chooses the session IDs, so the number of copies of a tenant
+// is bounded; the copy just written is always kept.
+func TestSessionEventCopiesBound(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := openStore(t)
+	n := MaxSessionEventCopies + 20
+	for i := 0; i < n; i++ {
+		if err := s.PutSessionEvents(ctx, "default", "claude", fmt.Sprintf("s%04d", i), rawEvents(1, 40)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stamps, err := s.ListSessionEventsStamps(ctx, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stamps) != MaxSessionEventCopies {
+		t.Fatalf("%d copies, want %d", len(stamps), MaxSessionEventCopies)
+	}
+	if _, err := s.GetSessionEvents(ctx, "default", "claude", fmt.Sprintf("s%04d", n-1)); err != nil {
+		t.Fatalf("newest copy: %v", err)
+	}
+}

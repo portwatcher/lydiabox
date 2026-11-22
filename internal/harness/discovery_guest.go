@@ -93,6 +93,11 @@ func (g *GuestDiscovery) fresh(ctx context.Context, tenantID string, harnesses [
 	}
 	roots := g.guestRoots(cctx, tenantID)
 	for name, raw := range res.Sessions {
+		// The guest chooses the keys: keep only the harnesses asked for,
+		// so it cannot add cache rows without bound.
+		if !wanted(harnesses, name) {
+			continue
+		}
 		var metas []SessionMeta
 		if err := json.Unmarshal(raw, &metas); err != nil {
 			out.Errors[name] = fmt.Errorf("decode guest sessions: %w", err)

@@ -19,6 +19,11 @@ import (
 // much smaller: text 32 KiB, two images of 1 MiB).
 const MaxSessionEventsBytes = 4 << 20
 
+// MaxSessionEventCopies bounds the number of stored copies of one tenant.
+// The guest chooses the session IDs, so PutSessionEvents removes the
+// oldest copies above this number.
+const MaxSessionEventCopies = 256
+
 // maxSessionEventsInflated bounds the decompressed size on read, so that a
 // damaged row cannot fill the memory.
 const maxSessionEventsInflated = MaxSessionEventsBytes + 1<<20
@@ -69,6 +74,16 @@ ON CONFLICT (tenant_id, harness, session_id) DO UPDATE SET events_gz = excluded.
 		tenantID, harness, sessionID, buf.Bytes(), len(kept), cut, s.timestamp())
 	if err != nil {
 		return fmt.Errorf("store: put session events: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+DELETE FROM session_events_cache WHERE tenant_id = ? AND NOT (harness = ? AND session_id = ?)
+AND (harness, session_id) NOT IN (
+	SELECT harness, session_id FROM session_events_cache
+	WHERE tenant_id = ? AND NOT (harness = ? AND session_id = ?)
+	ORDER BY updated_at DESC, harness, session_id LIMIT ?)`,
+		tenantID, harness, sessionID, tenantID, harness, sessionID, MaxSessionEventCopies-1)
+	if err != nil {
+		return fmt.Errorf("store: put session events: remove old copies: %w", err)
 	}
 	return nil
 }
