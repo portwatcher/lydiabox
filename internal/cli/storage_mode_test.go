@@ -46,6 +46,15 @@ func TestProviderModeWiring(t *testing.T) {
 	if !slices.Contains(skipBinaries(cfg), "juicefs") {
 		t.Fatal("juicefs must not be installed in the provider mode")
 	}
+	if slices.Contains(skipBinaries(cfg), "magpie") {
+		t.Fatal("the self-hosted mode needs magpie")
+	}
+	native := true
+	cfg.GuestNativeSet = &native
+	if !slices.Contains(skipBinaries(cfg), "magpie") {
+		t.Fatal("magpie must not be installed in guest-native mode")
+	}
+	cfg.GuestNativeSet = nil
 	boot, err := bootstrap.New(bootstrap.Options{BinDir: filepath.Join(base, "bin"), Driver: driver, Skip: skipBinaries(cfg),
 		LookPath: func(string) (string, error) { return "", errors.New("not on PATH") }})
 	if err != nil {

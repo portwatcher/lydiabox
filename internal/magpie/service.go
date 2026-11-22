@@ -56,6 +56,9 @@ type GatewayInfo struct {
 	Status  string `json:"status"`
 	Addr    string `json:"addr"`
 	Version string `json:"version"`
+	// Mode is ModeGuestNative when the harnesses sign in inside the VM
+	// and the host gateway is off; empty otherwise.
+	Mode string `json:"mode,omitempty"`
 }
 
 // CreateProviderRequest is the body of POST /api/v1/models/providers.
@@ -85,9 +88,17 @@ type Gateway interface {
 type Service struct {
 	Gateway  Gateway
 	Bindings *Bindings
+	// Native selects guest-native mode (native.go): no gateway calls.
+	Native bool
+	// NativeUsed returns the models that the harnesses used, for the
+	// native model list. It may be nil.
+	NativeUsed func(ctx context.Context) []NativeModel
 }
 
 func (s *Service) admin() (AdminAPI, error) {
+	if s.Native {
+		return nil, ErrGuestNative
+	}
 	if s.Gateway == nil {
 		return nil, fmt.Errorf("%w: gateway not configured", ErrUnavailable)
 	}
@@ -96,6 +107,9 @@ func (s *Service) admin() (AdminAPI, error) {
 
 // GatewayInfo returns the gateway state.
 func (s *Service) GatewayInfo() GatewayInfo {
+	if s.Native {
+		return GatewayInfo{Status: StateOff, Mode: ModeGuestNative}
+	}
 	if s.Gateway == nil {
 		return GatewayInfo{Status: StateStopped, Addr: DefaultAddr}
 	}
@@ -105,6 +119,9 @@ func (s *Service) GatewayInfo() GatewayInfo {
 
 // ListProviders lists providers.
 func (s *Service) ListProviders(ctx context.Context) ([]Provider, error) {
+	if s.Native {
+		return []Provider{}, nil
+	}
 	a, err := s.admin()
 	if err != nil {
 		return nil, err
@@ -298,6 +315,9 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 
 // ListModels lists the gateway catalog.
 func (s *Service) ListModels(ctx context.Context) ([]Model, error) {
+	if s.Native {
+		return s.nativeModels(ctx), nil
+	}
 	a, err := s.admin()
 	if err != nil {
 		return nil, err
@@ -319,6 +339,9 @@ func (s *Service) ListModels(ctx context.Context) ([]Model, error) {
 
 // ListRouting lists routing groups.
 func (s *Service) ListRouting(ctx context.Context) ([]RoutingGroup, error) {
+	if s.Native {
+		return []RoutingGroup{}, nil
+	}
 	a, err := s.admin()
 	if err != nil {
 		return nil, err

@@ -172,6 +172,10 @@ func TestLaunchCommands(t *testing.T) {
 		{adapters.Antigravity{}, harness.LaunchOptions{ResumeNativeID: "c1"}, "agy --dangerously-skip-permissions --conversation c1", true},
 		{adapters.OpenCode{}, harness.LaunchOptions{Model: "kimi/kimi-k3"}, "opencode --auto --model lydiabox/kimi/kimi-k3", false},
 		{adapters.OpenCode{}, harness.LaunchOptions{ResumeNativeID: "ses_1"}, "opencode --auto --session ses_1", true},
+		// Guest-native mode: native model IDs, MCP servers on the Claude Code command line.
+		{adapters.OpenCode{}, harness.LaunchOptions{Model: "openai/gpt-6", Native: true}, "opencode --auto --model openai/gpt-6", false},
+		{adapters.Claude{}, harness.LaunchOptions{Model: "opus", Native: true, MCPServers: []harness.MCPServer{{Name: "lydiabox", URL: "http://127.0.0.1:8910/mcp"}}},
+			`--model opus --mcp-config {"mcpServers":{"lydiabox":{"type":"http","url":"http://127.0.0.1:8910/mcp"}}}`, true},
 	}
 	for _, tc := range cases {
 		cmd, id := tc.a.LaunchCommand(tc.opts)

@@ -217,3 +217,29 @@ func TestGatewayAddsV1ForOpenAIPaths(t *testing.T) {
 		}
 	}
 }
+
+// In guest-native mode the host routes no model traffic: a request with a
+// subscription token gets 403 and never reaches the upstream.
+func TestDisabledGatewaySendsNothingUpstream(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("the upstream got %s %s", r.Method, r.URL)
+	}))
+	defer upstream.Close()
+	gw, err := NewHostGateway(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw.Disable("the model gateway is off")
+	front := httptest.NewServer(gw)
+	defer front.Close()
+	req, _ := http.NewRequest(http.MethodPost, front.URL+"/v1/messages", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer sk-ant-oat01-subscription")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d, want 403", resp.StatusCode)
+	}
+}

@@ -217,7 +217,26 @@ func (c Claude) LaunchCommand(o harness.LaunchOptions) ([]string, string) {
 	if o.Model != "" {
 		cmd = append(cmd, "--model", o.Model)
 	}
+	if o.Native && len(o.MCPServers) > 0 {
+		// Guest-native mode: the host does not edit ~/.claude.json (it can
+		// hold account data), so the MCP servers come from the command.
+		cmd = append(cmd, "--mcp-config", claudeMCPConfig(o.MCPServers))
+	}
 	return cmd, id
+}
+
+// claudeMCPConfig is the --mcp-config JSON of the MCP servers.
+func claudeMCPConfig(servers []harness.MCPServer) string {
+	type server struct {
+		Type string `json:"type"`
+		URL  string `json:"url"`
+	}
+	m := map[string]server{}
+	for _, s := range servers {
+		m[s.Name] = server{Type: "http", URL: s.URL}
+	}
+	b, _ := json.Marshal(map[string]any{"mcpServers": m})
+	return string(b)
 }
 
 // Purge implements harness.Purger.

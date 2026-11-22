@@ -29,7 +29,15 @@ type HostGateway struct {
 	upstream *url.URL
 	inject   atomic.Pointer[func(http.Header)]
 	proxy    *httputil.ReverseProxy
+	// off holds the refusal text when the gateway is off (guest-native
+	// mode): no request reaches the upstream.
+	off atomic.Pointer[string]
 }
+
+// Disable turns the gateway off: every request gets 403 with reason, and
+// nothing is sent to the upstream. Guest-native mode uses it, so the host
+// routes no model traffic.
+func (g *HostGateway) Disable(reason string) { g.off.Store(&reason) }
 
 // NewHostGateway proxies to upstream (DefaultUpstream when empty).
 func NewHostGateway(upstream string) (*HostGateway, error) {
@@ -110,6 +118,10 @@ func normalizeOpenAIPath(p string) (string, bool) {
 func (g *HostGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !loopbackOrigin(r) {
 		http.Error(w, "forbidden origin", http.StatusForbidden)
+		return
+	}
+	if off := g.off.Load(); off != nil {
+		http.Error(w, "lydiabox: "+*off, http.StatusForbidden)
 		return
 	}
 	g.proxy.ServeHTTP(w, r)

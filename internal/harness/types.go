@@ -69,6 +69,11 @@ type LaunchOptions struct {
 	Model        string
 	// ResumeNativeID resumes an existing native session when set.
 	ResumeNativeID string
+	// Native selects guest-native mode: Model is a native model ID of the
+	// harness, and the harness gets MCPServers from the command line where
+	// the host does not write them into its config.
+	Native     bool
+	MCPServers []MCPServer
 }
 
 // Launcher builds the guest command line of a harness.

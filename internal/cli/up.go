@@ -144,7 +144,7 @@ func serve(ctx context.Context, env Env, cfg *config.Config, log *slog.Logger, s
 	}
 
 	d := &deps{
-		Config: cfg, Driver: driver, Logger: log, Store: st, Bootstrap: boot, Storage: stor.Provider, Files: stor.Files,
+		Config: cfg, Driver: driver, Logger: log, Store: st, Bootstrap: boot, Storage: stor.Provider, Files: guestFiles(cfg, stor.Files),
 		Auth:          api.NewAuthenticator(cfg.AuthToken),
 		VMStatus:      api.StaticVMStatus{State: api.VMStopped, Driver: driver},
 		SkipBootstrap: skipBootstrap,

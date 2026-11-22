@@ -28,6 +28,9 @@ import (
 func TestInstaboxCellEndToEnd(t *testing.T) {
 	checkGoroutines(t)
 	r := newCellRig(t)
+	// This test covers the host gateway; TestCellGuestNative covers the
+	// default of a cell.
+	r.env = append(r.env, "LYDIABOX_GUEST_NATIVE=false")
 	c := r.start()
 
 	// Nothing wakes or makes the machine at start.

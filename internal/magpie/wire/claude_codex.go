@@ -60,8 +60,11 @@ func claudeFirstStart(o *object) error {
 func (claudeWirer) Harness() string    { return "claude-code" }
 func (claudeWirer) ConfigPath() string { return guestPath(claudeSettings) }
 
-func (claudeWirer) Apply(h Home, b Binding) error {
+func (w claudeWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
+	if b.Native {
+		return w.applyNative(h, b)
+	}
 	err := editJSONFile(h, claudeSettings, 0o644, func(o *object) error {
 		env, err := o.child("env")
 		if err != nil {
@@ -127,8 +130,11 @@ const codexConfig = ".codex/config.toml"
 func (codexWirer) Harness() string    { return "codex" }
 func (codexWirer) ConfigPath() string { return guestPath(codexConfig) }
 
-func (codexWirer) Apply(h Home, b Binding) error {
+func (w codexWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
+	if b.Native {
+		return w.applyNative(h, b)
+	}
 	old, err := readOptional(h, codexConfig)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", guestPath(codexConfig), err)
@@ -163,5 +169,8 @@ func (codexWirer) CurrentModel(h Home) (string, error) {
 }
 
 func (codexWirer) Env(b Binding) map[string]string {
+	if b.Native {
+		return nil
+	}
 	return map[string]string{TokenEnv: b.withDefaults().Token}
 }

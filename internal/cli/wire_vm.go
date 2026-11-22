@@ -161,7 +161,7 @@ func wireVM(ctx context.Context, d *deps) (*component, error) {
 		if err != nil {
 			return nil, err
 		}
-		d.Files = rfs
+		d.Files = guestFiles(cfg, rfs)
 		d.FilesServing = ctl.Serving
 	}
 

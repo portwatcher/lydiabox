@@ -35,10 +35,15 @@ type service struct {
 
 // skipBinaries lists the runtime binaries a storage mode does not need.
 func skipBinaries(cfg *config.Config) []string {
+	var skip []string
 	if cfg.ProviderStorage() {
-		return []string{"juicefs"}
+		skip = append(skip, "juicefs")
 	}
-	return nil
+	if cfg.GuestNative() {
+		// Guest-native mode runs no host model gateway.
+		skip = append(skip, "magpie")
+	}
+	return skip
 }
 
 // objectStore returns the S3 store, or nil in the provider mode without S3

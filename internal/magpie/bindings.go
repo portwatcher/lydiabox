@@ -44,6 +44,9 @@ type Bindings struct {
 	// Wirers use it only for a harness that has no model bound and no
 	// usable default of its own (dsh). It may be nil.
 	DefaultModel func(ctx context.Context) string
+	// Native selects guest-native mode: the wirers remove the gateway
+	// settings, and a model is a native model ID of the harness.
+	Native bool
 }
 
 func (b *Bindings) wirer(harness string) (wire.Wirer, error) {
@@ -60,11 +63,20 @@ func (b *Bindings) wirer(harness string) (wire.Wirer, error) {
 }
 
 func (b *Bindings) binding(ctx context.Context, model string) wire.Binding {
-	wb := wire.Binding{GatewayURL: b.GatewayURL, Model: model, MCPServers: b.MCPServers}
-	if b.DefaultModel != nil {
+	wb := wire.Binding{GatewayURL: b.GatewayURL, Model: model, MCPServers: b.MCPServers, Native: b.Native}
+	if b.DefaultModel != nil && !b.Native {
 		wb.Fallback = func() string { return b.DefaultModel(ctx) }
 	}
 	return wb
+}
+
+// validModel reports whether model is a gateway model ID, or in
+// guest-native mode a native model ID of the harness.
+func (b *Bindings) validModel(model string) bool {
+	if b.Native {
+		return ValidNativeModelID(model)
+	}
+	return ValidModelID(model)
 }
 
 // List returns one binding per harness; Model is empty when unbound.
@@ -96,7 +108,7 @@ func (b *Bindings) Bind(ctx context.Context, tenantID, harness, model string) (B
 	if err != nil {
 		return Binding{}, err
 	}
-	if model != "" && !ValidModelID(model) {
+	if model != "" && !b.validModel(model) {
 		return Binding{}, fmt.Errorf("%w: model %q is not a provider/model ID", ErrBadRequest, model)
 	}
 	if err := w.Apply(wire.FSHome(ctx, b.Files, tenantID), b.binding(ctx, model)); err != nil {

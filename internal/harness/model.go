@@ -33,7 +33,17 @@ type ModelMemory interface {
 // wire points the harness config at the gateway before a start, with the
 // model of the session when it has one.
 func (m *Manager) wire(ctx context.Context, ls *liveSession) {
-	if ls.harness == Shell || m.opts.Wiring == nil {
+	if m.opts.Wiring == nil {
+		return
+	}
+	if ls.harness == Shell {
+		// A sign-in shell gets the config of its harness first, so no
+		// gateway setting of an earlier mode hides the sign-in.
+		if ls.signIn != "" {
+			if err := m.opts.Wiring.EnsureWired(ctx, ls.tenantID, ls.signIn); err != nil {
+				m.log.Warn("harness config wiring failed before the sign-in", "harness", ls.signIn, "err", err)
+			}
+		}
 		return
 	}
 	if mem, ok := m.opts.Wiring.(ModelMemory); ok && ls.model != "" {

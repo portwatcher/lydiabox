@@ -100,6 +100,9 @@ type Binding struct {
 	// empty model leaves the configured model unchanged.
 	Model      string
 	MCPServers []MCPServer
+	// Native selects guest-native mode: the harness signs in itself in the
+	// VM, and the wirer removes the gateway settings (native.go).
+	Native bool
 	// Fallback returns a model that the gateway serves ("" when none). A
 	// wirer whose harness has no usable default model (dsh) calls it when
 	// no model is bound and its config has none; it may be nil.

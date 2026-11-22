@@ -130,7 +130,11 @@ func (o OpenCode) LaunchCommand(opts harness.LaunchOptions) ([]string, string) {
 	if opts.ResumeNativeID != "" {
 		cmd = append(cmd, "--session", opts.ResumeNativeID)
 	}
-	if opts.Model != "" {
+	switch {
+	case opts.Model != "" && opts.Native:
+		// Guest-native mode: the model is opencode's own "<provider>/<model>".
+		cmd = append(cmd, "--model", opts.Model)
+	case opts.Model != "":
 		cmd = append(cmd, "--model", GatewayProvider+"/"+opts.Model)
 	}
 	return cmd, opts.ResumeNativeID

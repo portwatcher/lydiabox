@@ -104,6 +104,9 @@ func checkLoginID(id string) error {
 
 // ListSubscriptions returns one entry per subscription kind.
 func (s *Service) ListSubscriptions(ctx context.Context) ([]Subscription, error) {
+	if s.Native {
+		return []Subscription{}, nil
+	}
 	a, err := s.admin()
 	if err != nil {
 		return nil, err

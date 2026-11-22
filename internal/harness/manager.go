@@ -109,6 +109,9 @@ type ManagerOptions struct {
 	EventPoll time.Duration
 	// MCPServers are passed to the ACP agents (wire.DefaultMCPServers).
 	MCPServers []MCPServer
+	// GuestNative selects guest-native mode (signin.go): the harnesses
+	// sign in inside the VM, and launch commands use native model IDs.
+	GuestNative bool
 	// EventCache keeps a host copy of the session events (provider storage
 	// mode only; nil turns it off). EventCopyDelay is the shortest time
 	// between two writes of the copy of a watched session (default 15s).
@@ -141,6 +144,8 @@ type liveSession struct {
 	title       string
 	provisional bool
 	engine      string
+	// signIn is the harness whose native sign-in a shell runs.
+	signIn string
 	ptyID       string
 	startedAt   time.Time
 	endedAt     time.Time
@@ -230,6 +235,9 @@ type CreateRequest struct {
 	Engine string `json:"engine"`
 	Cols   uint16 `json:"cols"`
 	Rows   uint16 `json:"rows"`
+	// SignIn names a harness: a shell session then runs the native
+	// sign-in of that harness in the VM (guest-native mode, signin.go).
+	SignIn string `json:"signIn,omitempty"`
 }
 
 // Create starts a harness terminal in the guest. It starts the VM, also
@@ -245,11 +253,19 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 	if err != nil {
 		return Session{}, err
 	}
+	if req.SignIn != "" && req.Harness != Shell {
+		return Session{}, fmt.Errorf("%w: signIn needs the shell harness", ErrBadRequest)
+	}
 	switch a, ok := m.adapters[req.Harness]; {
 	case req.Harness == Shell:
 		cmd, nativeID = []string{"bash", "-l"}, randomID("pty-")
 		if req.ResumeNativeID != "" {
 			return Session{}, fmt.Errorf("%w: the shell has no sessions to resume", ErrBadRequest)
+		}
+		if req.SignIn != "" {
+			if cmd, err = m.signInCommand(req.SignIn); err != nil {
+				return Session{}, err
+			}
 		}
 	case ok:
 		if req.ResumeNativeID != "" && strings.ContainsAny(req.ResumeNativeID, "/\\\x00") {
@@ -262,7 +278,8 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 		if engine == EngineACP {
 			cmd, nativeID = m.acpCommand(req.Harness, ws, req.Model, req.ResumeNativeID), req.ResumeNativeID
 		} else {
-			cmd, nativeID = a.LaunchCommand(LaunchOptions{WorkspaceDir: ws, Model: req.Model, ResumeNativeID: req.ResumeNativeID})
+			cmd, nativeID = a.LaunchCommand(LaunchOptions{WorkspaceDir: ws, Model: req.Model, ResumeNativeID: req.ResumeNativeID,
+				Native: m.opts.GuestNative, MCPServers: m.opts.MCPServers})
 		}
 	default:
 		return Session{}, fmt.Errorf("%w: unknown harness %q", ErrBadRequest, req.Harness)
@@ -278,7 +295,7 @@ func (m *Manager) Create(ctx context.Context, tenantID string, req CreateRequest
 		return Session{}, err
 	}
 	ls := &liveSession{tenantID: tenantID, harness: req.Harness, nativeID: nativeID, workspace: ws, model: req.Model,
-		title: req.Title, provisional: provisional, engine: engine}
+		title: req.Title, provisional: provisional, engine: engine, signIn: req.SignIn}
 	if err := m.start(ctx, ls, cmd, req.Cols, req.Rows); err != nil {
 		return Session{}, err
 	}

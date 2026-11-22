@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
 	"github.com/lydiabox/lydiabox/internal/api"
 	"github.com/lydiabox/lydiabox/internal/guest/rpc"
 	"github.com/lydiabox/lydiabox/internal/harness"
@@ -33,29 +32,39 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	log := d.Logger.With("component", "harness")
 	tid := cfg.TenantID
 
-	opts := magpie.Options{TenantID: tid, DataDir: cfg.MagpieDir(), Addr: cfg.Magpie.Addr, WebAddr: cfg.Magpie.WebAddr,
-		Secrets: d.Store, Logger: d.Logger}
-	if bin, err := d.Bootstrap.Resolve("magpie"); err != nil {
-		opts.BinaryError = err.Error()
-	} else {
-		opts.Binary = bin
-	}
-	sup, err := magpie.NewSupervisor(opts)
-	if err != nil {
-		return nil, err
+	native := cfg.GuestNative()
+	var sup *magpie.Supervisor
+	if !native {
+		// Guest-native mode runs no magpie: the host keeps no subscription
+		// or API key.
+		opts := magpie.Options{TenantID: tid, DataDir: cfg.MagpieDir(), Addr: cfg.Magpie.Addr, WebAddr: cfg.Magpie.WebAddr,
+			Secrets: d.Store, Logger: d.Logger}
+		if bin, err := d.Bootstrap.Resolve("magpie"); err != nil {
+			opts.BinaryError = err.Error()
+		} else {
+			opts.Binary = bin
+		}
+		s, err := magpie.NewSupervisor(opts)
+		if err != nil {
+			return nil, err
+		}
+		sup = s
 	}
 	if d.Files == nil {
 		return nil, errors.New("harness: the guest filesystem is not available")
 	}
-	bindings := &magpie.Bindings{Store: d.Store, Files: d.Files}
-	service := &magpie.Service{Gateway: sup, Bindings: bindings}
+	bindings := &magpie.Bindings{Store: d.Store, Files: d.Files, Native: native}
+	service := &magpie.Service{Bindings: bindings, Native: native}
+	if sup != nil {
+		service.Gateway = sup
+	}
 	bindings.DefaultModel = func(ctx context.Context) string { return gatewayDefaultModel(ctx, service) }
 
 	runner, waker := guestRuntime(d)
 	mopts := harness.ManagerOptions{
 		Adapters: adapters.All(), Files: d.Files, Discovery: sessionDiscovery(d, log), Store: d.Store,
 		Runner: runner, Waker: waker, Wiring: bindings, Logger: d.Logger, // the manager adds component=harness
-		MCPServers: acpMCPServers(),
+		MCPServers: acpMCPServers(), GuestNative: native,
 	}
 	if cfg.ProviderStorage() && d.Store != nil {
 		// The session files are on the machine disk: the host keeps a copy
@@ -66,6 +75,9 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	mgr, err := harness.NewManager(mopts)
 	if err != nil {
 		return nil, err
+	}
+	if native {
+		service.NativeUsed = nativeUsed(mgr, tid)
 	}
 	if mopts.EventCache != nil && d.VM != nil && d.VM.hooks != nil {
 		// Before a pause or stop of the host, the watched sessions write
@@ -98,8 +110,14 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	}
 
 	// The guest LLM tunnel replaces guest credentials with the gateway key.
+	// In guest-native mode it refuses every request: the host routes no
+	// model traffic.
 	if d.VM != nil && d.VM.Gateway != nil {
-		d.VM.Gateway.SetInjectHeaders(sup.InjectHeaders)
+		if native {
+			d.VM.Gateway.Disable(gatewayOffReason)
+		} else {
+			d.VM.Gateway.SetInjectHeaders(sup.InjectHeaders)
+		}
 	}
 
 	return &component{
@@ -109,8 +127,10 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 			api.ModelsRoutes{Service: service},
 		},
 		Start: func(ctx context.Context) error {
-			if err := sup.Start(ctx); err != nil {
-				return err
+			if sup != nil {
+				if err := sup.Start(ctx); err != nil {
+					return err
+				}
 			}
 			// A VM that is stopped at host start has no processes; the
 			// state hook does not run because the state did not change.
@@ -147,6 +167,9 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 			// The VM may stop after this (docker, chv): the next host start
 			// handles the sessions, not a hook racing the state database.
 			mgr.Close()
+			if sup == nil {
+				return nil
+			}
 			return sup.Stop(ctx)
 		},
 	}, nil
@@ -167,7 +190,7 @@ func sessionDiscovery(d *deps, log *slog.Logger) harness.Discovery {
 		ctl := d.VM.Controller
 		g.Running = ctl.Serving
 	}
-	if rfs, ok := d.Files.(*remotefs.FS); ok {
+	if rfs := remoteFS(d.Files); rfs != nil {
 		g.Begin = rfs.Begin
 	}
 	return g

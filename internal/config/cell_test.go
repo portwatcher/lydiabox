@@ -66,3 +66,31 @@ func TestAddrsOverlap(t *testing.T) {
 		}
 	}
 }
+
+func TestGuestNativeDefaultsToCellMode(t *testing.T) {
+	dir := t.TempDir()
+	load := func(env ...string) *Config {
+		t.Helper()
+		cfg, err := Load(LoadOptions{HomeDir: dir, Environ: func() []string { return env }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	for _, tc := range []struct {
+		env  []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"LYDIABOX_CELL_MODE=true"}, true},
+		{[]string{"LYDIABOX_CELL_MODE=true", "LYDIABOX_GUEST_NATIVE=false"}, false},
+		{[]string{"LYDIABOX_GUEST_NATIVE=true"}, true},
+	} {
+		if got := load(tc.env...).GuestNative(); got != tc.want {
+			t.Errorf("%v: GuestNative = %v, want %v", tc.env, got, tc.want)
+		}
+	}
+	if _, err := Load(LoadOptions{HomeDir: dir, Environ: func() []string { return []string{"LYDIABOX_GUEST_NATIVE=maybe"} }}); err == nil {
+		t.Error("a bad LYDIABOX_GUEST_NATIVE loaded")
+	}
+}

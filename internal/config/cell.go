@@ -48,6 +48,8 @@ type MagpieConfig struct {
 type cellFile struct {
 	TenantID *string `yaml:"tenant_id"`
 	CellMode *bool   `yaml:"cell_mode"`
+	// GuestNative is guest_native (Config.GuestNative).
+	GuestNative *bool `yaml:"guest_native"`
 	Magpie   struct {
 		Addr    *string `yaml:"addr"`
 		WebAddr *string `yaml:"web_addr"`
@@ -66,6 +68,10 @@ func applyCellFile(cfg *Config, fc *fileConfig) {
 	setStr(&cfg.TenantID, fc.Cell.TenantID)
 	if fc.Cell.CellMode != nil {
 		cfg.CellMode = *fc.Cell.CellMode
+	}
+	if fc.Cell.GuestNative != nil {
+		v := *fc.Cell.GuestNative
+		cfg.GuestNativeSet = &v
 	}
 	setStr(&cfg.Magpie.Addr, fc.Cell.Magpie.Addr)
 	setStr(&cfg.Magpie.WebAddr, fc.Cell.Magpie.WebAddr)
@@ -99,6 +105,14 @@ func applyCellEnv(cfg *Config, env map[string]string) []error {
 			cfg.CellMode = b
 		}
 	}
+	if v := strings.TrimSpace(env["LYDIABOX_GUEST_NATIVE"]); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("LYDIABOX_GUEST_NATIVE: %q is not a boolean", v))
+		} else {
+			cfg.GuestNativeSet = &b
+		}
+	}
 	if cfg.CellMode {
 		// The control plane runs the tunnel; a cell never starts cloudflared.
 		cfg.Remote.Tunnel = TunnelOff
@@ -124,6 +138,18 @@ func applyCellEnv(cfg *Config, env map[string]string) []error {
 		}
 	}
 	return errs
+}
+
+// GuestNative reports guest-native mode (docs/design.md section 4.4.2):
+// the harnesses sign in inside the VM and send model traffic directly to
+// the provider; the host runs no model gateway and keeps no subscription
+// or API key. It is LYDIABOX_GUEST_NATIVE when set, else on in cell mode
+// and off in the self-hosted mode.
+func (c *Config) GuestNative() bool {
+	if c.GuestNativeSet != nil {
+		return *c.GuestNativeSet
+	}
+	return c.CellMode
 }
 
 // validateCell checks the cell-mode settings and that the host addresses

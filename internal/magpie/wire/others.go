@@ -33,6 +33,9 @@ func (antigravityWirer) ConfigPath() string { return guestPath(antigravitySettin
 
 func (w antigravityWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
+	if b.Native {
+		return w.applyNative(h, b)
+	}
 	err := editJSONFile(h, antigravitySettings, 0o644, func(o *object) error {
 		if err := o.set("endpoint", b.GatewayURL); err != nil {
 			return err
@@ -65,6 +68,12 @@ func (w antigravityWirer) Apply(h Home, b Binding) error {
 	}); err != nil {
 		return err
 	}
+	return w.applyMCP(h, b)
+}
+
+// applyMCP registers the MCP servers in the Antigravity mcp_config.json
+// files.
+func (antigravityWirer) applyMCP(h Home, b Binding) error {
 	for _, rel := range antigravityMCPConfigs {
 		err := editJSONFile(h, rel, 0o644, func(o *object) error {
 			servers, err := o.child("mcpServers")
@@ -128,6 +137,9 @@ func (antigravityWirer) CurrentModel(h Home) (string, error) {
 }
 
 func (antigravityWirer) Env(b Binding) map[string]string {
+	if b.Native {
+		return nil
+	}
 	b = b.withDefaults()
 	return map[string]string{"GOOGLE_GEMINI_BASE_URL": b.GatewayURL, "GEMINI_API_KEY": b.Token}
 }
@@ -143,8 +155,11 @@ const opencodeConfig = ".config/opencode/opencode.json"
 func (opencodeWirer) Harness() string    { return "opencode" }
 func (opencodeWirer) ConfigPath() string { return guestPath(opencodeConfig) }
 
-func (opencodeWirer) Apply(h Home, b Binding) error {
+func (w opencodeWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
+	if b.Native {
+		return w.applyNative(h, b)
+	}
 	return editJSONFile(h, opencodeConfig, 0o644, func(o *object) error {
 		if _, ok := o.get("$schema"); !ok && len(o.keys) == 0 {
 			if err := o.set("$schema", "https://opencode.ai/config.json"); err != nil {

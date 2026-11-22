@@ -73,6 +73,9 @@ type Config struct {
 	// CellMode marks one cell of a hosted control plane (cell.go): the
 	// secrets come from the control plane, and host-wide resources are off.
 	CellMode bool
+	// GuestNativeSet holds LYDIABOX_GUEST_NATIVE (or guest_native in the
+	// file) when it is set; GuestNative applies the default.
+	GuestNativeSet *bool
 	// Instabox holds the instabox VM driver settings (instabox.go).
 	Instabox InstaboxConfig
 

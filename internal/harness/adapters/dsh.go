@@ -44,7 +44,7 @@ if [ -n "$1" ]; then DSH_MODEL=$1; export DSH_MODEL; fi
 DSH_PERMISSION_MODE=danger-full-access; export DSH_PERMISSION_MODE
 profile=$2; shift 2
 patch="$HOME/.dsh/lydiabox.patch.yml"
-if [ -n "$DSH_MODEL" ] && [ -f "$patch" ]; then exec dsh "$profile" --patch "$patch" "$@"; fi
+if [ -n "$DSH_MODEL" ] && [ -s "$patch" ]; then exec dsh "$profile" --patch "$patch" "$@"; fi
 exec dsh "$profile" "$@"`
 
 // dshCommand builds the wrapped command for a dsh profile ("tui", "acp")

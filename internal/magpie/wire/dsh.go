@@ -32,8 +32,11 @@ const dshEnvHeader = "# Managed by LydiaBox: the dsh launcher exports these vari
 func (dshWirer) Harness() string    { return "dsh" }
 func (dshWirer) ConfigPath() string { return guestPath(dshEnv) }
 
-func (dshWirer) Apply(h Home, b Binding) error {
+func (w dshWirer) Apply(h Home, b Binding) error {
 	b = b.withDefaults()
+	if b.Native {
+		return w.applyNative(h, b)
+	}
 	old, err := readOptional(h, dshEnv)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", guestPath(dshEnv), err)
