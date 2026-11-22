@@ -194,7 +194,7 @@ but a VM that the user stopped starts only on an explicit start (section 7).
 ```json
 {
   "version": { "version": "v0.1.0", "commit": "6123f30", "buildDate": "2026-11-10T06:30:00Z",
-               "goVersion": "go1.24.1", "platform": "linux/amd64" },
+               "goVersion": "go1.26.11", "platform": "linux/amd64" },
   "tenantId": "default",
   "vm": { "state": "STOPPED", "driver": "chv" },
   "storage": {

@@ -25,7 +25,7 @@ ARG UBUNTU_IMAGE=ubuntu:24.04
 # The kernel, initramfs, and squash stages are build tools and stay on
 # UBUNTU_IMAGE.
 ARG DESKTOP_IMAGE=${UBUNTU_IMAGE}
-ARG GO_IMAGE=golang:1.24-bookworm
+ARG GO_IMAGE=golang:1.26-bookworm
 # Stage copied into rootfs.squashfs: "desktop" or "desktop-slim"
 # (build-artifacts.sh --slim).
 ARG ROOTFS_STAGE=desktop
