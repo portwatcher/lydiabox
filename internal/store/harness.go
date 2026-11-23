@@ -66,3 +66,16 @@ func (s *Store) DeleteMagpieSecret(ctx context.Context, tenantID, name string) e
 	}
 	return requireAffected(res)
 }
+
+// DeleteMagpieSecrets removes every magpie secret of a tenant and returns
+// the number of rows removed (guest-native mode keeps none).
+func (s *Store) DeleteMagpieSecrets(ctx context.Context, tenantID string) (int64, error) {
+	if err := checkTenant(tenantID); err != nil {
+		return 0, err
+	}
+	res, err := s.db.ExecContext(ctx, `DELETE FROM magpie_secrets WHERE tenant_id = ?`, tenantID)
+	if err != nil {
+		return 0, fmt.Errorf("store: delete magpie secrets: %w", err)
+	}
+	return res.RowsAffected()
+}

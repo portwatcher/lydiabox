@@ -63,6 +63,10 @@ func (c *Config) SystemDir() string { return filepath.Join(c.MountDir(), "system
 // RootUpperImage is the persistent OverlayFS upper layer of the guest root.
 func (c *Config) RootUpperImage() string { return filepath.Join(c.SystemDir(), "root-upper.img") }
 
+// MagpieCacheDir is the cache of the host magpie gateway
+// ($XDG_CACHE_HOME of magpie is $DATA_DIR/cache).
+func (c *Config) MagpieCacheDir() string { return filepath.Join(c.DataDir, "cache", "magpie") }
+
 // CacheDir is the JuiceFS local cache directory.
 func (c *Config) CacheDir() string { return filepath.Join(c.DataDir, "cache", "jfs") }
 

@@ -33,6 +33,17 @@ func wireHarness(ctx context.Context, d *deps) (*component, error) {
 	tid := cfg.TenantID
 
 	native := cfg.GuestNative()
+	if native {
+		// Remove the sign-ins and keys that a host gateway of an earlier
+		// mode left, before the API serves.
+		var secrets MagpieSecretStore
+		if d.Store != nil {
+			secrets = d.Store
+		}
+		if err := purgeGatewayState(ctx, cfg, secrets, log); err != nil {
+			log.Warn("host model gateway data not removed", "err", err)
+		}
+	}
 	var sup *magpie.Supervisor
 	if !native {
 		// Guest-native mode runs no magpie: the host keeps no subscription

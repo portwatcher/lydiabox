@@ -20,6 +20,14 @@ import (
 func TestCellGuestNative(t *testing.T) {
 	checkGoroutines(t)
 	r := newCellRig(t)
+	// A host gateway of an older core left its sign-ins.
+	old := filepath.Join(r.root, "cell", "state", "magpie", "logins.json")
+	if err := os.MkdirAll(filepath.Dir(old), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(old, []byte(`{"refresh_token":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	c := r.start()
 	defer c.stop(t)
 
@@ -35,7 +43,7 @@ func TestCellGuestNative(t *testing.T) {
 		t.Fatalf("native model list %s", b)
 	}
 	if _, err := os.Stat(filepath.Join(r.root, "cell", "state", "magpie")); err == nil {
-		t.Error("the cell made a magpie state directory")
+		t.Error("the cell kept or made a magpie state directory")
 	}
 
 	// The machine has a signed-in Claude Code and a home that an earlier

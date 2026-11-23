@@ -472,7 +472,9 @@ its own flow, keeps its tokens in the home on the machine disk
 (`/data/lydiabox/home`), and calls its provider from the machine. The
 guest LLM tunnel (`host-9002.sock`) answers 403, and the cell does not
 read or write the credential files of the harnesses through the file
-routes. The guest image and `lydiabox-guest` did not change for this mode:
+routes. A cell that ran an older core in gateway mode removes the old
+magpie data (`state/magpie`, `cache/magpie`) and the `magpie_secrets`
+rows at its next start. The guest image and `lydiabox-guest` did not change for this mode:
 the image already has the five harness CLIs and their sign-in commands.
 
 Sign-in traffic leaves the machine directly (Claude, OpenAI, Google, and
