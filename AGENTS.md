@@ -45,7 +45,13 @@
   explaining.
 - Update `README.md` or `docs/` when a change makes their content outdated.
 
-## Worktrees, branches, commits, integration, and cleanup
+## Maintainer agent sessions
+
+The rules in this section apply only to agent sessions of the maintainer that
+have push access to this repository. External contributors do not push to
+`main`. They send pull requests as [CONTRIBUTING.md](CONTRIBUTING.md) tells.
+
+### Worktrees, branches, commits, integration, and cleanup
 
 - Before changing tracked files, fetch `origin` and create a dedicated
   Codex-managed worktree from the latest `origin/main`, unless the user
@@ -98,7 +104,7 @@
   inside and task branches already merged into `origin/main` or confirmed as no
   longer needed, and report any other unmerged branch to a human.
 
-## Automatically archive tasks with missing working directories
+### Automatically archive tasks with missing working directories
 
 - At session start, session completion, and after worktree removal, check all
   accessible Codex tasks across projects for `Current working directory missing`
@@ -116,7 +122,7 @@
   not proof of a missing directory; report lookup or archival failures without
   claiming success. Apply this rule to all matching tasks across projects.
 
-## One-time operations run locally
+### One-time operations run locally
 
 - Never create, dispatch, or repurpose GitHub Actions for one-time or temporary
   operations and maintenance, including ad hoc diagnostics, credential
