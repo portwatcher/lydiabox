@@ -17,6 +17,12 @@
 # - /usr/local/bin/uv links to the venv's uv: the "uv" install strategy of
 #   cli-hub and `uv tool install` need it.
 #
+# - The venv has its own setuptools. Many hub CLIs have only a setup.py,
+#   and pip then runs it with the setuptools that Python finds. Debian
+#   has a /usr/lib/python3/dist-packages/setuptools directory with no
+#   setuptools in it (only _vendor, from another package), which made
+#   each such install fail on a real machine.
+#
 # Override the versions with the build arguments of the same name:
 #   CLI_HUB_VERSION   cli-anything-hub version (PyPI)
 #   UV_VERSION        uv version (PyPI)
@@ -24,11 +30,12 @@ set -eu
 
 : "${CLI_HUB_VERSION:=0.4.1}"
 : "${UV_VERSION:=0.13.7}"
+: "${SETUPTOOLS_VERSION:=84.2.1}"
 venv=/opt/cli-hub
 
 python3 -m venv --system-site-packages "$venv"
 "$venv/bin/python" -m pip install --no-cache-dir --disable-pip-version-check \
-	"cli-anything-hub==$CLI_HUB_VERSION" "uv==$UV_VERSION"
+	"cli-anything-hub==$CLI_HUB_VERSION" "uv==$UV_VERSION" "setuptools==$SETUPTOOLS_VERSION"
 cat >"$venv/pip.conf" <<'EOF'
 # LydiaBox: packages that this venv's pip installs (cli-hub install) go to
 # the user's ~/.local, which persists. Only this venv reads this file.
@@ -52,4 +59,5 @@ case "$user_site" in
 	exit 1
 	;;
 esac
+"$venv/bin/python" -c 'from setuptools import find_namespace_packages, setup'
 rm -rf "$check_home"
