@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // TestCellGuestNative runs a cell in its default guest-native mode against

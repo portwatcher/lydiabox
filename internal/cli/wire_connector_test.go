@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 type stubStorage struct{ dir string }

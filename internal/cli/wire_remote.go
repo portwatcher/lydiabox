@@ -7,11 +7,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/cloudflare"
-	"github.com/lydiabox/lydiabox/internal/cloudflare/accessjwt"
-	"github.com/lydiabox/lydiabox/internal/cloudflare/cloudflared"
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/cloudflare"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/accessjwt"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/cloudflared"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // remoteAccess is the remote access state of a running control plane.

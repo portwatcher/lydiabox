@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/httpx"
 )
 
 // maxCauseBody is the part of a 5xx response body that the request log

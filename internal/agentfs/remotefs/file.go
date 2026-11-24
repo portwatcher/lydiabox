@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
 )
 
 // Open implements agentfs.FS. The returned file holds the files lease until

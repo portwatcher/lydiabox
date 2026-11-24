@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // refreshSkew refreshes tokens this long before they expire.

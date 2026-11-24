@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // openCodeEvents reads the events of an opencode session. A tool part holds

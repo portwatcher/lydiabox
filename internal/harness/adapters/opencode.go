@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // GatewayProvider is the opencode provider of the LydiaBox model gateway

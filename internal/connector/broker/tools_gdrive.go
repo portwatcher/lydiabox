@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/connector"
-	"github.com/lydiabox/lydiabox/internal/storage/files"
+	"github.com/portwatcher/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/storage/files"
 )
 
 var driveIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,200}$`)

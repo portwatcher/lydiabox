@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // MagpieSecretStore removes the magpie secrets of a tenant (*store.Store).

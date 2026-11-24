@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/desktop/ice"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/desktop/ice"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // refreshRetry is the delay before another try when a credential refresh

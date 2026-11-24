@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 // Desktop gates and reports agent actions (x11.Controller).

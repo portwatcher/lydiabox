@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 func purgeRig(t *testing.T, native bool) (*config.Config, *store.Store) {

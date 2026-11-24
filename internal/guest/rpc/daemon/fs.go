@@ -10,10 +10,10 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/guest/guestfs"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/guest/guestfs"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
 )
 
 // readChunk is the size of the FrameData chunks of fs.read.

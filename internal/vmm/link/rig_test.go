@@ -18,15 +18,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/credproxy"
-	guestlink "github.com/lydiabox/lydiabox/internal/guest/link"
-	"github.com/lydiabox/lydiabox/internal/guest/mcp"
-	"github.com/lydiabox/lydiabox/internal/guest/ptymanager"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc/daemon"
-	"github.com/lydiabox/lydiabox/internal/guest/webrtc"
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
+	"github.com/portwatcher/lydiabox/internal/guest/credproxy"
+	guestlink "github.com/portwatcher/lydiabox/internal/guest/link"
+	"github.com/portwatcher/lydiabox/internal/guest/mcp"
+	"github.com/portwatcher/lydiabox/internal/guest/ptymanager"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc/daemon"
+	"github.com/portwatcher/lydiabox/internal/guest/webrtc"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
 )
 
 var (

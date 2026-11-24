@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/connector"
-	"github.com/lydiabox/lydiabox/internal/connector/connectortest"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/connector/connectortest"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 func TestGitHubTools(t *testing.T) {

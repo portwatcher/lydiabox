@@ -10,10 +10,10 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/lydiabox/lydiabox/internal/cloudflare"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/cloudflare"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // remoteProvider is the provider name of the remote_access table row.

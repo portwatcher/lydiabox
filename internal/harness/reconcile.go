@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // RunningAttacher is implemented by runners that can attach to a guest

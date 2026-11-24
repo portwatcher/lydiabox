@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // PTY is an attachment to a guest PTY. Several attachments to one PTY form a

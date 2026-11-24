@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // updates applies session/update notifications (the "update" objects) to a

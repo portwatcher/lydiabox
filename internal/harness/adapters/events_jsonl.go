@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // claudeEvents parses a Claude Code transcript.

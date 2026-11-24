@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // host is the host side of a bridge under test.

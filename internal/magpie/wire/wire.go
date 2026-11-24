@@ -17,8 +17,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/harness/safefile"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/harness/safefile"
 )
 
 // Home is the guest home tree; paths are relative to /home/agent.

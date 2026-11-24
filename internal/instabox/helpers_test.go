@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
 )
 
 // rig is a fake server with a client whose retry waits are recorded

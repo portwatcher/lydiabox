@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/connector"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/lydiabox/lydiabox/internal/guestskills"
+	"github.com/portwatcher/lydiabox/internal/guestskills"
 )
 
 // The wirers also write the LydiaBox agent skills (internal/guestskills)

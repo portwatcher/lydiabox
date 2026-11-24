@@ -54,7 +54,7 @@ Create the following Go + TypeScript monorepo layout:
 ~~~text
 lydiabox/
 ├── Makefile                        # Build, rootfs image build, lint, unit & integration tests (enforces CGO_ENABLED=0)
-├── go.mod                          # Module: github.com/lydiabox/lydiabox
+├── go.mod                          # Module: github.com/portwatcher/lydiabox
 ├── .env.example                    # Complete documented self-hosted configuration template
 ├── cmd/
 │   ├── lydiabox/                   # Host single binary entrypoint (CLI: up, status, runtime, version)

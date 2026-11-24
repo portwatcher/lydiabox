@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
 )
 
 // configOption is one session config option of session/new. A select

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // fakeDocker emulates the docker CLI state machine.

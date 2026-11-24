@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/magpie"
-	"github.com/lydiabox/lydiabox/internal/magpie/magpietest"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie/magpietest"
 )
 
 func within(path, root string) bool {

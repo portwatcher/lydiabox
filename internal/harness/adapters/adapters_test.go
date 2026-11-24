@@ -11,9 +11,9 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters/adapterstest"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters/adapterstest"
 )
 
 type wantSession struct {

@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/safefile"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/safefile"
 )
 
 // All returns one adapter per harness in display order.

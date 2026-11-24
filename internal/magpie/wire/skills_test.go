@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guestskills"
+	"github.com/portwatcher/lydiabox/internal/guestskills"
 )
 
 // TestSkillsInEveryHarness: every harness gets every LydiaBox skill in

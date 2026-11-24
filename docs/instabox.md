@@ -73,7 +73,7 @@ fingerprint.
 
 ## Client API
 
-Package `github.com/lydiabox/lydiabox/internal/instabox` (no dependency on
+Package `github.com/portwatcher/lydiabox/internal/instabox` (no dependency on
 `internal/vmm`).
 
 - `NewClient(Options{BaseURL, APIKey, HTTPClient, MaxRetries, RetryBaseDelay, MaxRetryDelay, UserAgent, Logger, Sleep}) (*Client, error)`

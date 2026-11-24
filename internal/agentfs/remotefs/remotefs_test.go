@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/agentfs/agentfstest"
-	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/agentfs/agentfstest"
+	"github.com/portwatcher/lydiabox/internal/agentfs/remotefs"
 )
 
 const tid = "default"

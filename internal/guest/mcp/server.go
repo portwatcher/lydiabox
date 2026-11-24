@@ -17,8 +17,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/guest/browser"
-	"github.com/lydiabox/lydiabox/internal/version"
+	"github.com/portwatcher/lydiabox/internal/guest/browser"
+	"github.com/portwatcher/lydiabox/internal/version"
 )
 
 // DefaultAddr is the listen address of the guest MCP server.

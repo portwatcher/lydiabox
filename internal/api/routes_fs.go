@@ -1,6 +1,6 @@
 package api
 
-import "github.com/lydiabox/lydiabox/internal/storage/files"
+import "github.com/portwatcher/lydiabox/internal/storage/files"
 
 // FilesRoutes registers the offline File Manager API (/api/v1/fs).
 type FilesRoutes struct {

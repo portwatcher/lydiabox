@@ -7,9 +7,9 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/tenant"
 )
 
 // EventsSubprotocol is the WebSocket subprotocol of session event streams.

@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 func sum(b []byte) string {

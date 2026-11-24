@@ -9,15 +9,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/bootstrap"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/storage/files"
-	"github.com/lydiabox/lydiabox/internal/store"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
-	"github.com/lydiabox/lydiabox/internal/webui"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/bootstrap"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage/files"
+	"github.com/portwatcher/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
+	"github.com/portwatcher/lydiabox/internal/webui"
 )
 
 // deps are the shared services built by `lydiabox up` and handed to every

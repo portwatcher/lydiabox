@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	guestlink "github.com/lydiabox/lydiabox/internal/guest/link"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	hostlink "github.com/lydiabox/lydiabox/internal/vmm/link"
+	guestlink "github.com/portwatcher/lydiabox/internal/guest/link"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	hostlink "github.com/portwatcher/lydiabox/internal/vmm/link"
 )
 
 func freePort(t *testing.T) string {

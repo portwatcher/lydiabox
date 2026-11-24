@@ -6,7 +6,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/lydiabox/lydiabox/internal/cli"
+	"github.com/portwatcher/lydiabox/internal/cli"
 )
 
 func main() {

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/browser/cdptest"
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/browser/cdptest"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 func newTest(t *testing.T) (*Browser, *cdptest.Server, *fakeDesktop) {

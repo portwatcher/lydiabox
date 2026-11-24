@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // Dialer connects to a guest vsock port (vmm.Driver implements it).

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 func shortDir(t *testing.T) string {

@@ -13,7 +13,7 @@ import (
 
 	_ "modernc.org/sqlite" // database/sql driver "sqlite"
 
-	"github.com/lydiabox/lydiabox/internal/harness/safefile"
+	"github.com/portwatcher/lydiabox/internal/harness/safefile"
 )
 
 // opencode keeps sessions in SQLite (~/.local/share/opencode/opencode.db,

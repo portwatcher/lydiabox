@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // S3Routes mounts the virtual S3 gateway at /s3 and /s3/. The routes are

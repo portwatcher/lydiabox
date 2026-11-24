@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/magpie"
-	"github.com/lydiabox/lydiabox/internal/magpie/magpietest"
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie/magpietest"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // fakeProc is a process that runs until killed, signalled, or crashed.

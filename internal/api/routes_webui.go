@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/httpx"
 )
 
 // WebUIRoutes serves the embedded single-page application at "/". It must be

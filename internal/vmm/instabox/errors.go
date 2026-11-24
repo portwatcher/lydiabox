@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // ErrMachineGone is returned when the recorded machine of a tenant no

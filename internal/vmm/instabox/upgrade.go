@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"strings"
 
-	instaboximage "github.com/lydiabox/lydiabox/deploy/instabox"
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
+	instaboximage "github.com/portwatcher/lydiabox/deploy/instabox"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
 )
 
 // Guest binary upgrade (docs/instabox.md, "Guest binary upgrade"). The

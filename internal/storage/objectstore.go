@@ -15,7 +15,7 @@ import (
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // ErrObjectNotFound is returned by ObjectStore.Get for a missing key.

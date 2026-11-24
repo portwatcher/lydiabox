@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/lydiabox/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/connector"
 )
 
 var notionHeaders = map[string]string{"Notion-Version": connector.NotionVersion}

@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
 )
 
 // Dirs resolves the host directories of a tenant. storage.Provider implements it.

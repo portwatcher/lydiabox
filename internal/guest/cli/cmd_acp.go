@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/acp"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/acp"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
 )
 
 // acp runs the ACP agent of a harness for the host: LydiaBox starts it in a

@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // Store keeps the machine record of each tenant in the state database

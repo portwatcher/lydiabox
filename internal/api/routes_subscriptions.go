@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/magpie"
 )
 
 // registerSubscriptions serves /api/v1/models/subscriptions* (docs/api.md

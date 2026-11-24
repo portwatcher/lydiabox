@@ -22,10 +22,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/connector"
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/storage/files"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/storage/files"
 )
 
 // Default transfer limits of the Google Drive workspace tools.

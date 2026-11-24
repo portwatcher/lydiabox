@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/magpie"
-	"github.com/lydiabox/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/tenant"
 )
 
 // ModelsRoutes serves /api/v1/models* (docs/api.md section 10).

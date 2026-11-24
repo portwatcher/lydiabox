@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/magpie"
-	"github.com/lydiabox/lydiabox/internal/magpie/magpietest"
+	"github.com/portwatcher/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie/magpietest"
 )
 
 const setupToken = "sk-ant-oat01-setup-token-xyz123"

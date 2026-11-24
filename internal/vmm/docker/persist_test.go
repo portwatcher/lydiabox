@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 func writeGuest(t *testing.T, dir, content string) string {

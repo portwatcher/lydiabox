@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/browser"
-	"github.com/lydiabox/lydiabox/internal/guest/browser/cdptest"
-	"github.com/lydiabox/lydiabox/internal/guest/mcp"
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/browser"
+	"github.com/portwatcher/lydiabox/internal/guest/browser/cdptest"
+	"github.com/portwatcher/lydiabox/internal/guest/mcp"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 type lbxApps struct{}

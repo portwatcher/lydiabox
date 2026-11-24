@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // WebDAVRoutes mounts the WebDAV gateway at /webdav/. Clients authenticate

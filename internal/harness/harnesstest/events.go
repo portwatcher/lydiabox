@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // EventCache is an in-memory harness.EventCache.

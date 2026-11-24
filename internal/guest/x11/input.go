@@ -9,7 +9,7 @@ import (
 	"image/png"
 	"math"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // InputMessage is one message of the WebRTC "input" data channel

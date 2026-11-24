@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // Session statuses (docs/api.md section 8).

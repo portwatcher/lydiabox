@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // GuestImageLabel is the ext4 label of the injected guest binary image.

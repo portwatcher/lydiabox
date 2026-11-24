@@ -3,8 +3,8 @@ package daemon
 import (
 	pion "github.com/pion/webrtc/v4"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/guest/webrtc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/webrtc"
 )
 
 // peerConfig converts the signaling parameters from the host into the ICE

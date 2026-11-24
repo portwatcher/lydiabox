@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // lineParser turns the JSONL lines of one transcript into events. It keeps

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // Error classes. Wrap them with fmt.Errorf("%w: ...") so the API layer can

@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/lydiabox/lydiabox/internal/guest/gitcred"
+	"github.com/portwatcher/lydiabox/internal/guest/gitcred"
 )
 
 // The git credential helper. Git calls it as

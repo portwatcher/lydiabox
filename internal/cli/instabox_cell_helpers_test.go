@@ -21,10 +21,10 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest/fakeguest"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest/fakeguest"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 const cellToken = "cell-admin-token-0123456789abcdef"

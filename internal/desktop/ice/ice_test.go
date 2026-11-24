@@ -15,7 +15,7 @@ import (
 
 	"github.com/pion/turn/v4"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 func quiet() *slog.Logger { return slog.New(slog.DiscardHandler) }

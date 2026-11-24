@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // launchScript waits for the shell of the newest xfce4-terminal (the one

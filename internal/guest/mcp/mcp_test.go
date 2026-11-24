@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 type fakeApps struct {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 // Open loads rawURL in the current tab, or in a new tab, and waits for the

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/httpx"
 )
 
 // SessionCookie is the browser session cookie name.

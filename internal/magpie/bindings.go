@@ -7,9 +7,9 @@ import (
 	"maps"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/magpie/wire"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/magpie/wire"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // Binding is the default model of one harness (docs/api.md section 10).

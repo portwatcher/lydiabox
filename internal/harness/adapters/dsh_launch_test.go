@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
 )
 
 // fakeDSH is a dsh on PATH that prints its arguments, DSH_MODEL, and

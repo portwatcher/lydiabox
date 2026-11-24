@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // policyRunner answers `iptables -S FORWARD` with a FORWARD policy and

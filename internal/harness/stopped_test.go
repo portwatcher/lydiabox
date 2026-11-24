@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
-	"github.com/lydiabox/lydiabox/internal/harness/harnesstest"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness/harnesstest"
 )
 
 // holdWaker is a VM controller with the user-stop hold: EnsureRunning

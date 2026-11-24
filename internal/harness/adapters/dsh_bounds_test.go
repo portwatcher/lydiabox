@@ -9,7 +9,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"github.com/lydiabox/lydiabox/internal/harness/safefile"
+	"github.com/portwatcher/lydiabox/internal/harness/safefile"
 )
 
 // A guest-written zstd file that expands beyond the limit is refused, so

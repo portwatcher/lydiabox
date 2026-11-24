@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // fakeProcess is a storage.Process that ends when stopped.

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/cloudflare/accessjwt"
-	"github.com/lydiabox/lydiabox/internal/cloudflare/accessjwt/accessjwttest"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/accessjwt"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/accessjwt/accessjwttest"
 )
 
 func newVerifier(t *testing.T, j *accessjwttest.Issuer, now *time.Time) *accessjwt.Verifier {

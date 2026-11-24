@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	instaboximage "github.com/lydiabox/lydiabox/deploy/instabox"
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
+	instaboximage "github.com/portwatcher/lydiabox/deploy/instabox"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
 )
 
 // System upgrade (docs/instabox.md, "System upgrade"). InstaBox has no

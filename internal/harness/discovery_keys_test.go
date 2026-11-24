@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // extraKeysGuest answers every discovery with a new harness name that the

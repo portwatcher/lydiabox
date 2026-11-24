@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // SpecLabel is the container label that stores the hash of the container

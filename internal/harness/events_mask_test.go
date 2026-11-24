@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/secretmask"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/secretmask"
 )
 
 // The host copy of the events does not keep a token that a harness or a

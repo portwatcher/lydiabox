@@ -19,7 +19,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // Tunnel states reported by Status.

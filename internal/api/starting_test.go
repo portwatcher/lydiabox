@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/httpx"
 )
 
 // A 503 of a request that stopped its wait for a VM start (the start

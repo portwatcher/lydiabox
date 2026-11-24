@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"text/tabwriter"
 
-	"github.com/lydiabox/lydiabox/internal/bootstrap"
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/bootstrap"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 const runtimeUsage = `Usage: lydiabox runtime <subcommand> [flags]

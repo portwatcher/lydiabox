@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // WebDAVPrefix is the public URL prefix of the WebDAV gateway.

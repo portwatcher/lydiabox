@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // PTY is a fake guest terminal. Output written with Emit is read by the

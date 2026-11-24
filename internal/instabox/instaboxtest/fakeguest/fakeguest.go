@@ -29,15 +29,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/credproxy"
-	"github.com/lydiabox/lydiabox/internal/guest/guestfs"
-	guestlink "github.com/lydiabox/lydiabox/internal/guest/link"
-	"github.com/lydiabox/lydiabox/internal/guest/mcp"
-	"github.com/lydiabox/lydiabox/internal/guest/ptymanager"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc/daemon"
-	"github.com/lydiabox/lydiabox/internal/guest/webrtc"
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/credproxy"
+	"github.com/portwatcher/lydiabox/internal/guest/guestfs"
+	guestlink "github.com/portwatcher/lydiabox/internal/guest/link"
+	"github.com/portwatcher/lydiabox/internal/guest/mcp"
+	"github.com/portwatcher/lydiabox/internal/guest/ptymanager"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc/daemon"
+	"github.com/portwatcher/lydiabox/internal/guest/webrtc"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 // EnvPath is the settings file that the driver writes.

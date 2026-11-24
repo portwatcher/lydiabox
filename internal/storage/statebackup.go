@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // ErrNoHostDirs is returned by StateBackup.HomeDir and WorkspaceDir: in the

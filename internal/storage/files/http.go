@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/tenant"
 )
 
 // Handler exposes Service over HTTP. internal/api/routes_fs.go maps the

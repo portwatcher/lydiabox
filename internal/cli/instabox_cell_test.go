@@ -15,9 +15,9 @@ import (
 	"github.com/coder/websocket"
 	pion "github.com/pion/webrtc/v4"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/desktop"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/desktop"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // TestInstaboxCellEndToEnd runs the real `lydiabox up` wiring as a cell

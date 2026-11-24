@@ -8,7 +8,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/hashicorp/yamux"
 
-	guestlink "github.com/lydiabox/lydiabox/internal/guest/link"
+	guestlink "github.com/portwatcher/lydiabox/internal/guest/link"
 )
 
 // run connects, serves, and reconnects until ctx ends.

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/browser"
+	"github.com/portwatcher/lydiabox/internal/guest/browser"
 )
 
 // Option configures a Server.

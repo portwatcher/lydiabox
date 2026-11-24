@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs/agentfstest"
-	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/storage/files"
+	"github.com/portwatcher/lydiabox/internal/agentfs/agentfstest"
+	"github.com/portwatcher/lydiabox/internal/agentfs/remotefs"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/storage/files"
 )
 
 func init() {

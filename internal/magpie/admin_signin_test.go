@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie"
 )
 
 // signInServer answers the sign-in routes with bodies recorded from magpie

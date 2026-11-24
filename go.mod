@@ -1,4 +1,4 @@
-module github.com/lydiabox/lydiabox
+module github.com/portwatcher/lydiabox
 
 go 1.26.0
 

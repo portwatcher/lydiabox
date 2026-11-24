@@ -15,13 +15,13 @@ import (
 	"testing"
 	"time"
 
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest/fakeguest"
-	"github.com/lydiabox/lydiabox/internal/store"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest/fakeguest"
+	"github.com/portwatcher/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 const tenant = "alice"

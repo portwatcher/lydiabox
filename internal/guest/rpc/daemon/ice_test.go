@@ -6,7 +6,7 @@ import (
 
 	pion "github.com/pion/webrtc/v4"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 func TestPeerConfigFromSignalParams(t *testing.T) {

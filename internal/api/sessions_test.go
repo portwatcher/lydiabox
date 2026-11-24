@@ -17,12 +17,12 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters/adapterstest"
-	"github.com/lydiabox/lydiabox/internal/harness/harnesstest"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters/adapterstest"
+	"github.com/portwatcher/lydiabox/internal/harness/harnesstest"
 )
 
 type sessionsEnv struct {

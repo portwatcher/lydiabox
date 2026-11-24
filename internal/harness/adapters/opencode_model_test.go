@@ -3,7 +3,7 @@ package adapters
 import (
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/magpie/wire"
+	"github.com/portwatcher/lydiabox/internal/magpie/wire"
 )
 
 // TestOCModel checks that an opencode session on the gateway provider

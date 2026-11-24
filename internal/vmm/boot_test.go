@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/httpx"
 )
 
 // slowRemote is a remote machine whose resume takes resumeDelay. The

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	"github.com/lydiabox/lydiabox/internal/vmm/link"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm/link"
 )
 
 // DefaultGuestStatusAfter is how long the port proxy answers 502 before

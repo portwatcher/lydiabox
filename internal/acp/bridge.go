@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness"
 )
 
 // MCPServer is one HTTP MCP server passed to the agent in session/new.

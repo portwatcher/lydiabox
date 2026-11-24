@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox"
 )
 
 const fingerprintFile = "testdata/openapi-fingerprint.json"

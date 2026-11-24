@@ -33,8 +33,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/tenant"
 )
 
 // Router registers handlers on the server mux. Routes require authentication

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/tenant"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
 )
 
 // hub is the set of browsers of one tenant plus the guest event

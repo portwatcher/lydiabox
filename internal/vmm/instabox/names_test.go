@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 func TestLinkURL(t *testing.T) {

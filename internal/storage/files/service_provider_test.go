@@ -5,7 +5,7 @@ package files
 import (
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs/agentfstest"
+	"github.com/portwatcher/lydiabox/internal/agentfs/agentfstest"
 )
 
 func init() {

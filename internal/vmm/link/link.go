@@ -17,8 +17,8 @@ import (
 
 	"github.com/hashicorp/yamux"
 
-	guestlink "github.com/lydiabox/lydiabox/internal/guest/link"
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	guestlink "github.com/portwatcher/lydiabox/internal/guest/link"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // State is the state of a link.

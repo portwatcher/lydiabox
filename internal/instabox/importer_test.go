@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
 )
 
 // TestMain lets the test binary act as the instabox CLI for

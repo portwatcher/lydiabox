@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/tenant"
 )
 
 // TunnelStatus is the state of the cloudflared connector.

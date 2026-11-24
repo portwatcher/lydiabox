@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie"
 )
 
 // Fake subscription values. GoodCode completes a sign-in that asks for a

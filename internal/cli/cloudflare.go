@@ -8,10 +8,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/lydiabox/lydiabox/internal/bootstrap"
-	"github.com/lydiabox/lydiabox/internal/cloudflare"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/bootstrap"
+	"github.com/portwatcher/lydiabox/internal/cloudflare"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 const cloudflareUsage = `Usage: lydiabox cloudflare <subcommand> [flags]

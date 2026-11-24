@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 func TestCreateIsIdempotentAcrossRestarts(t *testing.T) {

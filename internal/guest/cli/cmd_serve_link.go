@@ -11,9 +11,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lydiabox/lydiabox/internal/guest/credproxy"
-	guestlink "github.com/lydiabox/lydiabox/internal/guest/link"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/credproxy"
+	guestlink "github.com/portwatcher/lydiabox/internal/guest/link"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // linkHostAddr is the default LYDIABOX_HOST_ADDR in link mode: a local

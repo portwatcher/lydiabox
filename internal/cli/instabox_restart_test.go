@@ -12,7 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/api"
 )
 
 // sessionState returns the status and the live flag of one session.

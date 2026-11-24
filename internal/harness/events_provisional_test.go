@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/harnesstest"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/harnesstest"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // storeProvisional stores a provisional session (no transcript yet) whose

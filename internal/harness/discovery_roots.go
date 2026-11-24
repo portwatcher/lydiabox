@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // guestRootPrefix maps a directory of a guest root to the path form that

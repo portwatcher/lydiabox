@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/cloudflare/accessjwt"
-	"github.com/lydiabox/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/accessjwt"
+	"github.com/portwatcher/lydiabox/internal/httpx"
 )
 
 // AccessVerifier checks a Cloudflare Access token (*accessjwt.Verifier

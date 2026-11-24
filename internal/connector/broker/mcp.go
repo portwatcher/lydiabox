@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/lydiabox/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/connector"
 )
 
 // MCP protocol versions this server speaks, newest first.

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/connector"
 )
 
 // Client credentials the fake token endpoints accept.

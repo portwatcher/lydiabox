@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // The test binary doubles as a fake cloudflared: with FAKE_CLOUDFLARED set,

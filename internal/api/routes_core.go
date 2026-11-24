@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/tenant"
-	"github.com/lydiabox/lydiabox/internal/version"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/version"
 )
 
 // VM power states reported by /api/v1/status and /api/v1/vm/status.

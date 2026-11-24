@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/config"
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	"github.com/portwatcher/lydiabox/internal/config"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 // makeMachine makes the tenant's machine with the driver, as `lydiabox up`

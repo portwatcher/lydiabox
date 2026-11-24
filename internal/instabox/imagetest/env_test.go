@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/guest/ptymanager"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/ptymanager"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // ptyEnvScript sends the names (never the values) of a PTY's variables,

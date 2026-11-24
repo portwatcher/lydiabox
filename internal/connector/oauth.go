@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // DefaultReturnTo is the UI page the OAuth callback redirects to by default.

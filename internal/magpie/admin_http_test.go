@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie"
 )
 
 // fakeMagpieServer emulates the magpie gateway and admin web routes.

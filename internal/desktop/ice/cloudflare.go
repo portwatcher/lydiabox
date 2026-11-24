@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // CloudflareAPIBase is the Cloudflare Realtime API base URL.

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // DefaultSTUNURL is the STUN server used when no ICE setting is configured.

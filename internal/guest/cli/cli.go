@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/version"
+	"github.com/portwatcher/lydiabox/internal/version"
 )
 
 // ErrNotImplemented is returned by commands that this build does not provide.

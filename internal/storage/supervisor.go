@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // Provider is the tenant-scoped persistent storage service consumed by the

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/cloudflare"
+	"github.com/portwatcher/lydiabox/internal/cloudflare"
 )
 
 // Account and Token are what the fake accepts.

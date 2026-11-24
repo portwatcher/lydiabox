@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/connector"
-	"github.com/lydiabox/lydiabox/internal/connector/broker"
-	"github.com/lydiabox/lydiabox/internal/version"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/connector/broker"
+	"github.com/portwatcher/lydiabox/internal/version"
 )
 
 // connectorBrokers maps the deps of a running `lydiabox up` to the connector

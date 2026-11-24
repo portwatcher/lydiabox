@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/tenant"
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // powerDriver is a vmm.Driver that counts boots. Shutdown waits for

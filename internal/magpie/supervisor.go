@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/secretmask"
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/secretmask"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // Defaults of the host magpie process.

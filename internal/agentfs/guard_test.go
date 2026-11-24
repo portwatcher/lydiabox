@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
 )
 
 type dirs struct{ home, ws string }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 // fakeDesktop records events and can refuse actions like a takeover.

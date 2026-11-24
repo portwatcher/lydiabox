@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/lydiabox/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie"
 )
 
 // FakeAdmin is an in-memory magpie.AdminAPI.

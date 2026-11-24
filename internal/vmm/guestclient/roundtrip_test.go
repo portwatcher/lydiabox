@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/mcp"
-	"github.com/lydiabox/lydiabox/internal/guest/ptymanager"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc/daemon"
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/mcp"
+	"github.com/portwatcher/lydiabox/internal/guest/ptymanager"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc/daemon"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 type unixDialer struct{ path string }

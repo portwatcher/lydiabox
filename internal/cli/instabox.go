@@ -9,9 +9,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/config"
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	"github.com/portwatcher/lydiabox/internal/config"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 const instaboxUsage = `Usage: lydiabox instabox <subcommand> [flags]

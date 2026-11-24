@@ -11,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/storage/files"
-	"github.com/lydiabox/lydiabox/internal/tenant"
-	"github.com/lydiabox/lydiabox/internal/webui"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage/files"
+	"github.com/portwatcher/lydiabox/internal/tenant"
+	"github.com/portwatcher/lydiabox/internal/webui"
 )
 
 const token = "test-admin-token-0123456789abcdef"

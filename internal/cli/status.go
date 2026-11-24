@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/version"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/version"
 )
 
 func runStatus(ctx context.Context, env Env, args []string) error {

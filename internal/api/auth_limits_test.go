@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/api"
 )
 
 // Basic credentials can be cached by a browser after a WebDAV challenge, so

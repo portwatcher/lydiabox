@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/cloudflare"
-	"github.com/lydiabox/lydiabox/internal/cloudflare/cloudflaretest"
+	"github.com/portwatcher/lydiabox/internal/cloudflare"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/cloudflaretest"
 )
 
 func params() cloudflare.SetupParams {

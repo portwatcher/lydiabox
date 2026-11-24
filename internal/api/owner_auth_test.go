@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/api"
 )
 
 var ownerKey = bytes.Repeat([]byte{0x31}, 32)

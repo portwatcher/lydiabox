@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/secretmask"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/secretmask"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // EventCache keeps a host copy of the last known events of each session

@@ -3,12 +3,12 @@ package cli
 import (
 	"context"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/magpie"
-	"github.com/lydiabox/lydiabox/internal/magpie/wire"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/agentfs/remotefs"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/magpie"
+	"github.com/portwatcher/lydiabox/internal/magpie/wire"
 )
 
 // Guest-native mode (docs/design.md section 4.4.2): the harnesses sign in

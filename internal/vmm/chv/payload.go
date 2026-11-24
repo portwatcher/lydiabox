@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // Cmdline is the guest kernel command line on x86_64 (docs/design.md

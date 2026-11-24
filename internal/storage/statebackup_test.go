@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 func TestStateBackupWithoutS3(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/cloudflare/accessjwt"
-	"github.com/lydiabox/lydiabox/internal/cloudflare/accessjwt/accessjwttest"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/accessjwt"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/accessjwt/accessjwttest"
 )
 
 type accessEnv struct {

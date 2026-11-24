@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
 )
 
 func TestLifecycleStates(t *testing.T) {

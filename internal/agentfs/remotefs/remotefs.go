@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
 )
 
 // LeaseFiles is the VM lease kind held while a file operation runs.

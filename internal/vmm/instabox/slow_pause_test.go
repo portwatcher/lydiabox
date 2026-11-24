@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 // pauseRig is a running controller on the InstaBox driver whose suspend

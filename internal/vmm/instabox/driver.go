@@ -29,10 +29,10 @@ import (
 	"sync"
 	"time"
 
-	instaboximage "github.com/lydiabox/lydiabox/deploy/instabox"
-	ib "github.com/lydiabox/lydiabox/internal/instabox"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	"github.com/lydiabox/lydiabox/internal/vmm/link"
+	instaboximage "github.com/portwatcher/lydiabox/deploy/instabox"
+	ib "github.com/portwatcher/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm/link"
 )
 
 // DriverName is the vmm.Driver name and the store record key.

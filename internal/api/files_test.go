@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/storage/files"
+	"github.com/portwatcher/lydiabox/internal/storage/files"
 )
 
 func basicCreds(user, pass string) string {

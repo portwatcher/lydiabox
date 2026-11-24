@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/cloudflare/cloudflaretest"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/cloudflare/cloudflaretest"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // cloudflareCLI isolates the CLI and points it at a fake Cloudflare API.

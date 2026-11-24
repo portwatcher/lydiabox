@@ -14,9 +14,9 @@ import (
 
 	pion "github.com/pion/webrtc/v4"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
 )
 
 func readUntil(t *testing.T, p guestclient.PTY, want string) {

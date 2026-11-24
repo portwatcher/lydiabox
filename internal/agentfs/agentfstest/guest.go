@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs/remotefs"
-	"github.com/lydiabox/lydiabox/internal/guest/guestfs"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc/daemon"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
+	"github.com/portwatcher/lydiabox/internal/agentfs/remotefs"
+	"github.com/portwatcher/lydiabox/internal/guest/guestfs"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc/daemon"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
 )
 
 // Guest is a running in-process guest daemon and its host clients.

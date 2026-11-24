@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // UnavailableGatewayRoutes answers /webdav and /s3 in the provider storage

@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/httpx"
+	"github.com/portwatcher/lydiabox/internal/httpx"
 )
 
 // TestConnectorErrorOfACanceledRequest: a page change cancels the load of

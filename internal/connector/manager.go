@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/store"
+	"github.com/portwatcher/lydiabox/internal/store"
 )
 
 // Errors returned by Manager. internal/api maps them to HTTP status codes.

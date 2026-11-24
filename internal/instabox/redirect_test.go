@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox"
 )
 
 func TestBaseURLRefusesPlainHTTP(t *testing.T) {

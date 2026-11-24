@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/connector"
+	"github.com/portwatcher/lydiabox/internal/connector"
 )
 
 // Fixture identifiers served by the fake APIs.

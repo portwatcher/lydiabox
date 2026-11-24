@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest/fakeguest"
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest/fakeguest"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 // silentGuest is a machine whose guest daemon never listens: the port

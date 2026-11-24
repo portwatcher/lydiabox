@@ -15,7 +15,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // installRecordFile records which manifest version installed each binary so

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	instaboximage "github.com/lydiabox/lydiabox/deploy/instabox"
+	instaboximage "github.com/portwatcher/lydiabox/deploy/instabox"
 )
 
 func TestSystemRootCanBeQuoted(t *testing.T) {

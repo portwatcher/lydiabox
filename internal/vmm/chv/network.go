@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/storage"
 )
 
 // privateRanges are the destinations the guest may not reach: the host's

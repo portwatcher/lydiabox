@@ -10,7 +10,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/api"
 )
 
 // State is the VM power state reported by the API.

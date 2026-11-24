@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/guest/browser"
-	"github.com/lydiabox/lydiabox/internal/guest/browser/cdptest"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/guest/x11"
+	"github.com/portwatcher/lydiabox/internal/guest/browser"
+	"github.com/portwatcher/lydiabox/internal/guest/browser/cdptest"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/guest/x11"
 )
 
 var browserToolNames = []string{"browser_open", "browser_back", "browser_forward", "browser_tabs", "browser_snapshot",

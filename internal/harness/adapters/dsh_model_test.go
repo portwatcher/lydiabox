@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
 )
 
 // dshGatewaySession is a dsh 0.2.2-rc.5 transcript of a turn on the

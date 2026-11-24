@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
 )
 
 // TestRunsAsAgentUser needs root on Linux (run it in a container: see

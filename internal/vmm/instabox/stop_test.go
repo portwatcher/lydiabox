@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lydiabox/lydiabox/internal/vmm"
-	"github.com/lydiabox/lydiabox/internal/vmm/guestclient"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	"github.com/portwatcher/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/vmm/guestclient"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 // controller returns a VM controller over d whose readiness probe pings

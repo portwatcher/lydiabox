@@ -1,5 +1,5 @@
 // Package version exposes build metadata injected by the Makefile through
-// -ldflags "-X github.com/lydiabox/lydiabox/internal/version.Version=...".
+// -ldflags "-X github.com/portwatcher/lydiabox/internal/version.Version=...".
 package version
 
 import (

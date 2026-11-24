@@ -107,7 +107,7 @@ single WebRTC UDP port, and the extra packages.
 | Path | Status | Notes |
 | :--- | :--- | :--- |
 | `Makefile` | done | build, release, test, lint, `rootfs`, `guest-image`, `guest-image-slim`, `virtiofsd` |
-| `go.mod` (`github.com/lydiabox/lydiabox`) | done | |
+| `go.mod` (`github.com/portwatcher/lydiabox`) | done | |
 | `.env.example` | done | every `LYDIABOX_*` variable the code reads |
 | `cmd/lydiabox`, `cmd/lydiabox-guest` (`git-cred` subcommand) | done | |
 | `internal/config`, `internal/bootstrap`, `internal/store` | done | |

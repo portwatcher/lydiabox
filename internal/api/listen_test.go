@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/api"
 )
 
 // A cell listens on a UNIX socket and answers /api/v1/ready without a

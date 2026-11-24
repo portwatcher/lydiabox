@@ -16,9 +16,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
-	"github.com/lydiabox/lydiabox/internal/storage"
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/storage"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // DefaultImage is the desktop image built by deploy/rootfs/build-artifacts.sh

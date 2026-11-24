@@ -22,8 +22,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
-	"github.com/lydiabox/lydiabox/internal/guest/rpc"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/guest/rpc"
 )
 
 // Identity is the file system identity of the agent user.

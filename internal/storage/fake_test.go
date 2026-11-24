@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 // fakeRunner simulates juicefs and mkfs.ext4 without the real binaries.

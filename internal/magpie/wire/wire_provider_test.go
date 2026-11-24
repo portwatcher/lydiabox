@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs/agentfstest"
+	"github.com/portwatcher/lydiabox/internal/agentfs/agentfstest"
 )
 
 // TestWirersProviderMatchesLocal applies every wirer to two copies of the

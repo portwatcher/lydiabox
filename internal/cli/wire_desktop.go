@@ -5,11 +5,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/lydiabox/lydiabox/internal/api"
-	"github.com/lydiabox/lydiabox/internal/config"
-	"github.com/lydiabox/lydiabox/internal/desktop"
-	"github.com/lydiabox/lydiabox/internal/desktop/ice"
-	"github.com/lydiabox/lydiabox/internal/vmm"
+	"github.com/portwatcher/lydiabox/internal/api"
+	"github.com/portwatcher/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/desktop"
+	"github.com/portwatcher/lydiabox/internal/desktop/ice"
+	"github.com/portwatcher/lydiabox/internal/vmm"
 )
 
 // wireDesktop serves /api/v1/desktop/* (signaling relay, takeover mode,

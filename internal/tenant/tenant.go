@@ -6,7 +6,7 @@ package tenant
 import (
 	"context"
 
-	"github.com/lydiabox/lydiabox/internal/config"
+	"github.com/portwatcher/lydiabox/internal/config"
 )
 
 type ctxKey struct{}

@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/safefile"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/safefile"
 )
 
 // Claude reads Claude Code transcripts:

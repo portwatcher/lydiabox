@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters/adapterstest"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters/adapterstest"
 )
 
 // kinds returns the event kinds in order, as one string.

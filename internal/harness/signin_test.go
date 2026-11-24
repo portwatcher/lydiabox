@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/harness"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters"
-	"github.com/lydiabox/lydiabox/internal/harness/adapters/adapterstest"
-	"github.com/lydiabox/lydiabox/internal/harness/harnesstest"
+	"github.com/portwatcher/lydiabox/internal/harness"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters"
+	"github.com/portwatcher/lydiabox/internal/harness/adapters/adapterstest"
+	"github.com/portwatcher/lydiabox/internal/harness/harnesstest"
 )
 
 func newNativeManager(t *testing.T, native bool) (*harness.Manager, *harnesstest.Runner, *fakeWiring) {

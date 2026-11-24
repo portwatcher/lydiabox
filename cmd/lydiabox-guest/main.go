@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/lydiabox/lydiabox/internal/guest/cli"
+	"github.com/portwatcher/lydiabox/internal/guest/cli"
 )
 
 func main() {

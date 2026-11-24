@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lydiabox/lydiabox/internal/agentfs"
+	"github.com/portwatcher/lydiabox/internal/agentfs"
 )
 
 func newService(t *testing.T) (*Service, string, string) {

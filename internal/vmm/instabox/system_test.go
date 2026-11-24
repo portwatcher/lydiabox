@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	instaboximage "github.com/lydiabox/lydiabox/deploy/instabox"
-	"github.com/lydiabox/lydiabox/internal/instabox/instaboxtest"
-	vmmib "github.com/lydiabox/lydiabox/internal/vmm/instabox"
+	instaboximage "github.com/portwatcher/lydiabox/deploy/instabox"
+	"github.com/portwatcher/lydiabox/internal/instabox/instaboxtest"
+	vmmib "github.com/portwatcher/lydiabox/internal/vmm/instabox"
 )
 
 const systemUpload = "/data/.lydiabox/.system-bundle.upload"
