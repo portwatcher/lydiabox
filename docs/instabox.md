@@ -291,7 +291,7 @@ only, no value of a credential was read):
 
 | Supplier item | Effect before | What LydiaBox does now |
 | :--- | :--- | :--- |
-| `/data/home/.claude.json` with the MCP servers `instabox` and `open-computer-use`; `/data/home/.claude/skills`, `/data/home/.agents/skills` (`instabox`, `instabox-snapshots`); `AGENTS.md` linked as `.claude/CLAUDE.md` and `.codex/AGENTS.md` | Claude Code in LydiaBox loaded both MCP servers (`claude mcp list`: `instabox ✔ Connected`), the skills, and InstaBox's instructions | Not used: `HOME` is `/data/lydiabox/home` |
+| `/data/home/.claude.json` with the MCP servers `instabox` and `open-computer-use`; `/data/home/.claude/skills`, `/data/home/.agents/skills` (`instabox`, `instabox-snapshots`); `AGENTS.md` linked as `.claude/CLAUDE.md` and `.codex/AGENTS.md` | Claude Code in LydiaBox loaded both MCP servers (`claude mcp list`: `instabox ✔ Connected`), the skills, and InstaBox's instructions | Not used: `HOME` is `/data/lydiabox/home`. The harnesses get LydiaBox's own skills there instead (`lydiabox-*` in `~/.claude/skills`, `~/.agents/skills`, `~/.gemini/config/skills`; [design.md](design.md) section 4.4.3) |
 | `/etc/codex/config.toml` with `[mcp_servers.instabox]` (`env_vars` `INSTABOX_API_KEY`, `INSTABOX_API_URL`, `INSTABOX_MCP_ALLOW_DELETE`) and `[mcp_servers.open-computer-use]`, read by Codex in every home | Codex in LydiaBox loaded both MCP servers (`codex mcp list`) | The entry point sets the image's file at each start (`deploy/instabox/codex-config.toml`: only `check_for_update_on_startup = false`); the template's is kept as `/etc/codex/config.toml.instabox-template` |
 | `/etc/claude-code/managed-settings.json` (`env.DISABLE_AUTOUPDATER=1`) | Claude Code did not update itself | The entry point sets the image's file with the same setting |
 | `/usr/local/bin/claude`, `codex`, `opencode` linked to `/opt/npm` (Claude Code 2.1.288, Codex 0.160.0, updated by the machine user); `/usr/local/bin` is first in `PATH` | LydiaBox ran these instead of the image's (2.1.325, 0.169.0) | The entry point links them (and `dsh`) to the image's CLIs in `/usr/bin` |
@@ -305,7 +305,9 @@ only, no value of a credential was read):
 Environment of LydiaBox processes. supervisord and its programs get
 `PATH`, `LANG`, `LC_ALL`, `TZ`, and the `LYDIABOX_*` variables of the
 entry point, then the program's `environment=` (`HOME=/home/agent`,
-`USER`, `LOGNAME`, `SHELL`, `DISPLAY`, `XDG_RUNTIME_DIR`). A PTY of the
+`USER`, `LOGNAME`, `SHELL`, `DISPLAY`, `XDG_RUNTIME_DIR`; for Xfce and the
+guest daemon also `PATH` with `/home/agent/.local/bin` at the end and
+`CLI_HUB_NO_ANALYTICS=1`). A PTY of the
 guest daemon gets only these variables of the daemon
 (`ptymanager.Inherited`): `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`,
 `LANG`, `LANGUAGE`, `LC_*`, `TZ`, `DISPLAY`, `XDG_RUNTIME_DIR`,
@@ -313,7 +315,8 @@ guest daemon gets only these variables of the daemon
 `SSL_CERT_DIR`; then LydiaBox's (`LYDIABOX_HOST_ADDR`,
 `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`, `GOOGLE_GEMINI_BASE_URL`, the
 placeholder `GEMINI_API_KEY`, `TERM`, `COLORTERM`, `DISPLAY`,
-`LYDIABOX_PTY_ID`) and the session's (`LYDIABOX_SESSION_ID`,
+`CLI_HUB_NO_ANALYTICS=1`, `LYDIABOX_PTY_ID`, and `~/.local/bin` at the
+end of `PATH`) and the session's (`LYDIABOX_SESSION_ID`,
 `LYDIABOX_HARNESS`, the binding's variables). The same rule applies in
 the `chv` and `docker` backends.
 
@@ -878,7 +881,9 @@ machine (old layout, released guest binary of core `802e85c`) with one
   2.1.325 and `claude mcp list` prints `No MCP servers configured`;
   `codex` is `/usr/lib/node_modules/@openai/codex` 0.169.0 and
   `codex mcp list` prints `No MCP servers configured yet`; the new home
-  has no `.claude/skills`, `.agents`, or `AGENTS.md`.
+  has no `.claude/skills`, `.agents`, or `AGENTS.md`. (A later core
+  writes its own `lydiabox-*` skills there; [design.md](design.md)
+  section 4.4.3.)
 
 In the first trial restart (15:11), with the image's panel default but
 Xfce still on the user manager's bus, the three dialogs came back, and

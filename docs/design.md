@@ -298,10 +298,64 @@ self-hosted mode, where sections 4.4 and 4.4.1 apply unchanged.
 - **Old gateway data**: a start in guest-native mode removes what a host gateway of an earlier mode left: `$DATA_DIR/state/magpie` (sign-ins, API keys, caller keys), `$DATA_DIR/cache/magpie`, and the `magpie_secrets` rows of the tenant. Both paths come from the configuration. A path that is a symbolic link, or that has a symbolic link between it and the data directory, stays as it is (the start logs a warning). The start logs one INFO line with counts and sizes only. A start that finds nothing does nothing; a start outside guest-native mode keeps the data.
 - **Models**: `GET /api/v1/models/gateway` returns `{"status":"off","mode":"guest-native"}`. `GET /api/v1/models` lists native model IDs with the harness ID as `provider`: the Claude Code aliases (`opus`, `sonnet`, `haiku`) and the models of earlier sessions. A session without a model uses the harness default. Subscription and API-key routes answer 409.
 
+#### 4.4.3 Agent skills and CLI-Anything
+
+LydiaBox gives every harness the same agent skills, in both modes
+(gateway and guest-native). The skills are `SKILL.md` files embedded in
+the binary (`internal/guestskills`, `go:embed`):
+
+| Skill | Content |
+| :--- | :--- |
+| `lydiabox-cli-hub` | Find, inspect, and install hub CLIs with `cli-hub`; install the upstream application too; scope every install. Adapted from `cli-hub-meta-skill/SKILL.md` of [CLI-Anything](https://github.com/HKUDS/CLI-Anything) (Apache-2.0, see `NOTICE`) |
+| `lydiabox-install-software` | What persists on each VM type, `sudo`, user-level installs (`uv tool`, venvs, `npm --prefix ~/.local`, `~/.local/bin`), and GUI programs on the desktop |
+
+- **Wiring** (`internal/magpie/wire/skills.go`): before each harness
+  start, `Bindings.EnsureWired` writes `<dir>/lydiabox-*/SKILL.md` into
+  the skill directory of the harness (`wire.SkillDirs`). A file is
+  replaced only when it is missing or has the managed marker; LydiaBox
+  never reads, changes, or deletes another skill directory, and a
+  `SKILL.md` that the user rewrote without the marker stays. The skill
+  paths are not credential files, so guest-native mode is unchanged.
+- **Skill directory per harness**:
+
+  | Harness | Directory | Evidence |
+  | :--- | :--- | :--- |
+  | `claude-code` | `~/.claude/skills` | Claude Code docs (code.claude.com/docs/en/skills): "Personal" skills in `~/.claude/skills/<skill-name>/SKILL.md` |
+  | `codex` | `~/.agents/skills` | Codex skills docs: user scope `$HOME/.agents/skills`. The codex 0.172.0 binary of the image has the skill sources `codex-home-skills` (`$CODEX_HOME/skills`) and `user-agent-skills` (`.agents/skills`) |
+  | `opencode` | `~/.agents/skills` | OpenCode docs (opencode.ai/docs/skills): global `~/.config/opencode/skills`, and the global compatibility paths `~/.claude/skills` and `~/.agents/skills`. `opencode debug skill` (1.19.6, in the image) lists the skills from `~/.agents/skills`. LydiaBox uses `~/.agents/skills` (shared with Codex and dsh). When `~/.claude/skills` has the same skills, OpenCode logs `duplicate skill name` (WARN) and keeps one copy; the files are the same |
+  | `dsh` | `~/.agents/skills` | No skills page in the dsh docs. The installed package (`@deepseek-ai/dsh` 0.2.2-rc.5, `dsh-skill-filesystem`) reads the user roots `$DSH_HOME/skills` (`~/.dsh/skills`) and `$DSH_AGENTS_HOME/skills` (default `~/.agents/skills`) |
+  | `antigravity` | `~/.gemini/config/skills` | Antigravity docs (antigravity.google/docs/skills): global skill directory of the agy CLI and the app. The agy 1.5.16 binary of the image has the path `/.gemini/config/skills/`. Not `~/.gemini/antigravity-cli/skills`: that directory is a credential directory in guest-native mode |
+
+  Every harness has skill support, so the instruction block lists no
+  skills.
+
+- **cli-hub in the image** (`deploy/rootfs/install-cli-hub.sh`, `desktop`
+  stage only; `desktop-slim` has no Python): `cli-anything-hub` and `uv`
+  at pinned versions (build arguments `CLI_HUB_VERSION`, `UV_VERSION`) in
+  the venv `/opt/cli-hub`, outside the agent home. No hub CLI is
+  preinstalled. `/usr/local/bin/cli-hub` is a wrapper; `/usr/local/bin/uv`
+  and `uvx` link to the venv.
+- **Installs persist in the home**: cli-hub installs a Python hub CLI
+  with the venv's own `python -m pip install`. The venv has
+  `--system-site-packages` and a `pip.conf` with `user = true`, so the
+  package goes to `~/.local/lib/python3.X/site-packages` and its command
+  to `~/.local/bin` (the system Python stays "externally managed", PEP
+  668). For an npm hub CLI the wrapper sets `NPM_CONFIG_PREFIX=~/.local`
+  (not for root, not when it is set). uv hub CLIs go to `~/.local/share/uv`
+  and `~/.local/bin`.
+- **PATH**: `~/.local/bin` is at the end of `PATH` in every PTY
+  (`ptymanager`, also ACP agents and the web terminal), in the desktop
+  session, and in the programs that the guest daemon starts
+  (`supervisord.conf` of the image and of InstaBox).
+- **No usage analytics**: upstream `cli_hub/analytics.py` sends events
+  to PostHog unless `CLI_HUB_NO_ANALYTICS` is `1`. The wrapper sets it for
+  every caller; the PTY environment (`ptymanager.DefaultEnv`) and the
+  `supervisord.conf` files set it too.
+
 ### 4.5 Computer Use, Desktop Streaming & Takeover (`internal/guest/*`)
 
 1. **Guest Desktop Stack (`deploy/rootfs/Dockerfile`)**:
-   - Base: `ubuntu:24.04` (build argument `DESKTOP_IMAGE`; the InstaBox image uses `debian:trixie-slim`, the release of the InstaBox machine template, see [instabox.md](instabox.md#image)). Install `xvfb`, `xorg`, `xfce4`, `xfce4-terminal`, `dbus-x11`, `fonts-noto-cjk`, `ffmpeg`, `google-chrome-stable` (or `chromium` on `arm64`), `blender`, `git`, `gh`, `curl`, `jq`, `ripgrep`, `python3`, `nodejs`, `npm`, `bubblewrap` (Codex checks for `bwrap` on PATH at each start), plus the 5 Harness CLIs (`@anthropic-ai/claude-code`, `@openai/codex`, `opencode-ai`, `dsh`, `antigravity` wrapper/installer).
+   - Base: `ubuntu:24.04` (build argument `DESKTOP_IMAGE`; the InstaBox image uses `debian:trixie-slim`, the release of the InstaBox machine template, see [instabox.md](instabox.md#image)). Install `xvfb`, `xorg`, `xfce4`, `xfce4-terminal`, `dbus-x11`, `fonts-noto-cjk`, `ffmpeg`, `google-chrome-stable` (or `chromium` on `arm64`), `blender`, `git`, `gh`, `curl`, `jq`, `ripgrep`, `python3`, `nodejs`, `npm`, `bubblewrap` (Codex checks for `bwrap` on PATH at each start), plus the 5 Harness CLIs (`@anthropic-ai/claude-code`, `@openai/codex`, `opencode-ai`, `dsh`, `antigravity` wrapper/installer), and `cli-hub` with `uv` in `/opt/cli-hub` (section 4.4.3).
    - Start `Xvfb :0 -screen 0 1920x1080x24` + `startxfce4` under user `agent` (`uid=1000`, `$HOME=/home/agent`).
 2. **Pure-Go X11 Controller & Takeover Lock (`internal/guest/x11`)**:
    - Connect via `xgb.NewConnDisplay(":0")` and initialize `xtest.Init(conn)`.

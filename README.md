@@ -497,6 +497,25 @@ instruction file of each harness (`~/.claude/CLAUDE.md`,
 in these files stays. While you have taken over the desktop, agent actions
 wait up to 30 s and then report the takeover.
 
+## Agent skills and CLI-Anything
+
+Every harness also gets two LydiaBox skills (`SKILL.md`), written into its
+global skill directory before each start:
+
+- `lydiabox-cli-hub`: find and install agent-native CLIs for desktop
+  applications with `cli-hub` from
+  [CLI-Anything](https://github.com/HKUDS/CLI-Anything). The full guest
+  image has `cli-hub` and `uv` in `/opt/cli-hub`; no hub CLI is
+  preinstalled. Installs go to `~/.local` and persist. cli-hub sends no
+  usage events (`CLI_HUB_NO_ANALYTICS=1`).
+- `lydiabox-install-software`: which install methods persist on each VM
+  type, and how to start GUI programs on the desktop.
+
+Skill directories: `~/.claude/skills` (Claude Code), `~/.agents/skills`
+(Codex, OpenCode, dsh), `~/.gemini/config/skills` (Antigravity).
+LydiaBox writes only `lydiabox-*` directories; your own skills stay. See
+[docs/design.md](docs/design.md) section 4.4.3.
+
 ## Connectors
 
 Connect GitHub, Google Drive, Notion, or Slack in the Connectors page:
