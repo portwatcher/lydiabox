@@ -52,6 +52,7 @@ func TestPTYEnvironmentIsDefined(t *testing.T) {
 		"LANG": "C.UTF-8", "TZ": "Etc/UTC", "DISPLAY": ":0", "XDG_RUNTIME_DIR": "/run/user/1000",
 		"ANTHROPIC_BASE_URL": GatewayURL, "OPENAI_BASE_URL": GatewayURL, "GEMINI_API_KEY": "lydiabox-local",
 		"LYDIABOX_HOST_ADDR": "unix:///run/lydiabox/host-9001.sock", "LYDIABOX_PTY_ID": "env", "TERM": "xterm-256color",
+		"CLI_HUB_NO_ANALYTICS": "1", "PATH": os.Getenv("PATH") + ":/home/agent/.local/bin",
 	} {
 		if got[k] != want {
 			t.Errorf("%s = %q, want %q", k, got[k], want)
@@ -67,5 +68,22 @@ func TestPTYEnvironmentIsDefined(t *testing.T) {
 	}
 	if strings.Contains(out, "supplier-key") || strings.Contains(out, "s3cret") {
 		t.Error("a supplier credential or the link secret reached the PTY")
+	}
+}
+
+func TestAddUserBin(t *testing.T) {
+	cases := []struct{ home, path, want string }{
+		{"/home/agent", "/usr/bin:/bin", "/usr/bin:/bin:/home/agent/.local/bin"},
+		{"/home/agent", "/home/agent/.local/bin:/usr/bin", "/home/agent/.local/bin:/usr/bin"},
+		{"/home/agent", "/usr/bin:/home/agent/.local/bin", "/usr/bin:/home/agent/.local/bin"},
+		{"", "/usr/bin", "/usr/bin"},
+		{"/home/agent", "", ""},
+	}
+	for _, c := range cases {
+		env := map[string]string{"HOME": c.home, "PATH": c.path}
+		addUserBin(env)
+		if env["PATH"] != c.want {
+			t.Errorf("HOME=%q PATH=%q: got %q, want %q", c.home, c.path, env["PATH"], c.want)
+		}
 	}
 }

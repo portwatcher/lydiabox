@@ -20,6 +20,8 @@
 #   NODE_MAJOR           Node.js major version for the harness CLIs
 #   CLAUDE_CODE_PACKAGE, CODEX_PACKAGE, OPENCODE_PACKAGE, DSH_INSTALL,
 #   ANTIGRAVITY_INSTALL  harness installers (deploy/rootfs/install-harnesses.sh)
+#   CLI_HUB_VERSION, UV_VERSION  cli-hub (CLI-Anything) and uv versions
+#                        (deploy/rootfs/install-cli-hub.sh)
 
 ARG UBUNTU_IMAGE=ubuntu:24.04
 # The kernel, initramfs, and squash stages are build tools and stay on
@@ -97,6 +99,8 @@ ARG OPENCODE_PACKAGE=opencode-ai
 # Defaults are in install-harnesses.sh; pass an empty value to skip one.
 ARG DSH_INSTALL="npm install -g --no-fund --no-audit @deepseek-ai/dsh"
 ARG ANTIGRAVITY_INSTALL="curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin"
+ARG CLI_HUB_VERSION=0.4.1
+ARG UV_VERSION=0.13.7
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=Etc/UTC
 COPY deploy/rootfs/dpkg-excludes /tmp/dpkg-excludes
 # Ubuntu and Debian get the same package list. Distribution steps:
@@ -150,6 +154,12 @@ COPY deploy/rootfs/install-harnesses.sh /tmp/install-harnesses.sh
 RUN CLAUDE_CODE_PACKAGE="$CLAUDE_CODE_PACKAGE" CODEX_PACKAGE="$CODEX_PACKAGE" OPENCODE_PACKAGE="$OPENCODE_PACKAGE" \
 	DSH_INSTALL="$DSH_INSTALL" ANTIGRAVITY_INSTALL="$ANTIGRAVITY_INSTALL" sh /tmp/install-harnesses.sh \
 	&& rm /tmp/install-harnesses.sh
+# cli-hub (CLI-Anything) and uv in /opt/cli-hub, outside the agent home
+# (install-cli-hub.sh). No hub CLI is installed in the image.
+COPY deploy/rootfs/install-cli-hub.sh /tmp/install-cli-hub.sh
+COPY deploy/rootfs/cli-hub-wrapper /tmp/cli-hub-wrapper
+RUN CLI_HUB_VERSION="$CLI_HUB_VERSION" UV_VERSION="$UV_VERSION" sh /tmp/install-cli-hub.sh \
+	&& rm /tmp/install-cli-hub.sh /tmp/cli-hub-wrapper
 COPY deploy/rootfs/setup-guest.sh /tmp/setup-guest.sh
 RUN sh /tmp/setup-guest.sh && rm /tmp/setup-guest.sh
 COPY --from=guestbin /out/lydiabox-guest /usr/local/bin/lydiabox-guest

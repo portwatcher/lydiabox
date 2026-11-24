@@ -4,6 +4,7 @@ package ptymanager
 
 import (
 	"os"
+	"path"
 	"strings"
 )
 
@@ -60,3 +61,21 @@ func baseEnv(environ []string) map[string]string {
 
 // daemonEnviron is os.Environ; tests replace it.
 var daemonEnviron = os.Environ
+
+// addUserBin puts $HOME/.local/bin at the end of PATH when it is not in
+// PATH: the commands that the agent installs as its own user (pip in the
+// cli-hub venv, uv tool, npm with --prefix ~/.local) are there, in the
+// persistent home. At the end of PATH, the image's programs stay first.
+func addUserBin(env map[string]string) {
+	home, p := env["HOME"], env["PATH"]
+	if home == "" || p == "" {
+		return
+	}
+	bin := path.Join(home, ".local", "bin")
+	for _, d := range strings.Split(p, ":") {
+		if d == bin {
+			return
+		}
+	}
+	env["PATH"] = p + ":" + bin
+}

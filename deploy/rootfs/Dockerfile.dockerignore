@@ -6,6 +6,8 @@
 !deploy/initramfs/init
 !deploy/rootfs/kernel.config
 !deploy/rootfs/install-harnesses.sh
+!deploy/rootfs/install-cli-hub.sh
+!deploy/rootfs/cli-hub-wrapper
 !deploy/rootfs/supervisord.conf
 !deploy/rootfs/lydiabox-init
 !deploy/rootfs/setup-guest.sh

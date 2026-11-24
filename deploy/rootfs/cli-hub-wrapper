@@ -1,0 +1,24 @@
+#!/bin/sh
+# /usr/local/bin/cli-hub in the LydiaBox guest (deploy/rootfs/install-cli-hub.sh).
+# It runs the cli-hub of /opt/cli-hub with:
+# - CLI_HUB_NO_ANALYTICS=1: cli-hub sends no usage events, for every
+#   caller (harness, ACP agent, terminal, desktop program, SSH);
+# - ~/.local/bin at the end of PATH: cli-hub finds the commands that it
+#   installed there;
+# - for a user other than root, NPM_CONFIG_PREFIX=~/.local when it is not
+#   set: `npm install -g` of an npm hub CLI writes to the persistent home,
+#   not to the root-owned /usr.
+CLI_HUB_NO_ANALYTICS=1
+export CLI_HUB_NO_ANALYTICS
+if [ -n "${HOME:-}" ]; then
+	case ":$PATH:" in
+	*":$HOME/.local/bin:"*) ;;
+	*) PATH="$PATH:$HOME/.local/bin" ;;
+	esac
+	export PATH
+	if [ "$(id -u)" -ne 0 ] && [ -z "${NPM_CONFIG_PREFIX:-}" ]; then
+		NPM_CONFIG_PREFIX="$HOME/.local"
+		export NPM_CONFIG_PREFIX
+	fi
+fi
+exec /opt/cli-hub/bin/cli-hub "$@"

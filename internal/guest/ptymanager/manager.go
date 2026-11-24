@@ -29,6 +29,9 @@ import (
 // GatewayURL is the in-guest LLM gateway (credproxy listens here).
 const GatewayURL = "http://127.0.0.1:3425"
 
+// CLIHubNoAnalytics turns off the usage analytics of cli-hub.
+const CLIHubNoAnalytics = "CLI_HUB_NO_ANALYTICS"
+
 // DefaultEnv returns the variables injected into every PTY: the host broker
 // address used by `lydiabox-guest git-cred`, and the base URLs that route
 // harness LLM traffic through the in-guest gateway. Both base URLs are the
@@ -44,6 +47,9 @@ func DefaultEnv(hostAddr string) map[string]string {
 		"GEMINI_API_KEY":         "lydiabox-local",
 		"TERM":                   "xterm-256color",
 		"COLORTERM":              "truecolor",
+		// cli-hub (CLI-Anything, deploy/rootfs/install-cli-hub.sh) sends
+		// no usage events.
+		CLIHubNoAnalytics: "1",
 	}
 }
 
@@ -228,6 +234,7 @@ func (m *Manager) environ(extra map[string]string, id string) []string {
 	for k, v := range extra {
 		env[k] = v
 	}
+	addUserBin(env)
 	env["LYDIABOX_PTY_ID"] = id
 	out := make([]string, 0, len(env))
 	for k, v := range env {
