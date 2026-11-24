@@ -85,6 +85,13 @@ prune_node_modules() {
 }
 
 prune_node_modules
+# Files with the same content become hard links (dsh has many copies of
+# the same dependency in its packages). The programs only read these
+# files, and npm replaces a file when it updates a package, so a link is
+# safe. util-linux has hardlink on Debian and Ubuntu.
+if command -v hardlink >/dev/null 2>&1; then
+	hardlink "$(npm root -g)" | sed -n 's/^Saved: */install-harnesses: hard links saved /p'
+fi
 # The programs still start after the prune (with a throwaway home, so the
 # checks leave no state in the image).
 check_home=$(mktemp -d)

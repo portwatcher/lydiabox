@@ -925,6 +925,11 @@ Each item needs a check with a real account (see the checklist below).
    the translations and changelogs of the full container image, was 6.73
    GB, above the limit. Keep the full image at or below the 6.66 GB that
    imported (core `6109c08`: 1.71 GB compressed, 4691 MiB of files).
+   With cli-hub and uv the image grew above that, so
+   `install-harnesses.sh` also makes hard links of files with the same
+   content in `/usr/lib/node_modules` (about 350 MiB saved, mostly the
+   repeated dependencies of dsh): 4325 MiB of files, `/usr/lib/node_modules`
+   1564 MB.
 5. **Machine user of an imported image.** Verified on a real machine,
    2026-11-16: UID 1000 keeps the machine's name and home; exec runs as
    that user; the links stay
