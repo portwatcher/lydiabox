@@ -9,6 +9,15 @@ This repository contains third-party material:
 - .agents/skills/: agent skills from https://github.com/jakubkrehel/skills,
   Copyright (c) 2026 Jakub Krehel, licensed under the MIT License. The
   license text is in .agents/skills/LICENSE.
+- internal/guestskills/skills/lydiabox-cli-hub/SKILL.md: adapted from
+  cli-hub-meta-skill/SKILL.md of CLI-Anything
+  (https://github.com/HKUDS/CLI-Anything), Copyright the CLI-Anything
+  authors (HKUDS), licensed under the Apache License, Version 2.0 (the
+  LICENSE file of this repository has the same license text). LydiaBox
+  changed it: it describes the cli-hub that the guest image installs and
+  how installs persist in the LydiaBox VM. The guest image
+  (deploy/rootfs/install-cli-hub.sh) installs the cli-anything-hub
+  package from PyPI, under the same license.
 
 The Go modules and npm packages that LydiaBox depends on have their own
 licenses (see go.mod and web/package.json). The runtime binaries that
